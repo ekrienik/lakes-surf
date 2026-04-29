@@ -190,7 +190,7 @@
 
   .modal-bg {
     position: fixed; inset: 0; background: rgba(4,12,20,0.65);
-    backdrop-filter: blur(4px); z-index: 200; display: none;
+    backdrop-filter: blur(4px); z-index: 2000; display: none;
     align-items: flex-end; justify-content: center;
   }
   .modal-bg.open { display: flex; }
@@ -213,7 +213,7 @@
     position: fixed; bottom: calc(80px + var(--safe-bot)); left: 50%;
     transform: translateX(-50%); background: var(--bg-3); border: 1px solid var(--border);
     color: var(--fg); padding: 10px 16px; border-radius: 10px; font-size: 13px;
-    z-index: 300; opacity: 0; transition: opacity 0.2s; pointer-events: none;
+    z-index: 2100; opacity: 0; transition: opacity 0.2s; pointer-events: none;
   }
   .toast.show { opacity: 1; }
   .legend { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: 11px; }
@@ -420,6 +420,19 @@ const NOAA_BASE = 'https://api.weather.gov';
 const MESOWEST_BASE = 'https://api.mesowest.net/v2/stations';
 const MESOWEST_TOKEN = 'a13f6d0a32c842e6815c377e77a64e99'; // public token used by weather.gov/greatlakes
 const LAKE_MI_BBOX = '-88.5,41.4,-84.5,46.5';
+
+// NWS OMR (Open Lake Marine Report) — daily water-temp bulletin from select offices.
+// LOT covers southern Lake Michigan year-round (Chicago Shore/Crib/Michigan City always reported).
+const OMR_STATIONS = {
+  LOT: [
+    { name: 'Chicago Shore',         lat: 41.864, lon: -87.605 },
+    { name: 'Chicago Crib',          lat: 41.985, lon: -87.580 },
+    { name: 'Waukegan Buoy',         lat: 42.362, lon: -87.834 },
+    { name: 'Winthrop Harbor Buoy',  lat: 42.488, lon: -87.811 },
+    { name: 'Michigan City',         lat: 41.723, lon: -86.913 },
+    { name: 'South Mid Lake Buoy',   lat: 42.500, lon: -86.900 }
+  ]
+};
 const STORAGE_KEY = 'lakesurf-v1';
 const DIRS_8 = ['N','NE','E','SE','S','SW','W','NW'];
 
@@ -729,28 +742,108 @@ function timeAgoStr(iso) {
 }
 
 function formatLiveCompact(live) {
-  if (!live || !live.obs) return null;
-  const o = live.obs;
+  if (!live) return null;
+  const o = live.obs || {};
   const parts = [];
   if (o.waveHeight) parts.push(`${parseFloat(o.waveHeight.value).toFixed(1)} ft`);
   if (o.windSpeed) {
     const dir = o.windDirection ? degToCompass(parseFloat(o.windDirection.value)) : '';
     parts.push(`${Math.round(parseFloat(o.windSpeed.value))} mph ${dir}`.trim());
   }
-  if (o.waterTemp) parts.push(`Water ${Math.round(parseFloat(o.waterTemp.value))}°`);
-  const obsTime = (o.waveHeight && o.waveHeight.time) || (o.windSpeed && o.windSpeed.time) || (o.airTemp && o.airTemp.time);
-  const ago = timeAgoStr(obsTime);
-  const distLabel = live.station.distMiles < 1 ? '<1 mi' : `${live.station.distMiles.toFixed(0)} mi`;
-  const name = (live.station.NAME || live.station.STID || '').slice(0, 30);
-  return `${parts.join(' · ')} · ${distLabel} ${name}${ago ? ' · ' + ago : ''}`;
+  if (o.waterTemp) {
+    parts.push(`Water ${Math.round(parseFloat(o.waterTemp.value))}°`);
+  } else if (live.waterTempOmr) {
+    parts.push(`Water ${live.waterTempOmr.temp}°`);
+  }
+  if (parts.length === 0) return null;
+  let footer = '';
+  if (live.station) {
+    const obsTime = (o.waveHeight && o.waveHeight.time) || (o.windSpeed && o.windSpeed.time) || (o.airTemp && o.airTemp.time);
+    const ago = timeAgoStr(obsTime);
+    const distLabel = live.station.distMiles < 1 ? '<1 mi' : `${live.station.distMiles.toFixed(0)} mi`;
+    const name = (live.station.NAME || live.station.STID || '').slice(0, 30);
+    footer = `${distLabel} ${name}${ago ? ' · ' + ago : ''}`;
+  } else if (live.waterTempOmr) {
+    const ago = timeAgoStr(live.waterTempOmr.issuanceTime);
+    const distLabel = live.waterTempOmr.distMiles < 1 ? '<1 mi' : `${live.waterTempOmr.distMiles.toFixed(0)} mi`;
+    footer = `${distLabel} ${live.waterTempOmr.name} (NWS OMR)${ago ? ' · ' + ago : ''}`;
+  }
+  return footer ? `${parts.join(' · ')} · ${footer}` : parts.join(' · ');
 }
 
 async function getLiveForSpot(spot) {
   try {
     const station = await getNearestStationForSpot(spot.lat, spot.lon, 30);
-    if (!station) return null;
-    return { station, obs: extractObs(station) };
+    const obs = station ? extractObs(station) : null;
+    let waterTempOmr = null;
+    if (!obs || !obs.waterTemp) {
+      waterTempOmr = await getOMRWaterTempForSpot(spot.lat, spot.lon, 50).catch(() => null);
+    }
+    if (!station && !waterTempOmr) return null;
+    return { station, obs, waterTempOmr };
   } catch (e) { return null; }
+}
+
+/* OMR (Open Lake Marine Report) — NWS daily water-temp bulletins.
+   Currently only LOT (Chicago) issues an OMR for Lake Michigan. */
+let omrCache = null;
+let omrCacheTime = 0;
+let omrInflight = null;
+const OMR_CACHE_MS = 60 * 60 * 1000;
+
+async function fetchOMR(office) {
+  const now = Date.now();
+  if (omrCache && omrCache.office === office && (now - omrCacheTime) < OMR_CACHE_MS) return omrCache;
+  if (omrInflight) return omrInflight;
+  omrInflight = (async () => {
+    try {
+      const listRes = await fetch(`${NOAA_BASE}/products/types/OMR/locations/${office}`);
+      if (!listRes.ok) return null;
+      const list = await listRes.json();
+      if (!list['@graph'] || !list['@graph'].length) return null;
+      const latest = list['@graph'][0];
+      const prodRes = await fetch(`${NOAA_BASE}/products/${latest.id}`);
+      if (!prodRes.ok) return null;
+      const product = await prodRes.json();
+      const temps = parseOMRTemps(product.productText);
+      omrCache = { office, issuanceTime: latest.issuanceTime, temps };
+      omrCacheTime = Date.now();
+      return omrCache;
+    } catch (e) {
+      console.warn('OMR fetch error', e);
+      return null;
+    } finally { omrInflight = null; }
+  })();
+  return omrInflight;
+}
+
+function parseOMRTemps(text) {
+  // Lines look like: "Chicago Shore...........54." or "Chicago Crib............M."
+  const out = {};
+  const re = /^([A-Za-z][A-Za-z0-9 \/]*?)\.{3,}(\d{1,3}|M)\.?\s*$/gm;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const name = m[1].trim();
+    const v = m[2];
+    if (v !== 'M' && /^\d+$/.test(v)) out[name] = parseInt(v, 10);
+  }
+  return out;
+}
+
+async function getOMRWaterTempForSpot(lat, lon, maxMiles = 50) {
+  const omr = await fetchOMR('LOT');
+  if (!omr || !omr.temps) return null;
+  const stations = OMR_STATIONS.LOT || [];
+  let best = null, bestDist = Infinity;
+  for (const s of stations) {
+    if (omr.temps[s.name] == null) continue;
+    const d = haversineMiles(lat, lon, s.lat, s.lon);
+    if (d < bestDist && d <= maxMiles) {
+      bestDist = d;
+      best = { name: s.name, temp: omr.temps[s.name], distMiles: d, source: 'NWS LOT', issuanceTime: omr.issuanceTime };
+    }
+  }
+  return best;
 }
 
 /* ============================================================================
@@ -957,9 +1050,8 @@ async function loadLiveCardForForecast(spot) {
   const live = await getLiveForSpot(spot);
   const host = document.getElementById('live-card-host');
   if (!host) return;
-  if (!live || !live.obs) { host.innerHTML = ''; return; }
-  const o = live.obs;
-  const obsTime = (o.waveHeight && o.waveHeight.time) || (o.windSpeed && o.windSpeed.time) || (o.airTemp && o.airTemp.time);
+  if (!live) { host.innerHTML = ''; return; }
+  const o = live.obs || {};
   const stat = (label, val, unit) => val ? `<div><div class="muted" style="font-size:11px;">${label}</div><div style="font-size:16px; font-weight:600;">${escapeHtml(String(val))}${unit?'<span class="muted" style="font-size:11px; margin-left:2px;">'+unit+'</span>':''}</div></div>` : '';
   const stats = [];
   if (o.waveHeight) stats.push(stat('Wave', parseFloat(o.waveHeight.value).toFixed(1), 'ft'));
@@ -968,14 +1060,29 @@ async function loadLiveCardForForecast(spot) {
     stats.push(stat('Wind', `${Math.round(parseFloat(o.windSpeed.value))} ${dir}`, 'mph'));
   }
   if (o.windGust) stats.push(stat('Gust', Math.round(parseFloat(o.windGust.value)), 'mph'));
-  if (o.waterTemp) stats.push(stat('Water', Math.round(parseFloat(o.waterTemp.value)), '°F'));
+  if (o.waterTemp) {
+    stats.push(stat('Water', Math.round(parseFloat(o.waterTemp.value)), '°F'));
+  } else if (live.waterTempOmr) {
+    stats.push(stat('Water', live.waterTempOmr.temp, '°F'));
+  }
   if (o.airTemp) stats.push(stat('Air', Math.round(parseFloat(o.airTemp.value)), '°F'));
-  const distLabel = live.station.distMiles < 1 ? '<1 mi' : `${live.station.distMiles.toFixed(0)} mi`;
-  const ago = timeAgoStr(obsTime);
+  if (stats.length === 0) { host.innerHTML = ''; return; }
+  const footers = [];
+  if (live.station) {
+    const obsTime = (o.waveHeight && o.waveHeight.time) || (o.windSpeed && o.windSpeed.time) || (o.airTemp && o.airTemp.time);
+    const distLabel = live.station.distMiles < 1 ? '<1 mi' : `${live.station.distMiles.toFixed(0)} mi`;
+    const ago = timeAgoStr(obsTime);
+    footers.push(escapeHtml((live.station.NAME || live.station.STID || 'Buoy') + ` · ${distLabel} away`) + (ago ? ' · ' + ago : ''));
+  }
+  if (live.waterTempOmr && !o.waterTemp) {
+    const distLabel = live.waterTempOmr.distMiles < 1 ? '<1 mi' : `${live.waterTempOmr.distMiles.toFixed(0)} mi`;
+    const ago = timeAgoStr(live.waterTempOmr.issuanceTime);
+    footers.push(`Water from ${escapeHtml(live.waterTempOmr.name)} · ${distLabel} · NWS OMR${ago ? ' · ' + ago : ''}`);
+  }
   host.innerHTML = `<div class="card">
     <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">Right now (live)</div>
     <div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:8px;">${stats.join('')}</div>
-    <div class="muted" style="margin-top:8px; font-size:11px;">${escapeHtml((live.station.NAME || live.station.STID || 'Buoy') + ` · ${distLabel} away`)}${ago ? ' · ' + ago : ''}</div>
+    ${footers.length ? `<div class="muted" style="margin-top:8px; font-size:11px; line-height:1.5;">${footers.join('<br>')}</div>` : ''}
   </div>`;
 }
 
@@ -1476,6 +1583,7 @@ function addPopularSpot(popularId) {
   state.spots.push(makeSpotFromPopular(p));
   saveState();
   renderPopularList();
+  renderSpots(); // refresh the underlying Spots tab so the new card appears immediately
   toast('Added ' + p.name);
 }
 
