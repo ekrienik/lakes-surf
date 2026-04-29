@@ -16,6 +16,13 @@
 <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
 <link rel="icon" type="image/png" sizes="512x512" href="./icon-512.png" />
 
+<!-- Leaflet for the Spot Map tab -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
 
 <style>
   :root {
@@ -37,11 +44,9 @@
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; height: 100%; overscroll-behavior: none; }
   body {
-    background: var(--bg);
-    color: var(--fg);
+    background: var(--bg); color: var(--fg);
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
-    font-size: 15px;
-    line-height: 1.4;
+    font-size: 15px; line-height: 1.4;
     padding-top: var(--safe-top);
     padding-bottom: calc(64px + var(--safe-bot));
   }
@@ -49,13 +54,13 @@
     position: sticky; top: 0;
     background: linear-gradient(180deg, var(--bg-2), var(--bg));
     border-bottom: 1px solid var(--border);
-    padding: 14px 16px 12px;
-    z-index: 50;
+    padding: 14px 16px 12px; z-index: 50;
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
   }
   header h1 { font-size: 18px; margin: 0; font-weight: 600; letter-spacing: 0.3px; }
   header .sub { color: var(--fg-dim); font-size: 12px; margin-top: 2px; }
-  main { padding: 12px 14px 24px; max-width: 720px; margin: 0 auto; }
+  main { padding: 12px 14px 80px; max-width: 720px; margin: 0 auto; }
+
   nav.tabbar {
     position: fixed; bottom: 0; left: 0; right: 0;
     height: calc(64px + var(--safe-bot));
@@ -65,14 +70,16 @@
   }
   nav.tabbar button {
     flex: 1; background: transparent; border: 0;
-    color: var(--fg-dim); font-size: 11px; padding: 8px 4px;
+    color: var(--fg-dim); font-size: 10px; padding: 8px 4px;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
     cursor: pointer; font-family: inherit;
   }
-  nav.tabbar button .icn { font-size: 20px; line-height: 1; }
+  nav.tabbar button .icn { font-size: 18px; line-height: 1; }
   nav.tabbar button.active { color: var(--accent); }
+
   .view { display: none; }
   .view.active { display: block; }
+
   .card {
     background: var(--bg-2); border: 1px solid var(--border);
     border-radius: 14px; padding: 14px; margin-bottom: 12px;
@@ -88,10 +95,15 @@
   button.btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
   button.btn.danger { background: transparent; color: var(--r-1); border: 1px solid var(--r-1); }
   button.btn.small { padding: 6px 10px; font-size: 12px; border-radius: 8px; }
+  button.btn.icon { padding: 8px 10px; font-size: 14px; }
+
   .loc-card { cursor: pointer; transition: transform 0.05s; }
   .loc-card:active { transform: scale(0.99); }
   .loc-card h3 { margin: 0 0 4px; font-size: 16px; }
   .loc-card .coords { font-size: 11px; color: var(--fg-dim); }
+  .live-line { font-size: 11px; color: var(--fg-dim); margin: 6px 0 0; line-height: 1.35; }
+  .live-line strong { color: var(--fg); font-weight: 600; }
+
   .chip {
     display: inline-flex; align-items: center; justify-content: center;
     min-width: 36px; height: 22px; padding: 0 6px;
@@ -103,21 +115,17 @@
   .chip.r4 { background: var(--r-4); }
   .chip.r5 { background: var(--r-5); color: #fff; }
   .chip.rNA { background: #2c4258; color: var(--fg-dim); }
-  .day-strip {
-    display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 10px;
-  }
-  .day-strip .d {
-    text-align: center; padding: 6px 2px; border-radius: 8px; font-size: 10px; background: var(--bg-3);
-  }
+
+  .day-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 10px; }
+  .day-strip .d { text-align: center; padding: 6px 2px; border-radius: 8px; font-size: 10px; background: var(--bg-3); }
   .day-strip .d .lbl { color: var(--fg-dim); }
-  .day-strip .d .pill {
-    display: block; margin: 4px auto 0; height: 6px; width: 70%; border-radius: 3px; background: #2c4258;
-  }
+  .day-strip .d .pill { display: block; margin: 4px auto 0; height: 6px; width: 70%; border-radius: 3px; background: #2c4258; }
   .day-strip .d .pill.r1 { background: var(--r-1); }
   .day-strip .d .pill.r2 { background: var(--r-2); }
   .day-strip .d .pill.r3 { background: var(--r-3); }
   .day-strip .d .pill.r4 { background: var(--r-4); }
   .day-strip .d .pill.r5 { background: var(--r-5); }
+
   .day-tabs {
     display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px;
     margin: 0 -14px 12px; padding-left: 14px; padding-right: 14px;
@@ -130,23 +138,17 @@
     font-family: inherit; cursor: pointer; min-width: 64px; text-align: center;
   }
   .day-tabs button .dow { display: block; font-weight: 600; font-size: 13px; }
-  .day-tabs button .dot {
-    display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; background: #2c4258;
-  }
+  .day-tabs button .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; background: #2c4258; }
   .day-tabs button.r1 .dot { background: var(--r-1); }
   .day-tabs button.r2 .dot { background: var(--r-2); }
   .day-tabs button.r3 .dot { background: var(--r-3); }
   .day-tabs button.r4 .dot { background: var(--r-4); }
   .day-tabs button.r5 .dot { background: var(--r-5); }
   .day-tabs button.active { border-color: var(--accent); background: var(--bg-3); }
+
   table.hourly { width: 100%; border-collapse: collapse; font-size: 12px; }
-  table.hourly th, table.hourly td {
-    padding: 8px 6px; text-align: center; border-bottom: 1px solid var(--border); white-space: nowrap;
-  }
-  table.hourly th {
-    color: var(--fg-dim); font-weight: 500; font-size: 10px;
-    text-transform: uppercase; letter-spacing: 0.5px; position: sticky; top: 0; background: var(--bg);
-  }
+  table.hourly th, table.hourly td { padding: 8px 6px; text-align: center; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.hourly th { color: var(--fg-dim); font-weight: 500; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; position: sticky; top: 0; background: var(--bg); }
   table.hourly td.time { text-align: left; padding-left: 10px; }
   table.hourly td.rating { width: 6px; padding: 0; border-left: 6px solid #2c4258; }
   table.hourly tr.r1 td.rating { border-left-color: var(--r-1); }
@@ -154,11 +156,25 @@
   table.hourly tr.r3 td.rating { border-left-color: var(--r-3); }
   table.hourly tr.r4 td.rating { border-left-color: var(--r-4); }
   table.hourly tr.r5 td.rating { border-left-color: var(--r-5); }
-  #weather-iframe {
-    height: calc(100vh - 130px - var(--safe-top) - var(--safe-bot));
-    min-height: 360px;
-    display: block;
+
+  /* NWS Map (iframe) */
+  #weather-iframe { height: calc(100vh - 130px - var(--safe-top) - var(--safe-bot)); min-height: 360px; display: block; }
+
+  /* Spot Map (custom Leaflet) */
+  #spot-map { height: calc(100vh - 220px - var(--safe-top) - var(--safe-bot)); min-height: 320px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+  .spot-map-icon { display: block; }
+  .leaflet-popup-content { color: #04243a; font-size: 13px; }
+  #spot-map-controls {
+    margin-top: 10px; background: var(--bg-2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 10px 12px;
   }
+  #spot-map-time-label { color: var(--fg); font-size: 13px; font-weight: 600; text-align: center; margin-bottom: 8px; }
+  #spot-map-time-label .sub { color: var(--fg-dim); font-weight: normal; font-size: 11px; margin-left: 6px; }
+  #spot-map-time-row { display: flex; gap: 6px; align-items: center; }
+  #spot-map-time-row button { background: var(--bg-3); color: var(--fg); border: 1px solid var(--border); padding: 6px 10px; border-radius: 8px; font-size: 14px; cursor: pointer; font-family: inherit; }
+  #spot-map-time-row button.play { background: var(--accent); color: #04243a; border-color: var(--accent); font-weight: 700; }
+  #spot-map-time-slider { flex: 1; margin: 0 4px; }
+
   label { display: block; margin: 12px 0 4px; font-size: 13px; color: var(--fg-dim); }
   input[type="text"], input[type="number"], select {
     width: 100%; background: var(--bg-3); border: 1px solid var(--border);
@@ -166,6 +182,7 @@
   }
   input[type="range"] { width: 100%; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
   .modal-bg {
     position: fixed; inset: 0; background: rgba(4,12,20,0.65);
     backdrop-filter: blur(4px); z-index: 200; display: none;
@@ -183,9 +200,8 @@
     background: var(--bg-3); color: var(--fg-dim); border: 1px solid var(--border);
     padding: 8px 0; font-size: 11px; border-radius: 6px; cursor: pointer; font-family: inherit;
   }
-  .dir-grid button.on {
-    background: var(--accent); color: #04243a; border-color: var(--accent); font-weight: 700;
-  }
+  .dir-grid button.on { background: var(--accent); color: #04243a; border-color: var(--accent); font-weight: 700; }
+
   .empty { text-align: center; padding: 40px 20px; color: var(--fg-dim); }
   .empty h2 { color: var(--fg); margin-bottom: 6px; }
   .toast {
@@ -232,6 +248,7 @@
     <div id="forecast-loading" class="empty">Loading forecast…</div>
     <div id="forecast-error" class="empty" style="display:none;"></div>
     <div id="forecast-content" style="display:none;">
+      <div id="live-card-host"></div>
       <div class="card" id="forecast-summary"></div>
       <div class="day-tabs" id="day-tabs"></div>
       <div class="card" style="padding:0; overflow:hidden;">
@@ -239,7 +256,7 @@
           <table class="hourly" id="hourly-table"></table>
         </div>
       </div>
-      <div class="card">
+      <div class="card" style="margin-bottom: 80px;">
         <div class="row between">
           <div>
             <div style="font-weight:600;">Rating thresholds</div>
@@ -251,7 +268,27 @@
     </div>
   </section>
 
-  <section id="view-map" class="view">
+  <section id="view-spotmap" class="view">
+    <div id="spot-map"></div>
+    <div id="spot-map-controls">
+      <div id="spot-map-time-label">Now <span class="sub" id="spot-map-time-sub"></span></div>
+      <div id="spot-map-time-row">
+        <button onclick="spotMapBack()" aria-label="Back 1 hour">⏮</button>
+        <button onclick="spotMapTogglePlay()" id="spot-map-play-btn" class="play" aria-label="Play">▶</button>
+        <button onclick="spotMapForward()" aria-label="Forward 1 hour">⏭</button>
+        <input type="range" id="spot-map-time-slider" min="0" max="167" value="0" step="1">
+      </div>
+      <div class="legend" style="justify-content:center; margin-top:8px;">
+        <span><i class="sw" style="background:var(--r-5)"></i>Epic</span>
+        <span><i class="sw" style="background:var(--r-4)"></i>Good</span>
+        <span><i class="sw" style="background:var(--r-3)"></i>OK</span>
+        <span><i class="sw" style="background:var(--r-2)"></i>Fair</span>
+        <span><i class="sw" style="background:var(--r-1)"></i>Poor</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="view-nwsmap" class="view">
     <p class="muted" style="margin:0 0 8px;">Live NOAA Great Lakes marine forecast (loaded from weather.gov).</p>
     <iframe id="weather-iframe" src="https://www.weather.gov/greatlakes/" style="width:100%; border:1px solid var(--border); border-radius:12px; background:#fff;"></iframe>
     <div style="margin-top:8px;"><a href="https://www.weather.gov/greatlakes/" target="_blank" style="color:var(--accent); font-size:12px;">Open weather.gov in new tab ↗</a></div>
@@ -293,7 +330,7 @@
     </div>
     <div class="card">
       <h3 style="margin-top:0;">About</h3>
-      <p class="muted">Forecast data: NOAA <a href="https://api.weather.gov" target="_blank" style="color:var(--accent)">api.weather.gov</a>. Same source as weather.gov/greatlakes. Updates roughly hourly.</p>
+      <p class="muted">Forecast data: NOAA <a href="https://api.weather.gov" target="_blank" style="color:var(--accent)">api.weather.gov</a>. Live observations: <a href="https://synopticdata.com" target="_blank" style="color:var(--accent)">Synoptic Mesowest</a>.</p>
       <p class="muted">No account, no tracking. Saved spots live on this device.</p>
     </div>
   </section>
@@ -303,8 +340,11 @@
   <button data-view="spots" class="active" onclick="switchView('spots')">
     <span class="icn">🏄</span><span>Spots</span>
   </button>
-  <button data-view="map" onclick="switchView('map')">
-    <span class="icn">🗺️</span><span>Map</span>
+  <button data-view="spotmap" onclick="switchView('spotmap')">
+    <span class="icn">📍</span><span>Spot Map</span>
+  </button>
+  <button data-view="nwsmap" onclick="switchView('nwsmap')">
+    <span class="icn">🌊</span><span>NWS Map</span>
   </button>
   <button data-view="settings" onclick="switchView('settings')">
     <span class="icn">⚙️</span><span>Settings</span>
@@ -368,6 +408,9 @@
 
 <script>
 const NOAA_BASE = 'https://api.weather.gov';
+const MESOWEST_BASE = 'https://api.mesowest.net/v2/stations';
+const MESOWEST_TOKEN = 'a13f6d0a32c842e6815c377e77a64e99'; // public token used by weather.gov/greatlakes
+const LAKE_MI_BBOX = '-88.5,41.4,-84.5,46.5';
 const STORAGE_KEY = 'lakesurf-v1';
 const DIRS_8 = ['N','NE','E','SE','S','SW','W','NW'];
 
@@ -377,7 +420,7 @@ const DEFAULT_THRESHOLDS = {
   windCleanMaxKmh: 16, windOkMaxKmh: 32, windBadMinKmh: 40,
   offshoreDirs: [],
   w_wave: 0.35, w_period: 0.35, w_wind: 0.30,
-  windGateThreshold: 0.65 // wind only contributes when wave+period base >= this
+  windGateThreshold: 0.65
 };
 
 const POPULAR_SPOTS = [
@@ -392,7 +435,6 @@ const POPULAR_SPOTS = [
   { id: 'pop_newbuffalo', name: 'New Buffalo Beach',              lat: 41.799, lon: -86.745, lake: 'Michigan', offshoreDirs: ['S','SE','E'] }
 ];
 const FIRST_RUN_SEED = ['pop_montrose'];
-
 const DEFAULT_UNITS = { wave: 'ft', wind: 'mph', temp: 'F' };
 
 function loadState() {
@@ -440,6 +482,10 @@ function fmtWave(m) {
   if (state.units.wave === 'ft') return (m * M_TO_FT).toFixed(1) + ' ft';
   return m.toFixed(1) + ' m';
 }
+function fmtWaveFt(m) { // for compact map labels
+  if (m == null || isNaN(m)) return '?';
+  return (m * M_TO_FT).toFixed(1);
+}
 function fmtWind(kmh) {
   if (kmh == null || isNaN(kmh)) return '–';
   if (state.units.wind === 'mph') return Math.round(kmh * KMH_TO_MPH) + ' mph';
@@ -464,31 +510,31 @@ function switchView(name) {
   if (view) view.classList.add('active');
 
   if (name === 'spots') renderSpots();
-  if (name === 'map') initMapIfNeeded();
+  if (name === 'spotmap') initSpotMapIfNeeded();
+  if (name === 'nwsmap') {/* iframe loads itself */}
   if (name === 'settings') renderSettings();
 
   document.getElementById('header-title').textContent =
     name === 'spots' ? 'Lakes Surf'
-    : name === 'map' ? 'Pick a point'
+    : name === 'spotmap' ? 'Spot Map'
+    : name === 'nwsmap' ? 'NWS Map'
     : name === 'settings' ? 'Settings' : 'Forecast';
 
   document.getElementById('header-sub').textContent =
     name === 'spots' ? 'Great Lakes wave forecast'
-    : name === 'map' ? 'Tap the map to drop a pin'
+    : name === 'spotmap' ? 'Lake Michigan · play through 7 days'
+    : name === 'nwsmap' ? 'Loaded from weather.gov/greatlakes'
     : name === 'settings' ? 'Defaults, units, backup' : '';
 
   const action = document.getElementById('header-action');
   action.innerHTML = '';
   if (name === 'spots') {
     const popBtn = document.createElement('button');
-    popBtn.className = 'btn small ghost';
-    popBtn.textContent = '★ Popular';
-    popBtn.style.marginRight = '6px';
+    popBtn.className = 'btn small ghost'; popBtn.textContent = '★ Popular'; popBtn.style.marginRight = '6px';
     popBtn.onclick = () => openPopularSpotsModal();
     action.appendChild(popBtn);
     const b = document.createElement('button');
-    b.className = 'btn small';
-    b.textContent = '+ Add';
+    b.className = 'btn small'; b.textContent = '+ Add';
     b.onclick = () => showAddSpotModal();
     action.appendChild(b);
   }
@@ -502,6 +548,10 @@ function toast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
 }
+
+/* ============================================================================
+   NOAA forecast fetching
+   ============================================================================ */
 
 const forecastCache = new Map();
 const CACHE_MS = 30 * 60 * 1000;
@@ -524,15 +574,15 @@ async function getForecast(lat, lon) {
   const props = grid.properties;
 
   const series = {
-    waveHeight:    parseSeries(props.waveHeight),
-    wavePeriod:    parseSeries(props.wavePeriod),
+    waveHeight: parseSeries(props.waveHeight),
+    wavePeriod: parseSeries(props.wavePeriod),
     primarySwellDirection: parseSeries(props.primarySwellDirection),
-    windSpeed:     parseSeries(props.windSpeed),
-    windGust:      parseSeries(props.windGust),
+    windSpeed: parseSeries(props.windSpeed),
+    windGust: parseSeries(props.windGust),
     windDirection: parseSeries(props.windDirection),
-    temperature:   parseSeries(props.temperature),
+    temperature: parseSeries(props.temperature),
     probabilityOfPrecipitation: parseSeries(props.probabilityOfPrecipitation),
-    skyCover:      parseSeries(props.skyCover)
+    skyCover: parseSeries(props.skyCover)
   };
 
   const start = new Date();
@@ -554,11 +604,7 @@ async function getForecast(lat, lon) {
     });
   }
 
-  const data = {
-    location: pt.properties.relativeLocation && pt.properties.relativeLocation.properties
-      ? `${pt.properties.relativeLocation.properties.city}, ${pt.properties.relativeLocation.properties.state}` : '',
-    timeZone: tz, hours, fetchedAt: Date.now()
-  };
+  const data = { timeZone: tz, hours, fetchedAt: Date.now() };
   forecastCache.set(key, { fetchedAt: Date.now(), data });
   return data;
 }
@@ -586,6 +632,117 @@ function sampleAt(series, t) {
   }
   return null;
 }
+
+/* ============================================================================
+   Mesowest live observations
+   ============================================================================ */
+
+let stationsCache = null;
+let stationsCacheTime = 0;
+const STATIONS_CACHE_MS = 5 * 60 * 1000; // 5 min — Mesowest data updates every 10-30 min
+let stationsInflight = null;
+
+async function fetchAllLakeStations() {
+  const now = Date.now();
+  if (stationsCache && (now - stationsCacheTime) < STATIONS_CACHE_MS) return stationsCache;
+  if (stationsInflight) return stationsInflight;
+  const url = `${MESOWEST_BASE}/latest?bbox=${LAKE_MI_BBOX}&within=180&vars=wave_height,wind_speed,wind_direction,wind_gust,water_temp,T_water_temp,air_temp&varoperator=or&status=active&output=json&units=temp|F,speed|mph,height|ft&token=${MESOWEST_TOKEN}`;
+  stationsInflight = fetch(url).then(r => {
+    if (!r.ok) throw new Error('Mesowest fetch failed: ' + r.status);
+    return r.json();
+  }).then(data => {
+    stationsCache = (data && data.STATION) ? data.STATION : [];
+    stationsCacheTime = Date.now();
+    stationsInflight = null;
+    return stationsCache;
+  }).catch(err => {
+    stationsInflight = null;
+    console.warn('Mesowest fetch error', err);
+    return [];
+  });
+  return stationsInflight;
+}
+
+function haversineMiles(lat1, lon1, lat2, lon2) {
+  const R = 3959;
+  const toRad = x => x * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat/2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+async function getNearestStationForSpot(lat, lon, maxMiles = 30) {
+  const stations = await fetchAllLakeStations();
+  let best = null, bestDist = Infinity;
+  for (const s of stations) {
+    const sLat = parseFloat(s.LATITUDE), sLon = parseFloat(s.LONGITUDE);
+    if (isNaN(sLat) || isNaN(sLon)) continue;
+    const d = haversineMiles(lat, lon, sLat, sLon);
+    if (d < bestDist && d <= maxMiles) { bestDist = d; best = { ...s, distMiles: d }; }
+  }
+  return best;
+}
+
+function pickObs(obs, keys) {
+  if (!obs) return null;
+  for (const k of keys) {
+    const v = obs[`${k}_value_1`] || obs[`${k}_value_1d`];
+    if (v && v.value != null && v.value !== '') return { value: v.value, time: v.date_time };
+  }
+  return null;
+}
+
+function extractObs(station) {
+  if (!station || !station.OBSERVATIONS) return null;
+  const o = station.OBSERVATIONS;
+  return {
+    waveHeight: pickObs(o, ['wave_height']),
+    windSpeed: pickObs(o, ['wind_speed']),
+    windGust: pickObs(o, ['wind_gust']),
+    windDirection: pickObs(o, ['wind_direction']),
+    waterTemp: pickObs(o, ['water_temp', 'T_water_temp']),
+    airTemp: pickObs(o, ['air_temp'])
+  };
+}
+
+function timeAgoStr(iso) {
+  if (!iso) return '';
+  const diffMin = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (diffMin < 0) return '';
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const hr = Math.round(diffMin / 60);
+  return `${hr} hr ago`;
+}
+
+function formatLiveCompact(live) {
+  if (!live || !live.obs) return null;
+  const o = live.obs;
+  const parts = [];
+  if (o.waveHeight) parts.push(`${parseFloat(o.waveHeight.value).toFixed(1)} ft`);
+  if (o.windSpeed) {
+    const dir = o.windDirection ? degToCompass(parseFloat(o.windDirection.value)) : '';
+    parts.push(`${Math.round(parseFloat(o.windSpeed.value))} mph ${dir}`.trim());
+  }
+  if (o.waterTemp) parts.push(`Water ${Math.round(parseFloat(o.waterTemp.value))}°`);
+  const obsTime = (o.waveHeight && o.waveHeight.time) || (o.windSpeed && o.windSpeed.time) || (o.airTemp && o.airTemp.time);
+  const ago = timeAgoStr(obsTime);
+  const distLabel = live.station.distMiles < 1 ? '<1 mi' : `${live.station.distMiles.toFixed(0)} mi`;
+  const name = (live.station.NAME || live.station.STID || '').slice(0, 30);
+  return `${parts.join(' · ')} · ${distLabel} ${name}${ago ? ' · ' + ago : ''}`;
+}
+
+async function getLiveForSpot(spot) {
+  try {
+    const station = await getNearestStationForSpot(spot.lat, spot.lon, 30);
+    if (!station) return null;
+    return { station, obs: extractObs(station) };
+  } catch (e) { return null; }
+}
+
+/* ============================================================================
+   Rating engine — wind-gate scoring
+   ============================================================================ */
 
 function rateHour(h, thresholds) {
   const T = thresholds;
@@ -629,16 +786,13 @@ function rateHour(h, thresholds) {
   }
 
   // Wind-gate scoring: wind only contributes when wave+period base passes the gate.
-  // Below the gate the surf isn't there and no amount of good wind helps.
-  // Above the gate, wind multiplies the base from 0.6x (blown out) to 1.0x (light/clean).
   const base = (T.w_wave * waveScore + T.w_period * periodScore) / (T.w_wave + T.w_period);
   const gate = T.windGateThreshold != null ? T.windGateThreshold : 0.65;
   let score;
   if (base < gate) {
     score = base;
   } else {
-    const windMult = 0.6 + 0.4 * windScore;
-    score = base * windMult;
+    score = base * (0.6 + 0.4 * windScore);
   }
 
   let rating;
@@ -664,20 +818,21 @@ function rateDay(hours, thresholds) {
   return { rating: bestR, score: bestScore };
 }
 
+/* ============================================================================
+   Spots view
+   ============================================================================ */
+
 async function renderSpots() {
   const list = document.getElementById('spots-list');
   const empty = document.getElementById('spots-empty');
-  if (!state.spots.length) {
-    list.innerHTML = '';
-    empty.style.display = 'block';
-    return;
-  }
+  if (!state.spots.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
   list.innerHTML = '';
 
   for (const spot of state.spots) {
     const card = document.createElement('div');
     card.className = 'card loc-card';
+    card.dataset.spotId = spot.id;
     card.onclick = () => openForecast(spot.id);
     card.innerHTML = `
       <div class="row between">
@@ -687,6 +842,7 @@ async function renderSpots() {
         </div>
         <div id="now-${spot.id}"><span class="chip rNA">…</span></div>
       </div>
+      <div class="live-line" id="live-${spot.id}" style="display:none;"></div>
       <div class="day-strip" id="strip-${spot.id}">
         ${Array.from({length:7}).map(()=>`<div class="d"><span class="lbl">–</span><span class="pill"></span></div>`).join('')}
       </div>
@@ -698,19 +854,17 @@ async function renderSpots() {
       if (now) now.innerHTML = '<span class="chip rNA">err</span>';
       console.warn('forecast error', spot.name, err);
     });
+    loadLiveForSpotCard(spot);
   }
 }
 
 async function loadSpotSummary(spot) {
   const data = await getForecast(spot.lat, spot.lon);
   const T = { ...state.defaults, ...(spot.thresholds || {}), offshoreDirs: spot.offshoreDirs || [] };
-
   const now = data.hours[0];
   const nowR = rateHour(now, T);
   const nowEl = document.getElementById('now-' + spot.id);
-  if (nowEl) {
-    nowEl.innerHTML = `<span class="chip r${nowR.rating}">${fmtWave(now.waveHeight)}</span>`;
-  }
+  if (nowEl) nowEl.innerHTML = `<span class="chip r${nowR.rating}">${fmtWave(now.waveHeight)}</span>`;
 
   const days = groupByLocalDay(data.hours);
   const strip = document.getElementById('strip-' + spot.id);
@@ -723,6 +877,19 @@ async function loadSpotSummary(spot) {
   }
 }
 
+async function loadLiveForSpotCard(spot) {
+  const live = await getLiveForSpot(spot);
+  const compact = formatLiveCompact(live);
+  const el = document.getElementById('live-' + spot.id);
+  if (!el) return;
+  if (compact) {
+    el.innerHTML = `<strong>Live</strong> · ${escapeHtml(compact)}`;
+    el.style.display = 'block';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
 function groupByLocalDay(hours) {
   const map = new Map();
   for (const h of hours) {
@@ -732,6 +899,10 @@ function groupByLocalDay(hours) {
   }
   return [...map.values()];
 }
+
+/* ============================================================================
+   Forecast detail view
+   ============================================================================ */
 
 let currentSpotId = null;
 let currentForecast = null;
@@ -750,6 +921,10 @@ async function openForecast(spotId) {
   document.getElementById('forecast-loading').style.display = 'block';
   document.getElementById('forecast-error').style.display = 'none';
   document.getElementById('forecast-content').style.display = 'none';
+  document.getElementById('live-card-host').innerHTML = '';
+
+  // Fire live fetch concurrently with forecast
+  loadLiveCardForForecast(spot);
 
   try {
     currentForecast = await getForecast(spot.lat, spot.lon);
@@ -765,6 +940,32 @@ async function openForecast(spotId) {
   }
 }
 
+async function loadLiveCardForForecast(spot) {
+  const live = await getLiveForSpot(spot);
+  const host = document.getElementById('live-card-host');
+  if (!host) return;
+  if (!live || !live.obs) { host.innerHTML = ''; return; }
+  const o = live.obs;
+  const obsTime = (o.waveHeight && o.waveHeight.time) || (o.windSpeed && o.windSpeed.time) || (o.airTemp && o.airTemp.time);
+  const stat = (label, val, unit) => val ? `<div><div class="muted" style="font-size:11px;">${label}</div><div style="font-size:16px; font-weight:600;">${escapeHtml(String(val))}${unit?'<span class="muted" style="font-size:11px; margin-left:2px;">'+unit+'</span>':''}</div></div>` : '';
+  const stats = [];
+  if (o.waveHeight) stats.push(stat('Wave', parseFloat(o.waveHeight.value).toFixed(1), 'ft'));
+  if (o.windSpeed) {
+    const dir = o.windDirection ? degToCompass(parseFloat(o.windDirection.value)) : '';
+    stats.push(stat('Wind', `${Math.round(parseFloat(o.windSpeed.value))} ${dir}`, 'mph'));
+  }
+  if (o.windGust) stats.push(stat('Gust', Math.round(parseFloat(o.windGust.value)), 'mph'));
+  if (o.waterTemp) stats.push(stat('Water', Math.round(parseFloat(o.waterTemp.value)), '°F'));
+  if (o.airTemp) stats.push(stat('Air', Math.round(parseFloat(o.airTemp.value)), '°F'));
+  const distLabel = live.station.distMiles < 1 ? '<1 mi' : `${live.station.distMiles.toFixed(0)} mi`;
+  const ago = timeAgoStr(obsTime);
+  host.innerHTML = `<div class="card">
+    <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">Right now (live)</div>
+    <div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:8px;">${stats.join('')}</div>
+    <div class="muted" style="margin-top:8px; font-size:11px;">${escapeHtml((live.station.NAME || live.station.STID || 'Buoy') + ` · ${distLabel} away`)}${ago ? ' · ' + ago : ''}</div>
+  </div>`;
+}
+
 function renderForecast() {
   const spot = state.spots.find(s => s.id === currentSpotId);
   if (!spot || !currentForecast) return;
@@ -774,22 +975,19 @@ function renderForecast() {
   document.getElementById('forecast-content').style.display = 'block';
 
   const days = groupByLocalDay(currentForecast.hours).slice(0, 7);
-
   const now = currentForecast.hours[0];
   const nowR = rateHour(now, T);
   const summary = document.getElementById('forecast-summary');
   summary.innerHTML = `
     <div class="row between">
       <div>
-        <div class="muted">Right now</div>
+        <div class="muted">Forecast: right now</div>
         <div style="font-size:24px; font-weight:700;">${fmtWave(now.waveHeight)}</div>
         <div class="muted">${now.wavePeriod ? now.wavePeriod.toFixed(1) + 's' : '–'} • wind ${fmtWind(now.windSpeed)} ${degToCompass(now.windDir)}</div>
       </div>
       <span class="chip r${nowR.rating}" style="font-size:14px; padding:6px 12px; height:auto;">${ratingLabel(nowR.rating)}</span>
     </div>
-    <div class="muted" style="margin-top:8px;">
-      ${nowR.reasons.slice(0,3).join(' • ')}
-    </div>
+    <div class="muted" style="margin-top:8px;">${nowR.reasons.slice(0,3).join(' • ')}</div>
   `;
 
   const tabs = document.getElementById('day-tabs');
@@ -834,54 +1032,163 @@ function renderForecast() {
     : '<span class="muted">Using defaults</span>';
 }
 
-let thresholdsModalContext = null;
-
-function openThresholdsModal(opts) {
-  // Default: edit thresholds for the currently-open spot
-  const spot = state.spots.find(s => s.id === currentSpotId);
-  const ctx = opts || (spot ? {
-    title: spot.name,
-    sub: spot.thresholds ? 'Custom thresholds for this spot' : 'Currently using defaults · edit to override',
-    showReset: !!spot.thresholds,
-    get: () => ({ ...state.defaults, ...(spot.thresholds || {}) }),
-    save: (t) => { spot.thresholds = t; saveState(); renderForecast(); toast('Thresholds saved for ' + spot.name); },
-    reset: () => { spot.thresholds = null; saveState(); renderForecast(); toast('Reset to defaults'); }
-  } : null);
-  if (!ctx) return;
-
-  thresholdsModalContext = ctx;
-  document.getElementById('thresholds-modal-title').textContent = ctx.title;
-  document.getElementById('thresholds-modal-sub').textContent = ctx.sub || '';
-  const resetBtn = document.getElementById('th-modal-reset');
-  resetBtn.style.display = ctx.showReset ? 'inline-block' : 'none';
-  resetBtn.onclick = () => {
-    if (!confirm('Reset thresholds to defaults?')) return;
-    ctx.reset && ctx.reset();
-    closeThresholdsModal();
-  };
-
-  const body = document.getElementById('thresholds-modal-body');
-  body.innerHTML = '';
-  renderThresholdsEditor(body, {
-    instanceId: 'modal',
-    externalSaveButtonId: 'th-modal-save',
-    get: ctx.get,
-    set: (t) => {
-      ctx.save(t);
-      closeThresholdsModal();
-    }
-  });
-
-  document.getElementById('modal-thresholds').classList.add('open');
-}
-
-function closeThresholdsModal() {
-  document.getElementById('modal-thresholds').classList.remove('open');
-  thresholdsModalContext = null;
-}
-
 function selectDay(i) { currentDayIndex = i; renderForecast(); }
 function ratingLabel(r) { return ['–','Poor','Fair','OK','Good','Epic'][r] || '–'; }
+
+/* ============================================================================
+   Spot Map (custom Leaflet, Lake Michigan)
+   ============================================================================ */
+
+let spotMap = null;
+let spotMapMarkers = {};
+let spotMapForecasts = {}; // key (lat,lon) -> forecast
+let spotMapTimeIndex = 0;
+let spotMapPlayInterval = null;
+const SPOT_MAP_MAX_HOURS = 24 * 7 - 1;
+
+async function initSpotMapIfNeeded() {
+  if (!spotMap) {
+    spotMap = L.map('spot-map', { zoomControl: true });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18, attribution: '© OpenStreetMap'
+    }).addTo(spotMap);
+    spotMap.fitBounds([[41.5, -88.0], [46.1, -84.7]]); // Lake Michigan
+    // Long-press / right-click to add a spot
+    spotMap.on('contextmenu', e => {
+      showAddSpotModal({ lat: e.latlng.lat.toFixed(4), lon: e.latlng.lng.toFixed(4), name: '' });
+    });
+    // Slider
+    const slider = document.getElementById('spot-map-time-slider');
+    slider.max = String(SPOT_MAP_MAX_HOURS);
+    slider.addEventListener('input', e => {
+      spotMapPause();
+      spotMapTimeIndex = parseInt(e.target.value, 10);
+      updateSpotMapMarkers();
+      updateSpotMapTimeLabel();
+    });
+  }
+  setTimeout(() => spotMap.invalidateSize(), 100);
+  await loadAllSpotMapForecasts();
+  updateSpotMapMarkers();
+  updateSpotMapTimeLabel();
+}
+
+function spotMapEntries() {
+  // Combine saved spots + popular spots (deduped by builtinId)
+  const entries = state.spots.map(s => ({ name: s.name, lat: s.lat, lon: s.lon, savedSpotId: s.id, offshoreDirs: s.offshoreDirs || [], thresholds: s.thresholds }));
+  for (const p of POPULAR_SPOTS) {
+    if (!state.spots.some(s => s.builtinId === p.id)) {
+      entries.push({ name: p.name, lat: p.lat, lon: p.lon, savedSpotId: null, popularId: p.id, offshoreDirs: p.offshoreDirs, thresholds: null });
+    }
+  }
+  return entries;
+}
+
+async function loadAllSpotMapForecasts() {
+  const entries = spotMapEntries();
+  await Promise.all(entries.map(async e => {
+    const key = `${e.lat.toFixed(3)},${e.lon.toFixed(3)}`;
+    if (spotMapForecasts[key]) return;
+    try { spotMapForecasts[key] = await getForecast(e.lat, e.lon); }
+    catch (err) { console.warn('Spot map forecast fail', e.name, err); spotMapForecasts[key] = null; }
+  }));
+}
+
+function ratingColor(r) {
+  return ['#2c4258','#d63b3b','#e07a26','#d9c233','#6cc24a','#1e8b3a'][r] || '#2c4258';
+}
+
+function makeSpotMarkerIcon(color, waveLabel, windDirDeg, windSpdMph) {
+  const arrowRot = (windDirDeg != null && !isNaN(windDirDeg)) ? ((windDirDeg + 180) % 360) : null;
+  const arrowSvg = arrowRot != null
+    ? `<g transform="translate(28 28) rotate(${arrowRot})"><path d="M 0 -22 L -3 -16 L 0 -19 L 3 -16 Z" fill="#ffffff" stroke="#0a1722" stroke-width="0.6"/></g>`
+    : '';
+  const html = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 56 56" width="48" height="48" class="spot-map-icon">
+      <circle cx="28" cy="28" r="14" fill="${color}" stroke="#ffffff" stroke-width="2"/>
+      <text x="28" y="32" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="700" font-family="-apple-system,system-ui,sans-serif">${waveLabel}</text>
+      ${arrowSvg}
+    </svg>`;
+  return L.divIcon({ html, className: '', iconSize: [48,48], iconAnchor: [24,24] });
+}
+
+function updateSpotMapMarkers() {
+  if (!spotMap) return;
+  for (const m of Object.values(spotMapMarkers)) spotMap.removeLayer(m);
+  spotMapMarkers = {};
+
+  const entries = spotMapEntries();
+  for (const e of entries) {
+    const key = `${e.lat.toFixed(3)},${e.lon.toFixed(3)}`;
+    const fc = spotMapForecasts[key];
+    let color = '#2c4258', waveLbl = '?', windDir = null, windSpd = null;
+    if (fc && fc.hours[spotMapTimeIndex]) {
+      const h = fc.hours[spotMapTimeIndex];
+      const T = { ...state.defaults, ...(e.thresholds || {}), offshoreDirs: e.offshoreDirs };
+      const r = rateHour(h, T);
+      color = ratingColor(r.rating);
+      waveLbl = fmtWaveFt(h.waveHeight);
+      windDir = h.windDir;
+      windSpd = h.windSpeed;
+    }
+    const icon = makeSpotMarkerIcon(color, waveLbl, windDir, windSpd);
+    const popupHtml = `<b>${escapeHtml(e.name)}</b><br>${e.lat.toFixed(3)}, ${e.lon.toFixed(3)}<br>${
+      e.savedSpotId
+        ? `<a href="#" onclick="event.preventDefault(); openForecast('${e.savedSpotId}')">Open forecast</a>`
+        : `<a href="#" onclick="event.preventDefault(); addPopularSpot('${e.popularId}'); switchView('spots');">Add this spot</a>`
+    }`;
+    const marker = L.marker([e.lat, e.lon], { icon }).addTo(spotMap).bindPopup(popupHtml);
+    spotMapMarkers[key] = marker;
+  }
+}
+
+function spotMapTogglePlay() {
+  if (spotMapPlayInterval) { spotMapPause(); return; }
+  document.getElementById('spot-map-play-btn').textContent = '⏸';
+  spotMapPlayInterval = setInterval(() => {
+    spotMapTimeIndex = (spotMapTimeIndex + 1) % (SPOT_MAP_MAX_HOURS + 1);
+    document.getElementById('spot-map-time-slider').value = String(spotMapTimeIndex);
+    updateSpotMapMarkers();
+    updateSpotMapTimeLabel();
+  }, 500);
+}
+function spotMapPause() {
+  if (spotMapPlayInterval) { clearInterval(spotMapPlayInterval); spotMapPlayInterval = null; }
+  document.getElementById('spot-map-play-btn').textContent = '▶';
+}
+function spotMapBack() {
+  spotMapPause();
+  spotMapTimeIndex = Math.max(0, spotMapTimeIndex - 1);
+  document.getElementById('spot-map-time-slider').value = String(spotMapTimeIndex);
+  updateSpotMapMarkers();
+  updateSpotMapTimeLabel();
+}
+function spotMapForward() {
+  spotMapPause();
+  spotMapTimeIndex = Math.min(SPOT_MAP_MAX_HOURS, spotMapTimeIndex + 1);
+  document.getElementById('spot-map-time-slider').value = String(spotMapTimeIndex);
+  updateSpotMapMarkers();
+  updateSpotMapTimeLabel();
+}
+function updateSpotMapTimeLabel() {
+  const t = new Date();
+  t.setMinutes(0, 0, 0);
+  t.setHours(t.getHours() + spotMapTimeIndex);
+  const labelEl = document.getElementById('spot-map-time-label');
+  const subEl = document.getElementById('spot-map-time-sub');
+  if (spotMapTimeIndex === 0) {
+    labelEl.firstChild && (labelEl.firstChild.textContent = 'Now');
+    if (subEl) subEl.textContent = '';
+  } else {
+    const main = t.toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+    if (labelEl.firstChild) labelEl.firstChild.textContent = main;
+    if (subEl) subEl.textContent = `+${spotMapTimeIndex}h`;
+  }
+}
+
+/* ============================================================================
+   Spot edit modal
+   ============================================================================ */
 
 let editingSpotId = null;
 let pendingCoords = null;
@@ -890,13 +1197,12 @@ function showAddSpotModal(prefill) {
   editingSpotId = null;
   document.getElementById('modal-title').textContent = 'Add spot';
   document.getElementById('modal-delete').style.display = 'none';
-  document.getElementById('spot-name').value = prefill?.name || '';
-  document.getElementById('spot-lat').value = prefill?.lat ?? '';
-  document.getElementById('spot-lon').value = prefill?.lon ?? '';
+  document.getElementById('spot-name').value = (prefill && prefill.name) || '';
+  document.getElementById('spot-lat').value = (prefill && prefill.lat != null) ? prefill.lat : '';
+  document.getElementById('spot-lon').value = (prefill && prefill.lon != null) ? prefill.lon : '';
   renderDirGrid([]);
   document.getElementById('modal-spot').classList.add('open');
 }
-
 function editCurrentSpot() {
   const spot = state.spots.find(s => s.id === currentSpotId);
   if (!spot) return;
@@ -909,7 +1215,6 @@ function editCurrentSpot() {
   renderDirGrid(spot.offshoreDirs || []);
   document.getElementById('modal-spot').classList.add('open');
 }
-
 function renderDirGrid(selected) {
   const g = document.getElementById('spot-dirs');
   g.innerHTML = DIRS_8.map(d => `<button type="button" class="${selected.includes(d) ? 'on':''}" data-dir="${d}" onclick="toggleDir(this)">${d}</button>`).join('');
@@ -918,36 +1223,25 @@ function toggleDir(btn) { btn.classList.toggle('on'); }
 function getSelectedDirs() {
   return [...document.querySelectorAll('#spot-dirs button.on')].map(b => b.dataset.dir);
 }
-
-function closeSpotModal() {
-  document.getElementById('modal-spot').classList.remove('open');
-  pendingCoords = null;
-}
-
+function closeSpotModal() { document.getElementById('modal-spot').classList.remove('open'); pendingCoords = null; }
 function saveSpotModal() {
   const name = document.getElementById('spot-name').value.trim();
   const lat = parseFloat(document.getElementById('spot-lat').value);
   const lon = parseFloat(document.getElementById('spot-lon').value);
   const dirs = getSelectedDirs();
-
   if (!name) { toast('Name is required'); return; }
   if (isNaN(lat) || isNaN(lon)) { toast('Valid coordinates required'); return; }
-
   if (editingSpotId) {
     const spot = state.spots.find(s => s.id === editingSpotId);
     if (spot) { spot.name = name; spot.lat = lat; spot.lon = lon; spot.offshoreDirs = dirs; }
   } else {
-    state.spots.push({
-      id: 'sp_' + Math.random().toString(36).slice(2,10),
-      name, lat, lon, offshoreDirs: dirs, thresholds: null
-    });
+    state.spots.push({ id: 'sp_' + Math.random().toString(36).slice(2,10), name, lat, lon, offshoreDirs: dirs, thresholds: null });
   }
   saveState();
   closeSpotModal();
   switchView('spots');
   toast('Saved');
 }
-
 function deleteCurrentSpot() {
   if (!editingSpotId) return;
   if (!confirm('Delete this spot?')) return;
@@ -958,15 +1252,15 @@ function deleteCurrentSpot() {
   toast('Deleted');
 }
 
-// Map view is now an iframe of weather.gov/greatlakes — no JS needed.
-function initMapIfNeeded() { /* no-op: iframe loads itself */ }
+/* ============================================================================
+   Settings + thresholds modal
+   ============================================================================ */
 
 function renderSettings() {
   document.getElementById('units-wave').value = state.units.wave;
   document.getElementById('units-wind').value = state.units.wind;
   document.getElementById('units-temp').value = state.units.temp;
 }
-
 function openDefaultsThresholdsModal() {
   openThresholdsModal({
     title: 'Default thresholds',
@@ -976,16 +1270,48 @@ function openDefaultsThresholdsModal() {
     save: (t) => { state.defaults = t; saveState(); toast('Defaults saved'); }
   });
 }
-
 function saveUnits() {
   state.units = {
     wave: document.getElementById('units-wave').value,
     wind: document.getElementById('units-wind').value,
     temp: document.getElementById('units-temp').value
   };
-  saveState();
-  toast('Units saved');
+  saveState(); toast('Units saved');
 }
+
+let thresholdsModalContext = null;
+function openThresholdsModal(opts) {
+  const spot = state.spots.find(s => s.id === currentSpotId);
+  const ctx = opts || (spot ? {
+    title: spot.name,
+    sub: spot.thresholds ? 'Custom thresholds for this spot' : 'Currently using defaults · edit to override',
+    showReset: !!spot.thresholds,
+    get: () => ({ ...state.defaults, ...(spot.thresholds || {}) }),
+    save: (t) => { spot.thresholds = t; saveState(); renderForecast(); toast('Thresholds saved for ' + spot.name); },
+    reset: () => { spot.thresholds = null; saveState(); renderForecast(); toast('Reset to defaults'); }
+  } : null);
+  if (!ctx) return;
+  thresholdsModalContext = ctx;
+  document.getElementById('thresholds-modal-title').textContent = ctx.title;
+  document.getElementById('thresholds-modal-sub').textContent = ctx.sub || '';
+  const resetBtn = document.getElementById('th-modal-reset');
+  resetBtn.style.display = ctx.showReset ? 'inline-block' : 'none';
+  resetBtn.onclick = () => {
+    if (!confirm('Reset thresholds to defaults?')) return;
+    ctx.reset && ctx.reset();
+    closeThresholdsModal();
+  };
+  const body = document.getElementById('thresholds-modal-body');
+  body.innerHTML = '';
+  renderThresholdsEditor(body, {
+    instanceId: 'modal',
+    externalSaveButtonId: 'th-modal-save',
+    get: ctx.get,
+    set: (t) => { ctx.save(t); closeThresholdsModal(); }
+  });
+  document.getElementById('modal-thresholds').classList.add('open');
+}
+function closeThresholdsModal() { document.getElementById('modal-thresholds').classList.remove('open'); thresholdsModalContext = null; }
 
 function renderThresholdsEditor(container, { get, set, instanceId, externalSaveButtonId }) {
   const T = get();
@@ -994,33 +1320,17 @@ function renderThresholdsEditor(container, { get, set, instanceId, externalSaveB
   const id = (suffix) => `th-${instanceId}-${suffix}`;
   const fmt = (m) => waveUnit === 'ft' ? (m * M_TO_FT).toFixed(1) : m.toFixed(2);
   const fmtW = (k) => windUnit === 'mph' ? Math.round(k * KMH_TO_MPH) : windUnit === 'kt' ? Math.round(k * KMH_TO_KT) : Math.round(k);
-
-  const inlineSaveButton = externalSaveButtonId
-    ? ''
-    : `<button class="btn small" style="margin-top:14px;" id="${id('save')}">Save thresholds</button>`;
-
+  const inlineSaveButton = externalSaveButtonId ? '' : `<button class="btn small" style="margin-top:14px;" id="${id('save')}">Save thresholds</button>`;
   container.innerHTML = `
     <div class="grid2">
-      <div>
-        <label>Min ideal wave (${waveUnit})</label>
-        <input type="number" step="0.1" id="${id('waveMin')}" value="${fmt(T.waveIdealMinM)}" />
-      </div>
-      <div>
-        <label>Max ideal wave (${waveUnit})</label>
-        <input type="number" step="0.1" id="${id('waveMax')}" value="${fmt(T.waveIdealMaxM)}" />
-      </div>
+      <div><label>Min ideal wave (${waveUnit})</label><input type="number" step="0.1" id="${id('waveMin')}" value="${fmt(T.waveIdealMinM)}" /></div>
+      <div><label>Max ideal wave (${waveUnit})</label><input type="number" step="0.1" id="${id('waveMax')}" value="${fmt(T.waveIdealMaxM)}" /></div>
     </div>
     <label>Too-big threshold (${waveUnit})</label>
     <input type="number" step="0.1" id="${id('waveTooBig')}" value="${fmt(T.waveMaxM)}" />
     <div class="grid2">
-      <div>
-        <label>Min decent period (s)</label>
-        <input type="number" step="0.5" id="${id('perMin')}" value="${T.periodMinS}" />
-      </div>
-      <div>
-        <label>Long period (s)</label>
-        <input type="number" step="0.5" id="${id('perGood')}" value="${T.periodGoodS}" />
-      </div>
+      <div><label>Min decent period (s)</label><input type="number" step="0.5" id="${id('perMin')}" value="${T.periodMinS}" /></div>
+      <div><label>Long period (s)</label><input type="number" step="0.5" id="${id('perGood')}" value="${T.periodGoodS}" /></div>
     </div>
     <label>Light wind ceiling (${windUnit})</label>
     <input type="number" step="1" id="${id('windClean')}" value="${fmtW(T.windCleanMaxKmh)}" />
@@ -1028,13 +1338,10 @@ function renderThresholdsEditor(container, { get, set, instanceId, externalSaveB
     <input type="number" step="1" id="${id('windOk')}" value="${fmtW(T.windOkMaxKmh)}" />
     <label>Blown-out floor (${windUnit})</label>
     <input type="number" step="1" id="${id('windBad')}" value="${fmtW(T.windBadMinKmh)}" />
-    ${inlineSaveButton}
-  `;
-
+    ${inlineSaveButton}`;
   const waveScale = waveUnit === 'ft' ? (1 / M_TO_FT) : 1;
   const windScale = windUnit === 'mph' ? (1 / KMH_TO_MPH) : windUnit === 'kt' ? (1 / KMH_TO_KT) : 1;
   const num = (suffix) => parseFloat(document.getElementById(id(suffix)).value);
-
   const doSave = () => {
     const t = { ...T };
     t.waveIdealMinM = num('waveMin') * waveScale;
@@ -1043,11 +1350,10 @@ function renderThresholdsEditor(container, { get, set, instanceId, externalSaveB
     t.periodMinS    = num('perMin');
     t.periodGoodS   = num('perGood');
     t.windCleanMaxKmh = num('windClean') * windScale;
-    t.windOkMaxKmh    = num('windOk')    * windScale;
-    t.windBadMinKmh   = num('windBad')   * windScale;
+    t.windOkMaxKmh    = num('windOk') * windScale;
+    t.windBadMinKmh   = num('windBad') * windScale;
     set(t);
   };
-
   if (externalSaveButtonId) {
     const btn = document.getElementById(externalSaveButtonId);
     if (btn) btn.onclick = doSave;
@@ -1059,11 +1365,8 @@ function renderThresholdsEditor(container, { get, set, instanceId, externalSaveB
 function resetDefaults() {
   if (!confirm('Reset rating defaults?')) return;
   state.defaults = { ...DEFAULT_THRESHOLDS };
-  saveState();
-  renderSettings();
-  toast('Defaults reset');
+  saveState(); renderSettings(); toast('Defaults reset');
 }
-
 function exportData() {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -1071,7 +1374,6 @@ function exportData() {
   a.download = 'lakes-surf-spots.json';
   a.click();
 }
-
 function importData() {
   const inp = document.createElement('input');
   inp.type = 'file'; inp.accept = '.json,application/json';
@@ -1083,31 +1385,25 @@ function importData() {
         const obj = JSON.parse(reader.result);
         if (!obj.spots) throw new Error('Invalid file');
         state = { ...state, ...obj };
-        saveState();
-        toast('Imported');
-        renderSettings();
+        saveState(); toast('Imported'); renderSettings();
       } catch (e) { toast('Import failed'); }
     };
     reader.readAsText(f);
   };
   inp.click();
 }
-
 function clearAll() {
   if (!confirm('Clear all saved spots and settings?')) return;
   state = { spots: [], defaults: { ...DEFAULT_THRESHOLDS }, units: { ...DEFAULT_UNITS }, seeded: true };
-  saveState();
-  renderSettings();
-  toast('Cleared');
+  saveState(); renderSettings(); toast('Cleared');
 }
 
-function openPopularSpotsModal() {
-  renderPopularList();
-  document.getElementById('modal-popular').classList.add('open');
-}
-function closePopularSpotsModal() {
-  document.getElementById('modal-popular').classList.remove('open');
-}
+/* ============================================================================
+   Popular spots library
+   ============================================================================ */
+
+function openPopularSpotsModal() { renderPopularList(); document.getElementById('modal-popular').classList.add('open'); }
+function closePopularSpotsModal() { document.getElementById('modal-popular').classList.remove('open'); }
 function renderPopularList() {
   const list = document.getElementById('popular-list');
   list.innerHTML = POPULAR_SPOTS.map(p => {
@@ -1120,12 +1416,9 @@ function renderPopularList() {
             <div class="coords">Lake ${escapeHtml(p.lake)} · ${p.lat.toFixed(3)}, ${p.lon.toFixed(3)}</div>
             <div class="muted" style="font-size:11px; margin-top:2px;">Offshore: ${p.offshoreDirs.join(' · ')}</div>
           </div>
-          ${added
-            ? '<span class="chip r5" style="margin-left:8px;">✓ Added</span>'
-            : `<button class="btn small" data-pop-id="${p.id}" style="margin-left:8px;">Add</button>`}
+          ${added ? '<span class="chip r5" style="margin-left:8px;">✓ Added</span>' : `<button class="btn small" data-pop-id="${p.id}" style="margin-left:8px;">Add</button>`}
         </div>
-      </div>
-    `;
+      </div>`;
   }).join('');
   list.querySelectorAll('button[data-pop-id]').forEach(btn => {
     btn.addEventListener('click', () => addPopularSpot(btn.dataset.popId));
@@ -1141,8 +1434,12 @@ function addPopularSpot(popularId) {
   toast('Added ' + p.name);
 }
 
+/* ============================================================================
+   Util + boot
+   ============================================================================ */
+
 function escapeHtml(s) {
-  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 if ('serviceWorker' in navigator) {
