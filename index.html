@@ -16,13 +16,6 @@
 <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
 <link rel="icon" type="image/png" sizes="512x512" href="./icon-512.png" />
 
-<!-- Leaflet for maps -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-      crossorigin="" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-        crossorigin=""></script>
 
 <style>
   :root {
@@ -161,16 +154,11 @@
   table.hourly tr.r3 td.rating { border-left-color: var(--r-3); }
   table.hourly tr.r4 td.rating { border-left-color: var(--r-4); }
   table.hourly tr.r5 td.rating { border-left-color: var(--r-5); }
-  #map {
-    height: calc(100vh - 64px - 56px - var(--safe-top) - var(--safe-bot));
-    min-height: 360px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border);
+  #weather-iframe {
+    height: calc(100vh - 130px - var(--safe-top) - var(--safe-bot));
+    min-height: 360px;
+    display: block;
   }
-  .map-actions {
-    position: fixed; left: 14px; right: 14px;
-    bottom: calc(80px + var(--safe-bot)); z-index: 40;
-    display: flex; gap: 8px;
-  }
-  .map-actions .btn { flex: 1; box-shadow: 0 4px 14px rgba(0,0,0,0.4); }
   label { display: block; margin: 12px 0 4px; font-size: 13px; color: var(--fg-dim); }
   input[type="text"], input[type="number"], select {
     width: 100%; background: var(--bg-3); border: 1px solid var(--border);
@@ -252,30 +240,30 @@
         </div>
       </div>
       <div class="card">
-        <div class="row between" style="margin-bottom:8px;">
-          <h3 style="margin:0; font-size:15px;">Rating thresholds</h3>
-          <span id="threshold-status"></span>
+        <div class="row between">
+          <div>
+            <div style="font-weight:600;">Rating thresholds</div>
+            <div id="threshold-status" style="font-size:12px; margin-top:2px;"></div>
+          </div>
+          <button class="btn small ghost" onclick="openThresholdsModal()">Edit</button>
         </div>
-        <div id="thresholds-editor"></div>
       </div>
     </div>
   </section>
 
   <section id="view-map" class="view">
-    <div id="map"></div>
-    <div class="map-actions">
-      <button class="btn ghost" onclick="centerMapOnGreatLakes()">Center on Lakes</button>
-      <button class="btn" id="map-add-btn" disabled onclick="addPickedSpot()">Add this point</button>
-    </div>
+    <p class="muted" style="margin:0 0 8px;">Live NOAA Great Lakes marine forecast (loaded from weather.gov).</p>
+    <iframe id="weather-iframe" src="https://www.weather.gov/greatlakes/" style="width:100%; border:1px solid var(--border); border-radius:12px; background:#fff;"></iframe>
+    <div style="margin-top:8px;"><a href="https://www.weather.gov/greatlakes/" target="_blank" style="color:var(--accent); font-size:12px;">Open weather.gov in new tab ↗</a></div>
   </section>
 
   <section id="view-settings" class="view">
     <div class="card">
       <h3 style="margin-top:0;">Default rating thresholds</h3>
-      <p class="muted">Used for new spots. Existing spots keep their own settings; edit individually from the forecast view.</p>
-      <div id="default-thresholds-editor"></div>
-      <div class="row" style="margin-top:14px; gap:8px;">
-        <button class="btn small" onclick="resetDefaults()">Reset defaults</button>
+      <p class="muted">Used for new spots and any spot that hasn't customized its thresholds.</p>
+      <div class="row" style="gap:8px;">
+        <button class="btn small" onclick="openDefaultsThresholdsModal()">Edit defaults</button>
+        <button class="btn small ghost" onclick="resetDefaults()">Reset to factory</button>
       </div>
     </div>
     <div class="card">
@@ -351,6 +339,20 @@
   </div>
 </div>
 
+<div class="modal-bg" id="modal-thresholds">
+  <div class="modal" style="display:flex; flex-direction:column; padding-bottom:0;">
+    <h2 id="thresholds-modal-title">Rating thresholds</h2>
+    <p class="muted" id="thresholds-modal-sub" style="margin:0 0 6px;"></p>
+    <div id="thresholds-modal-body" style="flex:1; overflow-y:auto; padding-bottom:80px;"></div>
+    <div style="position:sticky; bottom:0; left:0; right:0; background:var(--bg-2); padding: 12px 0 calc(12px + var(--safe-bot)); border-top:1px solid var(--border); display:flex; gap:8px; align-items:center;">
+      <button class="btn ghost" onclick="closeThresholdsModal()">Cancel</button>
+      <button class="btn small ghost" id="th-modal-reset" style="display:none;">Reset to defaults</button>
+      <div style="flex:1;"></div>
+      <button class="btn" id="th-modal-save">Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="modal-popular">
   <div class="modal">
     <h2>Popular Lake Michigan spots</h2>
@@ -370,11 +372,12 @@ const STORAGE_KEY = 'lakesurf-v1';
 const DIRS_8 = ['N','NE','E','SE','S','SW','W','NW'];
 
 const DEFAULT_THRESHOLDS = {
-  waveIdealMinM: 0.9, waveIdealMaxM: 1.8, waveMaxM: 2.7,
-  periodMinS: 4, periodGoodS: 6,
+  waveIdealMinM: 0.9144, waveIdealMaxM: 2.4384, waveMaxM: 3.6576, // 3ft / 8ft / 12ft
+  periodMinS: 6, periodGoodS: 11,
   windCleanMaxKmh: 16, windOkMaxKmh: 32, windBadMinKmh: 40,
   offshoreDirs: [],
-  w_wave: 0.35, w_period: 0.35, w_wind: 0.30
+  w_wave: 0.35, w_period: 0.35, w_wind: 0.30,
+  windGateThreshold: 0.65 // wind only contributes when wave+period base >= this
 };
 
 const POPULAR_SPOTS = [
@@ -625,8 +628,18 @@ function rateHour(h, thresholds) {
     }
   }
 
-  const score = (T.w_wave * waveScore + T.w_period * periodScore + T.w_wind * windScore)
-              / (T.w_wave + T.w_period + T.w_wind);
+  // Wind-gate scoring: wind only contributes when wave+period base passes the gate.
+  // Below the gate the surf isn't there and no amount of good wind helps.
+  // Above the gate, wind multiplies the base from 0.6x (blown out) to 1.0x (light/clean).
+  const base = (T.w_wave * waveScore + T.w_period * periodScore) / (T.w_wave + T.w_period);
+  const gate = T.windGateThreshold != null ? T.windGateThreshold : 0.65;
+  let score;
+  if (base < gate) {
+    score = base;
+  } else {
+    const windMult = 0.6 + 0.4 * windScore;
+    score = base * windMult;
+  }
 
   let rating;
   if (score < 0.20) rating = 1;
@@ -816,30 +829,55 @@ function renderForecast() {
   `;
 
   const statusEl = document.getElementById('threshold-status');
-  if (spot.thresholds) {
-    statusEl.innerHTML = `<span class="muted">Custom for this spot</span> <a href="#" id="th-reset" style="color:var(--accent); margin-left:6px; font-size:12px;">Reset to defaults</a>`;
-    document.getElementById('th-reset').addEventListener('click', (e) => {
-      e.preventDefault();
-      if (!confirm('Reset thresholds for this spot to the defaults?')) return;
-      spot.thresholds = null;
-      saveState();
-      renderForecast();
-      toast('Reset to defaults');
-    });
-  } else {
-    statusEl.innerHTML = '<span class="muted">Using defaults</span>';
-  }
+  statusEl.innerHTML = spot.thresholds
+    ? '<span style="color:var(--accent);">Custom for this spot</span>'
+    : '<span class="muted">Using defaults</span>';
+}
 
-  renderThresholdsEditor(document.getElementById('thresholds-editor'), {
-    instanceId: 'spot',
+let thresholdsModalContext = null;
+
+function openThresholdsModal(opts) {
+  // Default: edit thresholds for the currently-open spot
+  const spot = state.spots.find(s => s.id === currentSpotId);
+  const ctx = opts || (spot ? {
+    title: spot.name,
+    sub: spot.thresholds ? 'Custom thresholds for this spot' : 'Currently using defaults · edit to override',
+    showReset: !!spot.thresholds,
     get: () => ({ ...state.defaults, ...(spot.thresholds || {}) }),
+    save: (t) => { spot.thresholds = t; saveState(); renderForecast(); toast('Thresholds saved for ' + spot.name); },
+    reset: () => { spot.thresholds = null; saveState(); renderForecast(); toast('Reset to defaults'); }
+  } : null);
+  if (!ctx) return;
+
+  thresholdsModalContext = ctx;
+  document.getElementById('thresholds-modal-title').textContent = ctx.title;
+  document.getElementById('thresholds-modal-sub').textContent = ctx.sub || '';
+  const resetBtn = document.getElementById('th-modal-reset');
+  resetBtn.style.display = ctx.showReset ? 'inline-block' : 'none';
+  resetBtn.onclick = () => {
+    if (!confirm('Reset thresholds to defaults?')) return;
+    ctx.reset && ctx.reset();
+    closeThresholdsModal();
+  };
+
+  const body = document.getElementById('thresholds-modal-body');
+  body.innerHTML = '';
+  renderThresholdsEditor(body, {
+    instanceId: 'modal',
+    externalSaveButtonId: 'th-modal-save',
+    get: ctx.get,
     set: (t) => {
-      spot.thresholds = t;
-      saveState();
-      renderForecast();
-      toast('Thresholds saved for ' + spot.name);
+      ctx.save(t);
+      closeThresholdsModal();
     }
   });
+
+  document.getElementById('modal-thresholds').classList.add('open');
+}
+
+function closeThresholdsModal() {
+  document.getElementById('modal-thresholds').classList.remove('open');
+  thresholdsModalContext = null;
 }
 
 function selectDay(i) { currentDayIndex = i; renderForecast(); }
@@ -920,51 +958,22 @@ function deleteCurrentSpot() {
   toast('Deleted');
 }
 
-let map = null;
-let pickedMarker = null;
-let spotMarkers = [];
-
-function initMapIfNeeded() {
-  if (map) { setTimeout(() => map.invalidateSize(), 50); return; }
-  map = L.map('map', { zoomControl: true, attributionControl: true });
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '© OpenStreetMap'
-  }).addTo(map);
-  centerMapOnGreatLakes();
-  map.on('click', e => setPickedPoint(e.latlng.lat, e.latlng.lng));
-  state.spots.forEach(s => {
-    const m = L.marker([s.lat, s.lon]).addTo(map).bindPopup(`<b>${escapeHtml(s.name)}</b><br><a href="#" onclick="event.preventDefault(); openForecast('${s.id}'); document.querySelector('.leaflet-popup-close-button').click();">Open forecast</a>`);
-    spotMarkers.push(m);
-  });
-}
-
-function centerMapOnGreatLakes() {
-  if (!map) return;
-  map.fitBounds([[41.4, -92.0], [49.0, -76.0]]);
-}
-
-function setPickedPoint(lat, lon) {
-  if (pickedMarker) map.removeLayer(pickedMarker);
-  pickedMarker = L.circleMarker([lat, lon], {
-    radius: 9, color: '#4ec3ff', fillColor: '#4ec3ff', fillOpacity: 0.6, weight: 2
-  }).addTo(map).bindPopup(`<b>${lat.toFixed(4)}, ${lon.toFixed(4)}</b>`).openPopup();
-  pendingCoords = { lat, lon };
-  document.getElementById('map-add-btn').disabled = false;
-}
-
-function addPickedSpot() {
-  if (!pendingCoords) return;
-  showAddSpotModal({ lat: pendingCoords.lat.toFixed(4), lon: pendingCoords.lon.toFixed(4), name: '' });
-}
+// Map view is now an iframe of weather.gov/greatlakes — no JS needed.
+function initMapIfNeeded() { /* no-op: iframe loads itself */ }
 
 function renderSettings() {
   document.getElementById('units-wave').value = state.units.wave;
   document.getElementById('units-wind').value = state.units.wind;
   document.getElementById('units-temp').value = state.units.temp;
-  renderThresholdsEditor(document.getElementById('default-thresholds-editor'), {
-    instanceId: 'def',
+}
+
+function openDefaultsThresholdsModal() {
+  openThresholdsModal({
+    title: 'Default thresholds',
+    sub: 'Applied to all spots that haven’t set their own.',
+    showReset: false,
     get: () => ({ ...state.defaults }),
-    set: (t) => { state.defaults = t; saveState(); toast('Defaults saved'); }
+    save: (t) => { state.defaults = t; saveState(); toast('Defaults saved'); }
   });
 }
 
@@ -978,13 +987,17 @@ function saveUnits() {
   toast('Units saved');
 }
 
-function renderThresholdsEditor(container, { get, set, instanceId }) {
+function renderThresholdsEditor(container, { get, set, instanceId, externalSaveButtonId }) {
   const T = get();
   const waveUnit = state.units.wave;
   const windUnit = state.units.wind;
   const id = (suffix) => `th-${instanceId}-${suffix}`;
   const fmt = (m) => waveUnit === 'ft' ? (m * M_TO_FT).toFixed(1) : m.toFixed(2);
   const fmtW = (k) => windUnit === 'mph' ? Math.round(k * KMH_TO_MPH) : windUnit === 'kt' ? Math.round(k * KMH_TO_KT) : Math.round(k);
+
+  const inlineSaveButton = externalSaveButtonId
+    ? ''
+    : `<button class="btn small" style="margin-top:14px;" id="${id('save')}">Save thresholds</button>`;
 
   container.innerHTML = `
     <div class="grid2">
@@ -1015,14 +1028,14 @@ function renderThresholdsEditor(container, { get, set, instanceId }) {
     <input type="number" step="1" id="${id('windOk')}" value="${fmtW(T.windOkMaxKmh)}" />
     <label>Blown-out floor (${windUnit})</label>
     <input type="number" step="1" id="${id('windBad')}" value="${fmtW(T.windBadMinKmh)}" />
-    <button class="btn small" style="margin-top:14px;" id="${id('save')}">Save thresholds</button>
+    ${inlineSaveButton}
   `;
 
   const waveScale = waveUnit === 'ft' ? (1 / M_TO_FT) : 1;
   const windScale = windUnit === 'mph' ? (1 / KMH_TO_MPH) : windUnit === 'kt' ? (1 / KMH_TO_KT) : 1;
   const num = (suffix) => parseFloat(document.getElementById(id(suffix)).value);
 
-  document.getElementById(id('save')).addEventListener('click', () => {
+  const doSave = () => {
     const t = { ...T };
     t.waveIdealMinM = num('waveMin') * waveScale;
     t.waveIdealMaxM = num('waveMax') * waveScale;
@@ -1033,7 +1046,14 @@ function renderThresholdsEditor(container, { get, set, instanceId }) {
     t.windOkMaxKmh    = num('windOk')    * windScale;
     t.windBadMinKmh   = num('windBad')   * windScale;
     set(t);
-  });
+  };
+
+  if (externalSaveButtonId) {
+    const btn = document.getElementById(externalSaveButtonId);
+    if (btn) btn.onclick = doSave;
+  } else {
+    document.getElementById(id('save')).addEventListener('click', doSave);
+  }
 }
 
 function resetDefaults() {
