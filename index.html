@@ -33,18 +33,14 @@
     --fg-dim: #a3b5c7;
     --accent: #4ec3ff;
     --border: #233a52;
-
-    /* Rating colors */
-    --r-1: #d63b3b; /* red */
-    --r-2: #e07a26; /* orange */
-    --r-3: #d9c233; /* yellow */
-    --r-4: #6cc24a; /* light green */
-    --r-5: #1e8b3a; /* dark green */
-
+    --r-1: #d63b3b;
+    --r-2: #e07a26;
+    --r-3: #d9c233;
+    --r-4: #6cc24a;
+    --r-5: #1e8b3a;
     --safe-top: env(safe-area-inset-top, 0);
     --safe-bot: env(safe-area-inset-bottom, 0);
   }
-
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; height: 100%; overscroll-behavior: none; }
   body {
@@ -56,112 +52,57 @@
     padding-top: var(--safe-top);
     padding-bottom: calc(64px + var(--safe-bot));
   }
-
   header {
-    position: sticky;
-    top: 0;
+    position: sticky; top: 0;
     background: linear-gradient(180deg, var(--bg-2), var(--bg));
     border-bottom: 1px solid var(--border);
     padding: 14px 16px 12px;
     z-index: 50;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
   }
   header h1 { font-size: 18px; margin: 0; font-weight: 600; letter-spacing: 0.3px; }
   header .sub { color: var(--fg-dim); font-size: 12px; margin-top: 2px; }
-
   main { padding: 12px 14px 24px; max-width: 720px; margin: 0 auto; }
-
-  /* ---------- Bottom Tab Bar ---------- */
   nav.tabbar {
-    position: fixed;
-    bottom: 0; left: 0; right: 0;
+    position: fixed; bottom: 0; left: 0; right: 0;
     height: calc(64px + var(--safe-bot));
     padding-bottom: var(--safe-bot);
-    background: var(--bg-2);
-    border-top: 1px solid var(--border);
-    display: flex;
-    z-index: 100;
+    background: var(--bg-2); border-top: 1px solid var(--border);
+    display: flex; z-index: 100;
   }
   nav.tabbar button {
-    flex: 1;
-    background: transparent;
-    border: 0;
-    color: var(--fg-dim);
-    font-size: 11px;
-    padding: 8px 4px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    cursor: pointer;
-    font-family: inherit;
+    flex: 1; background: transparent; border: 0;
+    color: var(--fg-dim); font-size: 11px; padding: 8px 4px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    cursor: pointer; font-family: inherit;
   }
   nav.tabbar button .icn { font-size: 20px; line-height: 1; }
   nav.tabbar button.active { color: var(--accent); }
-
   .view { display: none; }
   .view.active { display: block; }
-
-  /* ---------- Cards / lists ---------- */
   .card {
-    background: var(--bg-2);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 14px;
-    margin-bottom: 12px;
+    background: var(--bg-2); border: 1px solid var(--border);
+    border-radius: 14px; padding: 14px; margin-bottom: 12px;
   }
   .row { display: flex; align-items: center; gap: 10px; }
   .row.between { justify-content: space-between; }
   .muted { color: var(--fg-dim); font-size: 12px; }
-
   button.btn, .btn {
-    background: var(--accent);
-    color: #04243a;
-    border: 0;
-    border-radius: 10px;
-    padding: 10px 14px;
-    font-weight: 600;
-    font-size: 14px;
-    cursor: pointer;
-    font-family: inherit;
+    background: var(--accent); color: #04243a; border: 0;
+    border-radius: 10px; padding: 10px 14px; font-weight: 600; font-size: 14px;
+    cursor: pointer; font-family: inherit;
   }
-  button.btn.ghost {
-    background: transparent;
-    color: var(--accent);
-    border: 1px solid var(--accent);
-  }
-  button.btn.danger {
-    background: transparent;
-    color: var(--r-1);
-    border: 1px solid var(--r-1);
-  }
+  button.btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  button.btn.danger { background: transparent; color: var(--r-1); border: 1px solid var(--r-1); }
   button.btn.small { padding: 6px 10px; font-size: 12px; border-radius: 8px; }
-
-  /* Saved location card */
-  .loc-card {
-    cursor: pointer;
-    transition: transform 0.05s;
-  }
+  .loc-card { cursor: pointer; transition: transform 0.05s; }
   .loc-card:active { transform: scale(0.99); }
   .loc-card h3 { margin: 0 0 4px; font-size: 16px; }
   .loc-card .coords { font-size: 11px; color: var(--fg-dim); }
-
-  /* Rating chips */
   .chip {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 36px;
-    height: 22px;
-    padding: 0 6px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    color: #0a1722;
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 36px; height: 22px; padding: 0 6px;
+    border-radius: 6px; font-size: 11px; font-weight: 700; color: #0a1722;
   }
   .chip.r1 { background: var(--r-1); color: #fff; }
   .chip.r2 { background: var(--r-2); color: #fff; }
@@ -169,68 +110,35 @@
   .chip.r4 { background: var(--r-4); }
   .chip.r5 { background: var(--r-5); color: #fff; }
   .chip.rNA { background: #2c4258; color: var(--fg-dim); }
-
-  /* 7-day strip on saved card */
   .day-strip {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 4px;
-    margin-top: 10px;
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 10px;
   }
   .day-strip .d {
-    text-align: center;
-    padding: 6px 2px;
-    border-radius: 8px;
-    font-size: 10px;
-    background: var(--bg-3);
+    text-align: center; padding: 6px 2px; border-radius: 8px; font-size: 10px; background: var(--bg-3);
   }
   .day-strip .d .lbl { color: var(--fg-dim); }
   .day-strip .d .pill {
-    display: block;
-    margin: 4px auto 0;
-    height: 6px;
-    width: 70%;
-    border-radius: 3px;
-    background: #2c4258;
+    display: block; margin: 4px auto 0; height: 6px; width: 70%; border-radius: 3px; background: #2c4258;
   }
   .day-strip .d .pill.r1 { background: var(--r-1); }
   .day-strip .d .pill.r2 { background: var(--r-2); }
   .day-strip .d .pill.r3 { background: var(--r-3); }
   .day-strip .d .pill.r4 { background: var(--r-4); }
   .day-strip .d .pill.r5 { background: var(--r-5); }
-
-  /* Forecast detail */
   .day-tabs {
-    display: flex;
-    gap: 6px;
-    overflow-x: auto;
-    padding-bottom: 8px;
-    margin: 0 -14px 12px;
-    padding-left: 14px;
-    padding-right: 14px;
+    display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px;
+    margin: 0 -14px 12px; padding-left: 14px; padding-right: 14px;
     -webkit-overflow-scrolling: touch;
   }
   .day-tabs::-webkit-scrollbar { display: none; }
   .day-tabs button {
-    flex: 0 0 auto;
-    background: var(--bg-2);
-    border: 1px solid var(--border);
-    color: var(--fg);
-    padding: 8px 12px;
-    border-radius: 10px;
-    font-size: 12px;
-    font-family: inherit;
-    cursor: pointer;
-    min-width: 64px;
-    text-align: center;
+    flex: 0 0 auto; background: var(--bg-2); border: 1px solid var(--border);
+    color: var(--fg); padding: 8px 12px; border-radius: 10px; font-size: 12px;
+    font-family: inherit; cursor: pointer; min-width: 64px; text-align: center;
   }
   .day-tabs button .dow { display: block; font-weight: 600; font-size: 13px; }
   .day-tabs button .dot {
-    display: inline-block;
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    margin-top: 4px;
-    background: #2c4258;
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; background: #2c4258;
   }
   .day-tabs button.r1 .dot { background: var(--r-1); }
   .day-tabs button.r2 .dot { background: var(--r-2); }
@@ -238,145 +146,67 @@
   .day-tabs button.r4 .dot { background: var(--r-4); }
   .day-tabs button.r5 .dot { background: var(--r-5); }
   .day-tabs button.active { border-color: var(--accent); background: var(--bg-3); }
-
   table.hourly { width: 100%; border-collapse: collapse; font-size: 12px; }
   table.hourly th, table.hourly td {
-    padding: 8px 6px;
-    text-align: center;
-    border-bottom: 1px solid var(--border);
-    white-space: nowrap;
+    padding: 8px 6px; text-align: center; border-bottom: 1px solid var(--border); white-space: nowrap;
   }
   table.hourly th {
-    color: var(--fg-dim);
-    font-weight: 500;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    position: sticky;
-    top: 0;
-    background: var(--bg);
+    color: var(--fg-dim); font-weight: 500; font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.5px; position: sticky; top: 0; background: var(--bg);
   }
   table.hourly td.time { text-align: left; padding-left: 10px; }
-  table.hourly td.rating {
-    width: 6px;
-    padding: 0;
-    border-left: 6px solid #2c4258;
-  }
+  table.hourly td.rating { width: 6px; padding: 0; border-left: 6px solid #2c4258; }
   table.hourly tr.r1 td.rating { border-left-color: var(--r-1); }
   table.hourly tr.r2 td.rating { border-left-color: var(--r-2); }
   table.hourly tr.r3 td.rating { border-left-color: var(--r-3); }
   table.hourly tr.r4 td.rating { border-left-color: var(--r-4); }
   table.hourly tr.r5 td.rating { border-left-color: var(--r-5); }
-
-  /* Map */
   #map {
     height: calc(100vh - 64px - 56px - var(--safe-top) - var(--safe-bot));
-    min-height: 360px;
-    border-radius: 12px;
-    overflow: hidden;
-    border: 1px solid var(--border);
+    min-height: 360px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border);
   }
   .map-actions {
-    position: fixed;
-    left: 14px; right: 14px;
-    bottom: calc(80px + var(--safe-bot));
-    z-index: 40;
-    display: flex;
-    gap: 8px;
+    position: fixed; left: 14px; right: 14px;
+    bottom: calc(80px + var(--safe-bot)); z-index: 40;
+    display: flex; gap: 8px;
   }
   .map-actions .btn { flex: 1; box-shadow: 0 4px 14px rgba(0,0,0,0.4); }
-
-  /* Forms */
   label { display: block; margin: 12px 0 4px; font-size: 13px; color: var(--fg-dim); }
   input[type="text"], input[type="number"], select {
-    width: 100%;
-    background: var(--bg-3);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 12px;
-    color: var(--fg);
-    font-size: 15px;
-    font-family: inherit;
+    width: 100%; background: var(--bg-3); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; color: var(--fg); font-size: 15px; font-family: inherit;
   }
   input[type="range"] { width: 100%; }
-
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-
-  /* Modal */
   .modal-bg {
-    position: fixed; inset: 0;
-    background: rgba(4,12,20,0.65);
-    backdrop-filter: blur(4px);
-    z-index: 200;
-    display: none;
-    align-items: flex-end;
-    justify-content: center;
+    position: fixed; inset: 0; background: rgba(4,12,20,0.65);
+    backdrop-filter: blur(4px); z-index: 200; display: none;
+    align-items: flex-end; justify-content: center;
   }
   .modal-bg.open { display: flex; }
   .modal {
-    background: var(--bg-2);
-    border-top: 1px solid var(--border);
-    border-radius: 16px 16px 0 0;
-    width: 100%;
-    max-width: 720px;
-    max-height: 90vh;
-    overflow-y: auto;
-    padding: 18px 16px calc(16px + var(--safe-bot));
+    background: var(--bg-2); border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0; width: 100%; max-width: 720px; max-height: 90vh;
+    overflow-y: auto; padding: 18px 16px calc(16px + var(--safe-bot));
   }
   .modal h2 { margin: 0 0 8px; font-size: 17px; }
-
-  /* Direction picker */
-  .dir-grid {
-    display: grid;
-    grid-template-columns: repeat(8, 1fr);
-    gap: 4px;
-    margin-top: 6px;
-  }
+  .dir-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; margin-top: 6px; }
   .dir-grid button {
-    background: var(--bg-3);
-    color: var(--fg-dim);
-    border: 1px solid var(--border);
-    padding: 8px 0;
-    font-size: 11px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-family: inherit;
+    background: var(--bg-3); color: var(--fg-dim); border: 1px solid var(--border);
+    padding: 8px 0; font-size: 11px; border-radius: 6px; cursor: pointer; font-family: inherit;
   }
   .dir-grid button.on {
-    background: var(--accent);
-    color: #04243a;
-    border-color: var(--accent);
-    font-weight: 700;
+    background: var(--accent); color: #04243a; border-color: var(--accent); font-weight: 700;
   }
-
-  .empty {
-    text-align: center;
-    padding: 40px 20px;
-    color: var(--fg-dim);
-  }
+  .empty { text-align: center; padding: 40px 20px; color: var(--fg-dim); }
   .empty h2 { color: var(--fg); margin-bottom: 6px; }
-
   .toast {
-    position: fixed;
-    bottom: calc(80px + var(--safe-bot));
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--bg-3);
-    border: 1px solid var(--border);
-    color: var(--fg);
-    padding: 10px 16px;
-    border-radius: 10px;
-    font-size: 13px;
-    z-index: 300;
-    opacity: 0;
-    transition: opacity 0.2s;
-    pointer-events: none;
+    position: fixed; bottom: calc(80px + var(--safe-bot)); left: 50%;
+    transform: translateX(-50%); background: var(--bg-3); border: 1px solid var(--border);
+    color: var(--fg); padding: 10px 16px; border-radius: 10px; font-size: 13px;
+    z-index: 300; opacity: 0; transition: opacity 0.2s; pointer-events: none;
   }
   .toast.show { opacity: 1; }
-
-  details { margin-top: 8px; }
-  summary { cursor: pointer; color: var(--accent); font-size: 13px; padding: 6px 0; }
-
   .legend { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: 11px; }
   .legend span { display: inline-flex; align-items: center; gap: 4px; color: var(--fg-dim); }
   .legend .sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
@@ -393,16 +223,14 @@
 </header>
 
 <main>
-  <!-- ====== SPOTS VIEW ====== -->
   <section id="view-spots" class="view active">
     <div id="spots-list"></div>
-
     <div id="spots-empty" class="empty" style="display:none;">
       <h2>No saved spots yet</h2>
-      <p>Tap <b>Map</b> at the bottom and pick a coordinate, or tap <b>Add</b> to enter one manually.</p>
-      <button class="btn" onclick="showAddSpotModal()">Add a spot</button>
+      <p>Browse the popular Lake Michigan breaks, or pin a coordinate from the map.</p>
+      <button class="btn" onclick="openPopularSpotsModal()">★ Browse popular spots</button>
+      <div style="margin-top:10px;"><button class="btn ghost" onclick="showAddSpotModal()">+ Add a spot manually</button></div>
     </div>
-
     <div class="legend" style="margin-top:14px;">
       <span><i class="sw" style="background:var(--r-5)"></i>Epic</span>
       <span><i class="sw" style="background:var(--r-4)"></i>Good</span>
@@ -412,7 +240,6 @@
     </div>
   </section>
 
-  <!-- ====== FORECAST VIEW ====== -->
   <section id="view-forecast" class="view">
     <div id="forecast-loading" class="empty">Loading forecast…</div>
     <div id="forecast-error" class="empty" style="display:none;"></div>
@@ -424,14 +251,16 @@
           <table class="hourly" id="hourly-table"></table>
         </div>
       </div>
-      <details>
-        <summary>Edit rating thresholds for this spot</summary>
+      <div class="card">
+        <div class="row between" style="margin-bottom:8px;">
+          <h3 style="margin:0; font-size:15px;">Rating thresholds</h3>
+          <span id="threshold-status"></span>
+        </div>
         <div id="thresholds-editor"></div>
-      </details>
+      </div>
     </div>
   </section>
 
-  <!-- ====== MAP VIEW ====== -->
   <section id="view-map" class="view">
     <div id="map"></div>
     <div class="map-actions">
@@ -440,7 +269,6 @@
     </div>
   </section>
 
-  <!-- ====== SETTINGS VIEW ====== -->
   <section id="view-settings" class="view">
     <div class="card">
       <h3 style="margin-top:0;">Default rating thresholds</h3>
@@ -450,7 +278,6 @@
         <button class="btn small" onclick="resetDefaults()">Reset defaults</button>
       </div>
     </div>
-
     <div class="card">
       <h3 style="margin-top:0;">Units</h3>
       <label>Wave height</label>
@@ -470,14 +297,12 @@
         <option value="C">°C</option>
       </select>
     </div>
-
     <div class="card">
       <h3 style="margin-top:0;">Data &amp; backup</h3>
       <button class="btn small ghost" onclick="exportData()">Export saved spots</button>
       <button class="btn small ghost" onclick="importData()" style="margin-left:6px;">Import</button>
       <button class="btn small danger" onclick="clearAll()" style="margin-left:6px;">Clear all</button>
     </div>
-
     <div class="card">
       <h3 style="margin-top:0;">About</h3>
       <p class="muted">Forecast data: NOAA <a href="https://api.weather.gov" target="_blank" style="color:var(--accent)">api.weather.gov</a>. Same source as weather.gov/greatlakes. Updates roughly hourly.</p>
@@ -486,7 +311,6 @@
   </section>
 </main>
 
-<!-- ====== TAB BAR ====== -->
 <nav class="tabbar">
   <button data-view="spots" class="active" onclick="switchView('spots')">
     <span class="icn">🏄</span><span>Spots</span>
@@ -499,7 +323,6 @@
   </button>
 </nav>
 
-<!-- ====== ADD/EDIT SPOT MODAL ====== -->
 <div class="modal-bg" id="modal-spot">
   <div class="modal">
     <h2 id="modal-title">Add spot</h2>
@@ -518,7 +341,6 @@
     <label>Offshore wind directions (best for this spot)</label>
     <p class="muted" style="margin:0;">Pick the directions wind should come <b>from</b> for clean surf. Tap to toggle.</p>
     <div class="dir-grid" id="spot-dirs"></div>
-
     <div class="row between" style="margin-top:18px;">
       <button class="btn ghost" onclick="closeSpotModal()">Cancel</button>
       <div>
@@ -529,64 +351,84 @@
   </div>
 </div>
 
+<div class="modal-bg" id="modal-popular">
+  <div class="modal">
+    <h2>Popular Lake Michigan spots</h2>
+    <p class="muted" style="margin:0 0 10px;">Tap any spot to add it to your saved list. You can edit thresholds and offshore directions afterwards.</p>
+    <div id="popular-list"></div>
+    <div class="row between" style="margin-top:14px;">
+      <button class="btn ghost" onclick="closePopularSpotsModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
-/* =============================================================================
-   Lakes Surf — Great Lakes surf forecast PWA
-   Data: NOAA api.weather.gov (no key)
-   ============================================================================= */
-
 const NOAA_BASE = 'https://api.weather.gov';
-const UA_HEADER = { 'User-Agent': 'LakesSurfPWA (github.com/lakes-surf)' };
-// Note: Browsers ignore User-Agent set via fetch(); NOAA still serves to browsers fine.
-
 const STORAGE_KEY = 'lakesurf-v1';
 const DIRS_8 = ['N','NE','E','SE','S','SW','W','NW'];
 
 const DEFAULT_THRESHOLDS = {
-  // Wave height (in meters internally; UI converts)
-  waveIdealMinM: 0.9,    // ~3 ft
-  waveIdealMaxM: 1.8,    // ~6 ft
-  waveMaxM: 2.7,         // above this = too big/messy
-  // Wave period in seconds
-  periodMinS: 4,
-  periodGoodS: 6,
-  // Wind speed in m/s (NOAA returns km/h actually, we'll normalize)
-  windCleanMaxKmh: 16,   // ~10 mph - light wind, clean
-  windOkMaxKmh: 32,      // ~20 mph - choppy but rideable
-  windBadMinKmh: 40,     // ~25 mph - blown out
-  // Offshore bonus (when wind comes FROM these directions, score gets boost)
-  offshoreDirs: [],      // user picks per spot
-  // Weights
-  w_wave: 0.45,
-  w_period: 0.20,
-  w_wind: 0.35
+  waveIdealMinM: 0.9, waveIdealMaxM: 1.8, waveMaxM: 2.7,
+  periodMinS: 4, periodGoodS: 6,
+  windCleanMaxKmh: 16, windOkMaxKmh: 32, windBadMinKmh: 40,
+  offshoreDirs: [],
+  w_wave: 0.35, w_period: 0.35, w_wind: 0.30
 };
+
+const POPULAR_SPOTS = [
+  { id: 'pop_montrose',   name: 'Montrose Beach',                 lat: 41.968, lon: -87.635, lake: 'Michigan', offshoreDirs: ['W','NW','SW'] },
+  { id: 'pop_greenwood',  name: 'Greenwood Beach (Evanston)',     lat: 42.052, lon: -87.674, lake: 'Michigan', offshoreDirs: ['W','NW','SW'] },
+  { id: 'pop_promontory', name: 'Promontory / 57th St Beach',     lat: 41.793, lon: -87.578, lake: 'Michigan', offshoreDirs: ['W','NW','SW'] },
+  { id: 'pop_sheboygan',  name: 'Sheboygan (Deland Park)',        lat: 43.751, lon: -87.714, lake: 'Michigan', offshoreDirs: ['W','NW','SW'] },
+  { id: 'pop_bradford',   name: 'Bradford Beach (Milwaukee)',     lat: 43.063, lon: -87.872, lake: 'Michigan', offshoreDirs: ['W','NW'] },
+  { id: 'pop_stjoseph',   name: 'Silver Beach (St. Joseph)',      lat: 42.108, lon: -86.490, lake: 'Michigan', offshoreDirs: ['E','NE','SE'] },
+  { id: 'pop_grandhaven', name: 'Grand Haven State Park',         lat: 43.057, lon: -86.247, lake: 'Michigan', offshoreDirs: ['E','NE','SE'] },
+  { id: 'pop_michcity',   name: 'Michigan City (Washington Park)',lat: 41.726, lon: -86.913, lake: 'Michigan', offshoreDirs: ['S','SW','SE'] },
+  { id: 'pop_newbuffalo', name: 'New Buffalo Beach',              lat: 41.799, lon: -86.745, lake: 'Michigan', offshoreDirs: ['S','SE','E'] }
+];
+const FIRST_RUN_SEED = ['pop_montrose'];
 
 const DEFAULT_UNITS = { wave: 'ft', wind: 'mph', temp: 'F' };
 
-/* ---------- Storage ---------- */
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { spots: [], defaults: { ...DEFAULT_THRESHOLDS }, units: { ...DEFAULT_UNITS } };
+    if (!raw) return seedFreshState();
     const s = JSON.parse(raw);
     s.defaults = { ...DEFAULT_THRESHOLDS, ...(s.defaults || {}) };
     s.units = { ...DEFAULT_UNITS, ...(s.units || {}) };
     s.spots = s.spots || [];
+    s.seeded = !!s.seeded;
     return s;
   } catch (e) {
     console.error('loadState', e);
-    return { spots: [], defaults: { ...DEFAULT_THRESHOLDS }, units: { ...DEFAULT_UNITS } };
+    return seedFreshState();
   }
 }
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+function seedFreshState() {
+  const s = { spots: [], defaults: { ...DEFAULT_THRESHOLDS }, units: { ...DEFAULT_UNITS }, seeded: true };
+  for (const id of FIRST_RUN_SEED) {
+    const p = POPULAR_SPOTS.find(x => x.id === id);
+    if (p) s.spots.push(makeSpotFromPopular(p));
+  }
+  return s;
 }
+function makeSpotFromPopular(p) {
+  return {
+    id: 'sp_' + Math.random().toString(36).slice(2, 10),
+    name: p.name, lat: p.lat, lon: p.lon,
+    offshoreDirs: [...p.offshoreDirs],
+    thresholds: null, builtinId: p.id
+  };
+}
+function isPopularAdded(popularId) {
+  return state.spots.some(s => s.builtinId === popularId);
+}
+function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
 let state = loadState();
 
-/* ---------- Unit helpers ---------- */
 const M_TO_FT = 3.28084;
 const KMH_TO_MPH = 0.621371;
 const KMH_TO_KT = 0.539957;
@@ -609,11 +451,9 @@ function fmtTemp(c) {
 function degToCompass(deg) {
   if (deg == null || isNaN(deg)) return '–';
   const d = ((deg % 360) + 360) % 360;
-  const ix = Math.round(d / 45) % 8;
-  return DIRS_8[ix];
+  return DIRS_8[Math.round(d / 45) % 8];
 }
 
-/* ---------- View switching ---------- */
 function switchView(name) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('nav.tabbar button').forEach(b => b.classList.toggle('active', b.dataset.view === name));
@@ -623,23 +463,26 @@ function switchView(name) {
   if (name === 'spots') renderSpots();
   if (name === 'map') initMapIfNeeded();
   if (name === 'settings') renderSettings();
-  if (name === 'forecast') {} // rendered when entered
 
   document.getElementById('header-title').textContent =
     name === 'spots' ? 'Lakes Surf'
     : name === 'map' ? 'Pick a point'
-    : name === 'settings' ? 'Settings'
-    : 'Forecast';
+    : name === 'settings' ? 'Settings' : 'Forecast';
 
   document.getElementById('header-sub').textContent =
     name === 'spots' ? 'Great Lakes wave forecast'
     : name === 'map' ? 'Tap the map to drop a pin'
-    : name === 'settings' ? 'Defaults, units, backup'
-    : '';
+    : name === 'settings' ? 'Defaults, units, backup' : '';
 
   const action = document.getElementById('header-action');
   action.innerHTML = '';
   if (name === 'spots') {
+    const popBtn = document.createElement('button');
+    popBtn.className = 'btn small ghost';
+    popBtn.textContent = '★ Popular';
+    popBtn.style.marginRight = '6px';
+    popBtn.onclick = () => openPopularSpotsModal();
+    action.appendChild(popBtn);
     const b = document.createElement('button');
     b.className = 'btn small';
     b.textContent = '+ Add';
@@ -648,7 +491,6 @@ function switchView(name) {
   }
 }
 
-/* ---------- Toast ---------- */
 let toastTimer;
 function toast(msg) {
   const t = document.getElementById('toast');
@@ -658,19 +500,14 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
 }
 
-/* =============================================================================
-   NOAA Forecast Fetching
-   ============================================================================= */
-
-const forecastCache = new Map(); // key: lat,lon -> { fetchedAt, data }
-const CACHE_MS = 30 * 60 * 1000; // 30 min
+const forecastCache = new Map();
+const CACHE_MS = 30 * 60 * 1000;
 
 async function getForecast(lat, lon) {
   const key = `${lat.toFixed(3)},${lon.toFixed(3)}`;
   const cached = forecastCache.get(key);
   if (cached && (Date.now() - cached.fetchedAt) < CACHE_MS) return cached.data;
 
-  // 1) Get grid info
   const ptUrl = `${NOAA_BASE}/points/${lat.toFixed(4)},${lon.toFixed(4)}`;
   const ptRes = await fetch(ptUrl, { headers: { 'Accept': 'application/geo+json' } });
   if (!ptRes.ok) throw new Error(`NOAA points lookup failed (${ptRes.status}). The point may be outside the U.S. forecast area.`);
@@ -678,26 +515,23 @@ async function getForecast(lat, lon) {
   const gridUrl = pt.properties.forecastGridData;
   const tz = pt.properties.timeZone || 'America/Chicago';
 
-  // 2) Get raw gridded data (has wave/wind/temp/precip)
   const gRes = await fetch(gridUrl, { headers: { 'Accept': 'application/geo+json' } });
   if (!gRes.ok) throw new Error(`NOAA grid data failed (${gRes.status}).`);
   const grid = await gRes.json();
   const props = grid.properties;
 
-  // Parse the time-series fields we need
   const series = {
-    waveHeight:    parseSeries(props.waveHeight),                 // meters
-    wavePeriod:    parseSeries(props.wavePeriod),                 // seconds
-    primarySwellDirection: parseSeries(props.primarySwellDirection), // degrees
-    windSpeed:     parseSeries(props.windSpeed),                  // km/h
-    windGust:      parseSeries(props.windGust),                   // km/h
-    windDirection: parseSeries(props.windDirection),              // degrees
-    temperature:   parseSeries(props.temperature),                // C
-    probabilityOfPrecipitation: parseSeries(props.probabilityOfPrecipitation), // %
-    skyCover:      parseSeries(props.skyCover)                    // %
+    waveHeight:    parseSeries(props.waveHeight),
+    wavePeriod:    parseSeries(props.wavePeriod),
+    primarySwellDirection: parseSeries(props.primarySwellDirection),
+    windSpeed:     parseSeries(props.windSpeed),
+    windGust:      parseSeries(props.windGust),
+    windDirection: parseSeries(props.windDirection),
+    temperature:   parseSeries(props.temperature),
+    probabilityOfPrecipitation: parseSeries(props.probabilityOfPrecipitation),
+    skyCover:      parseSeries(props.skyCover)
   };
 
-  // Build hourly merged rows for next 7 days
   const start = new Date();
   start.setMinutes(0, 0, 0);
   const hours = [];
@@ -719,17 +553,13 @@ async function getForecast(lat, lon) {
 
   const data = {
     location: pt.properties.relativeLocation && pt.properties.relativeLocation.properties
-      ? `${pt.properties.relativeLocation.properties.city}, ${pt.properties.relativeLocation.properties.state}`
-      : '',
-    timeZone: tz,
-    hours,
-    fetchedAt: Date.now()
+      ? `${pt.properties.relativeLocation.properties.city}, ${pt.properties.relativeLocation.properties.state}` : '',
+    timeZone: tz, hours, fetchedAt: Date.now()
   };
   forecastCache.set(key, { fetchedAt: Date.now(), data });
   return data;
 }
 
-// NOAA gridded values come as { validTime: "2024-01-01T00:00:00+00:00/PT3H", value: 1.23 }
 function parseSeries(field) {
   if (!field || !Array.isArray(field.values)) return [];
   return field.values.map(v => {
@@ -740,7 +570,6 @@ function parseSeries(field) {
   });
 }
 function parseISODurationHours(d) {
-  // Examples: PT1H, PT3H, P1DT6H
   if (!d) return 1;
   const m = d.match(/P(?:(\d+)D)?T?(?:(\d+)H)?/);
   const days = m ? parseInt(m[1] || '0', 10) : 0;
@@ -755,17 +584,11 @@ function sampleAt(series, t) {
   return null;
 }
 
-/* =============================================================================
-   Rating engine
-   ============================================================================= */
-
 function rateHour(h, thresholds) {
-  // Returns { rating: 1..5, score: 0..1, reasons: [...] }
   const T = thresholds;
   let waveScore = 0, periodScore = 0, windScore = 0;
   const reasons = [];
 
-  // ---- Wave height ----
   const wh = h.waveHeight;
   if (wh == null) { waveScore = 0; reasons.push('no wave data'); }
   else if (wh < T.waveIdealMinM * 0.5) { waveScore = 0.05; reasons.push('flat'); }
@@ -774,14 +597,12 @@ function rateHour(h, thresholds) {
   else if (wh <= T.waveMaxM)           { waveScore = 1 - 0.6 * ((wh - T.waveIdealMaxM) / (T.waveMaxM - T.waveIdealMaxM)); reasons.push('overhead'); }
   else                                  { waveScore = 0.1; reasons.push('too big/messy'); }
 
-  // ---- Wave period ----
   const wp = h.wavePeriod;
   if (wp == null) periodScore = 0.5;
-  else if (wp < T.periodMinS) { periodScore = 0.3 * (wp / T.periodMinS); reasons.push('short period'); }
+  else if (wp < T.periodMinS) { periodScore = 0; reasons.push('short period'); }
   else if (wp < T.periodGoodS) { periodScore = 0.5 + 0.5 * ((wp - T.periodMinS) / (T.periodGoodS - T.periodMinS)); }
   else { periodScore = 1.0; reasons.push('long period'); }
 
-  // ---- Wind ----
   const ws = h.windSpeed;
   if (ws == null) windScore = 0.5;
   else if (ws <= T.windCleanMaxKmh) { windScore = 1.0; reasons.push('light wind'); }
@@ -789,14 +610,12 @@ function rateHour(h, thresholds) {
   else if (ws <= T.windBadMinKmh)   { windScore = 0.5 - 0.4 * ((ws - T.windOkMaxKmh) / (T.windBadMinKmh - T.windOkMaxKmh)); reasons.push('strong wind'); }
   else                               { windScore = 0.05; reasons.push('blown out'); }
 
-  // Offshore bonus: wind FROM offshore direction = boost (cleans up faces)
   if (T.offshoreDirs && T.offshoreDirs.length && h.windDir != null) {
     const wd = degToCompass(h.windDir);
     if (T.offshoreDirs.includes(wd)) {
       windScore = Math.min(1, windScore + 0.15);
       reasons.push('offshore wind');
     } else if (T.offshoreDirs.length < 8) {
-      // Onshore (opposite-ish) penalty
       const oppIdx = (DIRS_8.indexOf(wd) + 4) % 8;
       const oppDir = DIRS_8[oppIdx];
       if (T.offshoreDirs.includes(oppDir)) {
@@ -816,19 +635,13 @@ function rateHour(h, thresholds) {
   else if (score < 0.80) rating = 4;
   else rating = 5;
 
-  // Wave power: H^2 * T (relative units)
   const wavePower = (wh != null && wp != null) ? wh * wh * wp : null;
-
   return { rating, score, reasons, wavePower };
 }
 
 function rateDay(hours, thresholds) {
-  // Best (max) rating across daylight hours (5am-9pm local) is usually what matters
   if (!hours || !hours.length) return { rating: 0 };
-  const day = hours.filter(h => {
-    const hr = h.time.getHours();
-    return hr >= 5 && hr <= 21;
-  });
+  const day = hours.filter(h => { const hr = h.time.getHours(); return hr >= 5 && hr <= 21; });
   const list = day.length ? day : hours;
   let bestScore = 0, bestR = 0;
   for (const h of list) {
@@ -837,10 +650,6 @@ function rateDay(hours, thresholds) {
   }
   return { rating: bestR, score: bestScore };
 }
-
-/* =============================================================================
-   Spots view
-   ============================================================================= */
 
 async function renderSpots() {
   const list = document.getElementById('spots-list');
@@ -866,12 +675,11 @@ async function renderSpots() {
         <div id="now-${spot.id}"><span class="chip rNA">…</span></div>
       </div>
       <div class="day-strip" id="strip-${spot.id}">
-        ${Array.from({length:7}).map((_,i)=>`<div class="d"><span class="lbl">–</span><span class="pill"></span></div>`).join('')}
+        ${Array.from({length:7}).map(()=>`<div class="d"><span class="lbl">–</span><span class="pill"></span></div>`).join('')}
       </div>
     `;
     list.appendChild(card);
 
-    // Async load forecast for this spot
     loadSpotSummary(spot).catch(err => {
       const now = document.getElementById('now-' + spot.id);
       if (now) now.innerHTML = '<span class="chip rNA">err</span>';
@@ -884,7 +692,6 @@ async function loadSpotSummary(spot) {
   const data = await getForecast(spot.lat, spot.lon);
   const T = { ...state.defaults, ...(spot.thresholds || {}), offshoreDirs: spot.offshoreDirs || [] };
 
-  // Now rating = rating of current hour
   const now = data.hours[0];
   const nowR = rateHour(now, T);
   const nowEl = document.getElementById('now-' + spot.id);
@@ -892,7 +699,6 @@ async function loadSpotSummary(spot) {
     nowEl.innerHTML = `<span class="chip r${nowR.rating}">${fmtWave(now.waveHeight)}</span>`;
   }
 
-  // Day strip: rating per day for next 7 days
   const days = groupByLocalDay(data.hours);
   const strip = document.getElementById('strip-' + spot.id);
   if (strip) {
@@ -913,10 +719,6 @@ function groupByLocalDay(hours) {
   }
   return [...map.values()];
 }
-
-/* =============================================================================
-   Forecast detail view
-   ============================================================================= */
 
 let currentSpotId = null;
 let currentForecast = null;
@@ -960,7 +762,6 @@ function renderForecast() {
 
   const days = groupByLocalDay(currentForecast.hours).slice(0, 7);
 
-  // Summary card: now conditions + best day
   const now = currentForecast.hours[0];
   const nowR = rateHour(now, T);
   const summary = document.getElementById('forecast-summary');
@@ -978,7 +779,6 @@ function renderForecast() {
     </div>
   `;
 
-  // Day tabs
   const tabs = document.getElementById('day-tabs');
   tabs.innerHTML = days.map((day, i) => {
     const dr = rateDay(day.hours, T);
@@ -989,21 +789,11 @@ function renderForecast() {
     </button>`;
   }).join('');
 
-  // Hourly table for current day
   const day = days[currentDayIndex];
   const table = document.getElementById('hourly-table');
   table.innerHTML = `
     <thead><tr>
-      <th></th>
-      <th>Time</th>
-      <th>Wave</th>
-      <th>Per</th>
-      <th>Wind</th>
-      <th>Gust</th>
-      <th>Dir</th>
-      <th>Power</th>
-      <th>Air</th>
-      <th>Rain</th>
+      <th></th><th>Time</th><th>Wave</th><th>Per</th><th>Wind</th><th>Gust</th><th>Dir</th><th>Power</th><th>Air</th><th>Rain</th>
     </tr></thead>
     <tbody>
       ${day.hours.map(h => {
@@ -1025,33 +815,38 @@ function renderForecast() {
     </tbody>
   `;
 
-  // Thresholds editor for this spot
+  const statusEl = document.getElementById('threshold-status');
+  if (spot.thresholds) {
+    statusEl.innerHTML = `<span class="muted">Custom for this spot</span> <a href="#" id="th-reset" style="color:var(--accent); margin-left:6px; font-size:12px;">Reset to defaults</a>`;
+    document.getElementById('th-reset').addEventListener('click', (e) => {
+      e.preventDefault();
+      if (!confirm('Reset thresholds for this spot to the defaults?')) return;
+      spot.thresholds = null;
+      saveState();
+      renderForecast();
+      toast('Reset to defaults');
+    });
+  } else {
+    statusEl.innerHTML = '<span class="muted">Using defaults</span>';
+  }
+
   renderThresholdsEditor(document.getElementById('thresholds-editor'), {
+    instanceId: 'spot',
     get: () => ({ ...state.defaults, ...(spot.thresholds || {}) }),
     set: (t) => {
       spot.thresholds = t;
       saveState();
       renderForecast();
-      toast('Thresholds saved');
+      toast('Thresholds saved for ' + spot.name);
     }
   });
 }
 
-function selectDay(i) {
-  currentDayIndex = i;
-  renderForecast();
-}
-
-function ratingLabel(r) {
-  return ['–', 'Poor', 'Fair', 'OK', 'Good', 'Epic'][r] || '–';
-}
-
-/* =============================================================================
-   Add / Edit spot modal
-   ============================================================================= */
+function selectDay(i) { currentDayIndex = i; renderForecast(); }
+function ratingLabel(r) { return ['–','Poor','Fair','OK','Good','Epic'][r] || '–'; }
 
 let editingSpotId = null;
-let pendingCoords = null; // from map
+let pendingCoords = null;
 
 function showAddSpotModal(prefill) {
   editingSpotId = null;
@@ -1106,9 +901,7 @@ function saveSpotModal() {
   } else {
     state.spots.push({
       id: 'sp_' + Math.random().toString(36).slice(2,10),
-      name, lat, lon,
-      offshoreDirs: dirs,
-      thresholds: null
+      name, lat, lon, offshoreDirs: dirs, thresholds: null
     });
   }
   saveState();
@@ -1127,31 +920,18 @@ function deleteCurrentSpot() {
   toast('Deleted');
 }
 
-/* =============================================================================
-   Map
-   ============================================================================= */
-
 let map = null;
 let pickedMarker = null;
 let spotMarkers = [];
 
 function initMapIfNeeded() {
-  if (map) {
-    setTimeout(() => map.invalidateSize(), 50);
-    return;
-  }
+  if (map) { setTimeout(() => map.invalidateSize(), 50); return; }
   map = L.map('map', { zoomControl: true, attributionControl: true });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '© OpenStreetMap'
+    maxZoom: 19, attribution: '© OpenStreetMap'
   }).addTo(map);
   centerMapOnGreatLakes();
-
-  map.on('click', e => {
-    setPickedPoint(e.latlng.lat, e.latlng.lng);
-  });
-
-  // Drop markers for saved spots
+  map.on('click', e => setPickedPoint(e.latlng.lat, e.latlng.lng));
   state.spots.forEach(s => {
     const m = L.marker([s.lat, s.lon]).addTo(map).bindPopup(`<b>${escapeHtml(s.name)}</b><br><a href="#" onclick="event.preventDefault(); openForecast('${s.id}'); document.querySelector('.leaflet-popup-close-button').click();">Open forecast</a>`);
     spotMarkers.push(m);
@@ -1160,18 +940,13 @@ function initMapIfNeeded() {
 
 function centerMapOnGreatLakes() {
   if (!map) return;
-  // Bounding box of all five Great Lakes
   map.fitBounds([[41.4, -92.0], [49.0, -76.0]]);
 }
 
 function setPickedPoint(lat, lon) {
   if (pickedMarker) map.removeLayer(pickedMarker);
   pickedMarker = L.circleMarker([lat, lon], {
-    radius: 9,
-    color: '#4ec3ff',
-    fillColor: '#4ec3ff',
-    fillOpacity: 0.6,
-    weight: 2
+    radius: 9, color: '#4ec3ff', fillColor: '#4ec3ff', fillOpacity: 0.6, weight: 2
   }).addTo(map).bindPopup(`<b>${lat.toFixed(4)}, ${lon.toFixed(4)}</b>`).openPopup();
   pendingCoords = { lat, lon };
   document.getElementById('map-add-btn').disabled = false;
@@ -1182,15 +957,12 @@ function addPickedSpot() {
   showAddSpotModal({ lat: pendingCoords.lat.toFixed(4), lon: pendingCoords.lon.toFixed(4), name: '' });
 }
 
-/* =============================================================================
-   Settings
-   ============================================================================= */
-
 function renderSettings() {
   document.getElementById('units-wave').value = state.units.wave;
   document.getElementById('units-wind').value = state.units.wind;
   document.getElementById('units-temp').value = state.units.temp;
   renderThresholdsEditor(document.getElementById('default-thresholds-editor'), {
+    instanceId: 'def',
     get: () => ({ ...state.defaults }),
     set: (t) => { state.defaults = t; saveState(); toast('Defaults saved'); }
   });
@@ -1206,68 +978,62 @@ function saveUnits() {
   toast('Units saved');
 }
 
-function renderThresholdsEditor(container, { get, set }) {
+function renderThresholdsEditor(container, { get, set, instanceId }) {
   const T = get();
   const waveUnit = state.units.wave;
-  const fmt = (m) => waveUnit === 'ft' ? (m * M_TO_FT).toFixed(1) : m.toFixed(2);
-  const parseW = (v) => {
-    const n = parseFloat(v); if (isNaN(n)) return null;
-    return waveUnit === 'ft' ? n / M_TO_FT : n;
-  };
   const windUnit = state.units.wind;
+  const id = (suffix) => `th-${instanceId}-${suffix}`;
+  const fmt = (m) => waveUnit === 'ft' ? (m * M_TO_FT).toFixed(1) : m.toFixed(2);
   const fmtW = (k) => windUnit === 'mph' ? Math.round(k * KMH_TO_MPH) : windUnit === 'kt' ? Math.round(k * KMH_TO_KT) : Math.round(k);
-  const parseWind = (v) => {
-    const n = parseFloat(v); if (isNaN(n)) return null;
-    return windUnit === 'mph' ? n / KMH_TO_MPH : windUnit === 'kt' ? n / KMH_TO_KT : n;
-  };
 
   container.innerHTML = `
     <div class="grid2">
       <div>
         <label>Min ideal wave (${waveUnit})</label>
-        <input type="number" step="0.1" id="th-waveMin" value="${fmt(T.waveIdealMinM)}" />
+        <input type="number" step="0.1" id="${id('waveMin')}" value="${fmt(T.waveIdealMinM)}" />
       </div>
       <div>
         <label>Max ideal wave (${waveUnit})</label>
-        <input type="number" step="0.1" id="th-waveMax" value="${fmt(T.waveIdealMaxM)}" />
+        <input type="number" step="0.1" id="${id('waveMax')}" value="${fmt(T.waveIdealMaxM)}" />
       </div>
     </div>
     <label>Too-big threshold (${waveUnit})</label>
-    <input type="number" step="0.1" id="th-waveTooBig" value="${fmt(T.waveMaxM)}" />
-
+    <input type="number" step="0.1" id="${id('waveTooBig')}" value="${fmt(T.waveMaxM)}" />
     <div class="grid2">
       <div>
         <label>Min decent period (s)</label>
-        <input type="number" step="0.5" id="th-perMin" value="${T.periodMinS}" />
+        <input type="number" step="0.5" id="${id('perMin')}" value="${T.periodMinS}" />
       </div>
       <div>
         <label>Long period (s)</label>
-        <input type="number" step="0.5" id="th-perGood" value="${T.periodGoodS}" />
+        <input type="number" step="0.5" id="${id('perGood')}" value="${T.periodGoodS}" />
       </div>
     </div>
-
     <label>Light wind ceiling (${windUnit})</label>
-    <input type="number" step="1" id="th-windClean" value="${fmtW(T.windCleanMaxKmh)}" />
+    <input type="number" step="1" id="${id('windClean')}" value="${fmtW(T.windCleanMaxKmh)}" />
     <label>Choppy ceiling (${windUnit})</label>
-    <input type="number" step="1" id="th-windOk" value="${fmtW(T.windOkMaxKmh)}" />
+    <input type="number" step="1" id="${id('windOk')}" value="${fmtW(T.windOkMaxKmh)}" />
     <label>Blown-out floor (${windUnit})</label>
-    <input type="number" step="1" id="th-windBad" value="${fmtW(T.windBadMinKmh)}" />
-
-    <button class="btn small" style="margin-top:14px;" onclick='(function(){
-      const t = ${JSON.stringify(T).replace(/'/g, "\\'")};
-      t.waveIdealMinM = parseFloat(document.getElementById("th-waveMin").value); if(${waveUnit==="ft"?1:0}) t.waveIdealMinM /= ${M_TO_FT};
-      t.waveIdealMaxM = parseFloat(document.getElementById("th-waveMax").value); if(${waveUnit==="ft"?1:0}) t.waveIdealMaxM /= ${M_TO_FT};
-      t.waveMaxM     = parseFloat(document.getElementById("th-waveTooBig").value); if(${waveUnit==="ft"?1:0}) t.waveMaxM     /= ${M_TO_FT};
-      t.periodMinS = parseFloat(document.getElementById("th-perMin").value);
-      t.periodGoodS = parseFloat(document.getElementById("th-perGood").value);
-      const wf = ${windUnit==='mph'?(1/KMH_TO_MPH):(windUnit==='kt'?(1/KMH_TO_KT):1)};
-      t.windCleanMaxKmh = parseFloat(document.getElementById("th-windClean").value) * wf;
-      t.windOkMaxKmh    = parseFloat(document.getElementById("th-windOk").value)    * wf;
-      t.windBadMinKmh   = parseFloat(document.getElementById("th-windBad").value)   * wf;
-      window.__thSet(t);
-    })()'>Save thresholds</button>
+    <input type="number" step="1" id="${id('windBad')}" value="${fmtW(T.windBadMinKmh)}" />
+    <button class="btn small" style="margin-top:14px;" id="${id('save')}">Save thresholds</button>
   `;
-  window.__thSet = set;
+
+  const waveScale = waveUnit === 'ft' ? (1 / M_TO_FT) : 1;
+  const windScale = windUnit === 'mph' ? (1 / KMH_TO_MPH) : windUnit === 'kt' ? (1 / KMH_TO_KT) : 1;
+  const num = (suffix) => parseFloat(document.getElementById(id(suffix)).value);
+
+  document.getElementById(id('save')).addEventListener('click', () => {
+    const t = { ...T };
+    t.waveIdealMinM = num('waveMin') * waveScale;
+    t.waveIdealMaxM = num('waveMax') * waveScale;
+    t.waveMaxM      = num('waveTooBig') * waveScale;
+    t.periodMinS    = num('perMin');
+    t.periodGoodS   = num('perGood');
+    t.windCleanMaxKmh = num('windClean') * windScale;
+    t.windOkMaxKmh    = num('windOk')    * windScale;
+    t.windBadMinKmh   = num('windBad')   * windScale;
+    set(t);
+  });
 }
 
 function resetDefaults() {
@@ -1309,25 +1075,62 @@ function importData() {
 
 function clearAll() {
   if (!confirm('Clear all saved spots and settings?')) return;
-  state = { spots: [], defaults: { ...DEFAULT_THRESHOLDS }, units: { ...DEFAULT_UNITS } };
+  state = { spots: [], defaults: { ...DEFAULT_THRESHOLDS }, units: { ...DEFAULT_UNITS }, seeded: true };
   saveState();
   renderSettings();
   toast('Cleared');
 }
 
-/* ---------- Util ---------- */
+function openPopularSpotsModal() {
+  renderPopularList();
+  document.getElementById('modal-popular').classList.add('open');
+}
+function closePopularSpotsModal() {
+  document.getElementById('modal-popular').classList.remove('open');
+}
+function renderPopularList() {
+  const list = document.getElementById('popular-list');
+  list.innerHTML = POPULAR_SPOTS.map(p => {
+    const added = isPopularAdded(p.id);
+    return `
+      <div class="card" style="padding:12px; margin-bottom:8px;">
+        <div class="row between">
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:600;">${escapeHtml(p.name)}</div>
+            <div class="coords">Lake ${escapeHtml(p.lake)} · ${p.lat.toFixed(3)}, ${p.lon.toFixed(3)}</div>
+            <div class="muted" style="font-size:11px; margin-top:2px;">Offshore: ${p.offshoreDirs.join(' · ')}</div>
+          </div>
+          ${added
+            ? '<span class="chip r5" style="margin-left:8px;">✓ Added</span>'
+            : `<button class="btn small" data-pop-id="${p.id}" style="margin-left:8px;">Add</button>`}
+        </div>
+      </div>
+    `;
+  }).join('');
+  list.querySelectorAll('button[data-pop-id]').forEach(btn => {
+    btn.addEventListener('click', () => addPopularSpot(btn.dataset.popId));
+  });
+}
+function addPopularSpot(popularId) {
+  const p = POPULAR_SPOTS.find(x => x.id === popularId);
+  if (!p) return;
+  if (isPopularAdded(popularId)) { toast('Already added'); return; }
+  state.spots.push(makeSpotFromPopular(p));
+  saveState();
+  renderPopularList();
+  toast('Added ' + p.name);
+}
+
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-/* ---------- Service Worker ---------- */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./service-worker.js').catch(err => console.warn('SW failed:', err));
   });
 }
 
-/* ---------- First paint ---------- */
 switchView('spots');
 </script>
 

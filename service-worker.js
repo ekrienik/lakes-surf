@@ -2,7 +2,7 @@
    Caches the app shell so the PWA opens offline.
    Forecast API responses are NOT cached here so users always see fresh data when online.
 */
-const CACHE = 'lakes-surf-v1';
+const CACHE = 'lakes-surf-v2';
 const SHELL = [
   './',
   './index.html',
