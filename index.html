@@ -254,6 +254,7 @@
     <div id="forecast-error" class="empty" style="display:none;"></div>
     <div id="forecast-content" style="display:none;">
       <div id="live-card-host"></div>
+      <div id="cam-host"></div>
       <div class="card" id="forecast-summary"></div>
       <div class="day-tabs" id="day-tabs"></div>
       <div class="card" style="padding:0; overflow:hidden;">
@@ -401,6 +402,9 @@
     <label>Offshore wind directions (best for this spot)</label>
     <p class="muted" style="margin:0;">Pick the directions wind should come <b>from</b> for clean surf. Tap to toggle.</p>
     <div class="dir-grid" id="spot-dirs"></div>
+    <label>Live cam URL (optional)</label>
+    <input type="text" id="spot-cam" placeholder="https://www.youtube.com/watch?v=..." />
+    <p class="muted" style="margin:4px 0 0; font-size:11px;">YouTube URLs embed automatically. Other sites open in a new tab.</p>
     <div class="row between" style="margin-top:18px;">
       <button class="btn ghost" onclick="closeSpotModal()">Cancel</button>
       <div>
@@ -473,15 +477,15 @@ const DEFAULT_THRESHOLDS = {
 };
 
 const POPULAR_SPOTS = [
-  { id: 'pop_montrose',   name: 'Montrose Beach',                 lat: 41.968, lon: -87.635, lake: 'Michigan', offshoreDirs: ['W','NW','SW'] },
-  { id: 'pop_greenwood',  name: 'Greenwood Beach (Evanston)',     lat: 42.044815, lon: -87.670950, lake: 'Michigan', offshoreDirs: ['W','NW','SW'] },
-  { id: 'pop_promontory', name: 'Promontory / 57th St Beach',     lat: 41.793, lon: -87.578, lake: 'Michigan', offshoreDirs: ['W','NW','SW'] },
-  { id: 'pop_sheboygan',  name: 'Sheboygan (Deland Park)',        lat: 43.751, lon: -87.714, lake: 'Michigan', offshoreDirs: ['W','NW','SW'] },
-  { id: 'pop_bradford',   name: 'Bradford Beach (Milwaukee)',     lat: 43.063, lon: -87.872, lake: 'Michigan', offshoreDirs: ['W','NW'] },
-  { id: 'pop_stjoseph',   name: 'Silver Beach (St. Joseph)',      lat: 42.108, lon: -86.490, lake: 'Michigan', offshoreDirs: ['E','NE','SE'] },
-  { id: 'pop_grandhaven', name: 'Grand Haven State Park',         lat: 43.057, lon: -86.247, lake: 'Michigan', offshoreDirs: ['E','NE','SE'] },
-  { id: 'pop_michcity',   name: 'Washington Park (Michigan City)',lat: 41.726, lon: -86.913, lake: 'Michigan', offshoreDirs: ['S','SW','SE'] },
-  { id: 'pop_newbuffalo', name: 'New Buffalo Beach',              lat: 41.799, lon: -86.745, lake: 'Michigan', offshoreDirs: ['S','SE','E'] }
+  { id: 'pop_montrose',   name: 'Montrose Beach',                 lat: 41.968, lon: -87.635, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=qv5XF6USv7M' },
+  { id: 'pop_greenwood',  name: 'Greenwood Beach (Evanston)',     lat: 42.044815, lon: -87.670950, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=qv5XF6USv7M' },
+  { id: 'pop_promontory', name: 'Promontory / 57th St Beach',     lat: 41.793, lon: -87.578, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=qv5XF6USv7M' },
+  { id: 'pop_sheboygan',  name: 'Sheboygan (Deland Park)',        lat: 43.751, lon: -87.714, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=13j5iZkMpbE' },
+  { id: 'pop_bradford',   name: 'Bradford Beach (Milwaukee)',     lat: 43.063, lon: -87.872, lake: 'Michigan', offshoreDirs: ['W','NW'], cam: null },
+  { id: 'pop_stjoseph',   name: 'Silver Beach (St. Joseph)',      lat: 42.108, lon: -86.490, lake: 'Michigan', offshoreDirs: ['E','NE','SE'], cam: null },
+  { id: 'pop_grandhaven', name: 'Grand Haven State Park',         lat: 43.057, lon: -86.247, lake: 'Michigan', offshoreDirs: ['E','NE','SE'], cam: 'https://surfshopgh.com/pages/swim-flag-cam' },
+  { id: 'pop_michcity',   name: 'Washington Park (Michigan City)',lat: 41.726, lon: -86.913, lake: 'Michigan', offshoreDirs: ['S','SW','SE'], cam: 'https://www.youtube.com/watch?v=Y2VkN45kj_0' },
+  { id: 'pop_newbuffalo', name: 'New Buffalo Beach',              lat: 41.799, lon: -86.745, lake: 'Michigan', offshoreDirs: ['S','SE','E'], cam: null }
 ];
 const FIRST_RUN_SEED = ['pop_montrose'];
 const DEFAULT_UNITS = { wave: 'ft', wind: 'mph', temp: 'F' };
@@ -495,6 +499,13 @@ function loadState() {
     s.units = { ...DEFAULT_UNITS, ...(s.units || {}) };
     s.spots = s.spots || [];
     s.seeded = !!s.seeded;
+    // Migration: backfill cam from POPULAR_SPOTS for builtin spots that don't have one yet
+    for (const sp of s.spots) {
+      if (sp.cam == null && sp.builtinId) {
+        const p = POPULAR_SPOTS.find(x => x.id === sp.builtinId);
+        if (p && p.cam) sp.cam = p.cam;
+      }
+    }
     return s;
   } catch (e) {
     console.error('loadState', e);
@@ -514,7 +525,8 @@ function makeSpotFromPopular(p) {
     id: 'sp_' + Math.random().toString(36).slice(2, 10),
     name: p.name, lat: p.lat, lon: p.lon,
     offshoreDirs: [...p.offshoreDirs],
-    thresholds: null, builtinId: p.id
+    thresholds: null, builtinId: p.id,
+    cam: p.cam || null
   };
 }
 function isPopularAdded(popularId) {
@@ -563,6 +575,13 @@ function dirArrow(deg, size = 12) {
   return `<span style="display:inline-block; transform:rotate(${rot}deg); font-size:${size}px; line-height:1; vertical-align:-1px; margin-left:2px;">↑</span>`;
 }
 
+// Extract a YouTube video ID from common URL formats. Returns null if not YouTube.
+function extractYouTubeId(url) {
+  if (!url) return null;
+  const m = String(url).match(/(?:youtube\.com\/(?:watch\?v=|embed\/|v\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
 // Map NOAA's shortForecast text to a weather emoji that renders cleanly at any size.
 function weatherEmoji(shortForecast, isDaytime) {
   if (!shortForecast) return '';
@@ -609,14 +628,44 @@ function switchView(name) {
   const action = document.getElementById('header-action');
   action.innerHTML = '';
   if (name === 'spots') {
-    const popBtn = document.createElement('button');
-    popBtn.className = 'btn small ghost'; popBtn.textContent = '★ Popular'; popBtn.style.marginRight = '6px';
-    popBtn.onclick = () => openPopularSpotsModal();
-    action.appendChild(popBtn);
-    const b = document.createElement('button');
-    b.className = 'btn small'; b.textContent = '+ Add';
-    b.onclick = () => showAddSpotModal();
-    action.appendChild(b);
+    const editBtn = document.createElement('button');
+    editBtn.className = editingSpots ? 'btn small' : 'btn small ghost';
+    editBtn.textContent = editingSpots ? 'Done' : '✎ Edit';
+    editBtn.style.marginRight = '6px';
+    editBtn.onclick = toggleEditingSpots;
+    action.appendChild(editBtn);
+    if (!editingSpots) {
+      const popBtn = document.createElement('button');
+      popBtn.className = 'btn small ghost'; popBtn.textContent = '★ Popular'; popBtn.style.marginRight = '6px';
+      popBtn.onclick = () => openPopularSpotsModal();
+      action.appendChild(popBtn);
+      const b = document.createElement('button');
+      b.className = 'btn small'; b.textContent = '+ Add';
+      b.onclick = () => showAddSpotModal();
+      action.appendChild(b);
+    }
+  }
+}
+
+let editingSpots = false;
+function toggleEditingSpots() {
+  editingSpots = !editingSpots;
+  switchView('spots');
+}
+function moveSpotUp(spotId) {
+  const i = state.spots.findIndex(s => s.id === spotId);
+  if (i > 0) {
+    [state.spots[i-1], state.spots[i]] = [state.spots[i], state.spots[i-1]];
+    saveState();
+    renderSpots();
+  }
+}
+function moveSpotDown(spotId) {
+  const i = state.spots.findIndex(s => s.id === spotId);
+  if (i >= 0 && i < state.spots.length - 1) {
+    [state.spots[i], state.spots[i+1]] = [state.spots[i+1], state.spots[i]];
+    saveState();
+    renderSpots();
   }
 }
 
@@ -1027,14 +1076,25 @@ async function renderSpots() {
   empty.style.display = 'none';
   list.innerHTML = '';
 
-  for (const spot of state.spots) {
+  for (let i = 0; i < state.spots.length; i++) {
+    const spot = state.spots[i];
     const card = document.createElement('div');
     card.className = 'card loc-card';
     card.dataset.spotId = spot.id;
-    card.onclick = () => openForecast(spot.id);
+    if (!editingSpots) {
+      card.onclick = () => openForecast(spot.id);
+    } else {
+      card.style.cursor = 'default';
+    }
+    const reorderControls = editingSpots ? `
+      <div style="display:flex; flex-direction:column; gap:4px; margin-right:10px;">
+        <button class="btn small ghost" style="padding:2px 8px; line-height:1.2;" ${i === 0 ? 'disabled style="padding:2px 8px; line-height:1.2; opacity:0.4;"' : ''} onclick="event.stopPropagation(); moveSpotUp('${spot.id}');">▲</button>
+        <button class="btn small ghost" style="padding:2px 8px; line-height:1.2;" ${i === state.spots.length - 1 ? 'disabled style="padding:2px 8px; line-height:1.2; opacity:0.4;"' : ''} onclick="event.stopPropagation(); moveSpotDown('${spot.id}');">▼</button>
+      </div>` : '';
     card.innerHTML = `
       <div class="row between">
-        <h3 style="margin:0;">${escapeHtml(spot.name)}</h3>
+        ${reorderControls}
+        <h3 style="margin:0; flex:1;">${escapeHtml(spot.name)}</h3>
         <div id="now-${spot.id}"><span class="chip rNA">…</span></div>
       </div>
       <div class="live-line" id="live-${spot.id}" style="display:none;"></div>
@@ -1118,9 +1178,11 @@ async function openForecast(spotId) {
   document.getElementById('forecast-error').style.display = 'none';
   document.getElementById('forecast-content').style.display = 'none';
   document.getElementById('live-card-host').innerHTML = '';
+  document.getElementById('cam-host').innerHTML = '';
 
   // Fire live fetch concurrently with forecast
   loadLiveCardForForecast(spot);
+  renderCamSection(spot);
 
   try {
     currentForecast = await getForecast(spot.lat, spot.lon);
@@ -1133,6 +1195,34 @@ async function openForecast(spotId) {
     errEl.innerHTML = `<h2>Couldn't load forecast</h2><p class="muted">${escapeHtml(err.message || String(err))}</p>
       <p class="muted">NOAA forecasts cover U.S. coordinates. Make sure your point is on a U.S. side of a Great Lake.</p>
       <button class="btn ghost" onclick="openForecast('${spotId}')">Retry</button>`;
+  }
+}
+
+function renderCamSection(spot) {
+  const host = document.getElementById('cam-host');
+  if (!host) return;
+  if (!spot || !spot.cam) { host.innerHTML = ''; return; }
+  const ytId = extractYouTubeId(spot.cam);
+  if (ytId) {
+    const embedUrl = `https://www.youtube.com/embed/${ytId}`;
+    host.innerHTML = `
+      <details class="card" style="padding:10px 14px;">
+        <summary style="cursor:pointer; font-weight:600; padding:4px 0; list-style:revert;">📹 Live cam</summary>
+        <div style="position:relative; padding-bottom:56.25%; height:0; margin-top:10px; background:#000; border-radius:8px; overflow:hidden;">
+          <iframe src="${escapeHtml(embedUrl)}" frameborder="0" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture" style="position:absolute; top:0; left:0; width:100%; height:100%;"></iframe>
+        </div>
+        <div style="margin-top:6px; font-size:11px;"><a href="${escapeHtml(spot.cam)}" target="_blank" style="color:var(--accent);">Open in new tab ↗</a></div>
+      </details>
+    `;
+  } else {
+    // Non-YouTube — just link out (most sites block iframing)
+    host.innerHTML = `
+      <details class="card" style="padding:10px 14px;">
+        <summary style="cursor:pointer; font-weight:600; padding:4px 0; list-style:revert;">📹 Live cam</summary>
+        <div style="margin-top:8px;"><a href="${escapeHtml(spot.cam)}" target="_blank" class="btn small" style="display:inline-block; text-decoration:none;">Open cam in new tab ↗</a></div>
+        <div class="muted" style="margin-top:6px; font-size:11px;">${escapeHtml(spot.cam)}</div>
+      </details>
+    `;
   }
 }
 
@@ -1445,6 +1535,7 @@ function showAddSpotModal(prefill) {
   document.getElementById('spot-name').value = (prefill && prefill.name) || '';
   document.getElementById('spot-lat').value = (prefill && prefill.lat != null) ? prefill.lat : '';
   document.getElementById('spot-lon').value = (prefill && prefill.lon != null) ? prefill.lon : '';
+  document.getElementById('spot-cam').value = '';
   // Subtitle hint when coords are pre-filled (e.g., from map)
   const sub = document.getElementById('spot-modal-sub');
   if (prefill && prefill.lat != null && prefill.lon != null) {
@@ -1471,6 +1562,7 @@ function editCurrentSpot() {
   document.getElementById('spot-name').value = spot.name;
   document.getElementById('spot-lat').value = spot.lat;
   document.getElementById('spot-lon').value = spot.lon;
+  document.getElementById('spot-cam').value = spot.cam || '';
   renderDirGrid(spot.offshoreDirs || []);
   document.getElementById('modal-spot').classList.add('open');
 }
@@ -1488,13 +1580,14 @@ function saveSpotModal() {
   const lat = parseFloat(document.getElementById('spot-lat').value);
   const lon = parseFloat(document.getElementById('spot-lon').value);
   const dirs = getSelectedDirs();
+  const cam = (document.getElementById('spot-cam').value || '').trim() || null;
   if (!name) { toast('Name is required'); return; }
   if (isNaN(lat) || isNaN(lon)) { toast('Valid coordinates required'); return; }
   if (editingSpotId) {
     const spot = state.spots.find(s => s.id === editingSpotId);
-    if (spot) { spot.name = name; spot.lat = lat; spot.lon = lon; spot.offshoreDirs = dirs; }
+    if (spot) { spot.name = name; spot.lat = lat; spot.lon = lon; spot.offshoreDirs = dirs; spot.cam = cam; }
   } else {
-    state.spots.push({ id: 'sp_' + Math.random().toString(36).slice(2,10), name, lat, lon, offshoreDirs: dirs, thresholds: null });
+    state.spots.push({ id: 'sp_' + Math.random().toString(36).slice(2,10), name, lat, lon, offshoreDirs: dirs, thresholds: null, cam });
   }
   saveState();
   closeSpotModal();
