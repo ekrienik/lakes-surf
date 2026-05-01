@@ -468,7 +468,8 @@ const DEFAULT_THRESHOLDS = {
   windCleanMaxKmh: 16, windOkMaxKmh: 32, windBadMinKmh: 40,
   offshoreDirs: [],
   w_wave: 0.35, w_period: 0.35, w_wind: 0.30,
-  windGateThreshold: 0.65
+  windGateThreshold: 0.65,
+  buckets: [0.20, 0.40, 0.60, 0.80]
 };
 
 const POPULAR_SPOTS = [
@@ -562,6 +563,26 @@ function dirArrow(deg, size = 12) {
   return `<span style="display:inline-block; transform:rotate(${rot}deg); font-size:${size}px; line-height:1; vertical-align:-1px; margin-left:2px;">↑</span>`;
 }
 
+// Map NOAA's shortForecast text to a weather emoji that renders cleanly at any size.
+function weatherEmoji(shortForecast, isDaytime) {
+  if (!shortForecast) return '';
+  const s = String(shortForecast).toLowerCase();
+  // Most specific first
+  if (s.includes('thunder')) return '⛈️';
+  if (s.includes('snow') && (s.includes('rain') || s.includes('mix'))) return '🌨️';
+  if (s.includes('snow') || s.includes('flurr')) return '❄️';
+  if (s.includes('rain') || s.includes('shower') || s.includes('drizzle')) return '🌧️';
+  if (s.includes('fog') || s.includes('mist') || s.includes('haze')) return '🌫️';
+  if (s.includes('mostly cloudy')) return '🌥️';
+  if (s.includes('partly cloudy')) return '⛅';
+  if (s.includes('cloudy') || s.includes('overcast')) return '☁️';
+  if (s.includes('mostly sunny') || s.includes('mostly clear')) return isDaytime === false ? '🌙' : '🌤️';
+  if (s.includes('partly sunny') || s.includes('partly clear')) return '⛅';
+  if (s.includes('sunny')) return '☀️';
+  if (s.includes('clear')) return isDaytime === false ? '🌙' : '☀️';
+  return '';
+}
+
 function switchView(name) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('nav.tabbar button').forEach(b => b.classList.toggle('active', b.dataset.view === name));
@@ -642,7 +663,7 @@ async function getForecast(lat, lon) {
         const hData = await hRes.json();
         for (const p of (hData.properties && hData.properties.periods) || []) {
           const t = new Date(p.startTime); t.setMinutes(0, 0, 0);
-          iconByHour.set(t.getTime(), { icon: p.icon, shortForecast: p.shortForecast });
+          iconByHour.set(t.getTime(), { icon: p.icon, shortForecast: p.shortForecast, isDaytime: p.isDaytime });
         }
       }
     }
@@ -651,7 +672,7 @@ async function getForecast(lat, lon) {
   const series = {
     waveHeight: parseSeries(props.waveHeight),
     wavePeriod: parseSeries(props.wavePeriod),
-    primarySwellDirection: parseSeries(props.primarySwellDirection),
+    primarySwellDirection: parseSeries(props.waveDirection || props.primarySwellDirection),
     windSpeed: parseSeries(props.windSpeed),
     windGust: parseSeries(props.windGust),
     windDirection: parseSeries(props.windDirection),
@@ -678,7 +699,8 @@ async function getForecast(lat, lon) {
       precipPct: sampleAt(series.probabilityOfPrecipitation, t),
       skyCover: sampleAt(series.skyCover, t),
       icon: ic ? ic.icon : null,
-      shortForecast: ic ? ic.shortForecast : null
+      shortForecast: ic ? ic.shortForecast : null,
+      isDaytime: ic ? ic.isDaytime : null
     });
   }
 
@@ -970,11 +992,12 @@ function rateHour(h, thresholds) {
     score = base * (0.6 + 0.4 * windScore);
   }
 
+  const bk = (T.buckets && T.buckets.length === 4) ? T.buckets : [0.20, 0.40, 0.60, 0.80];
   let rating;
-  if (score < 0.20) rating = 1;
-  else if (score < 0.40) rating = 2;
-  else if (score < 0.60) rating = 3;
-  else if (score < 0.80) rating = 4;
+  if (score < bk[0]) rating = 1;
+  else if (score < bk[1]) rating = 2;
+  else if (score < bk[2]) rating = 3;
+  else if (score < bk[3]) rating = 4;
   else rating = 5;
 
   const wavePower = (wh != null && wp != null) ? wh * wh * wp : null;
@@ -1193,17 +1216,16 @@ function renderForecast() {
   const table = document.getElementById('hourly-table');
   table.innerHTML = `
     <thead><tr>
-      <th></th><th>Time</th><th>Sky</th><th>Wave</th><th>Per</th><th>Wind</th><th>Gust</th><th>Dir</th><th>Power</th><th>Air</th><th>Rain</th>
+      <th></th><th>Time</th><th>Wave</th><th>Per</th><th>Wind</th><th>Gust</th><th>Dir</th><th>Power</th><th>Air</th><th>Rain</th><th>Wx</th>
     </tr></thead>
     <tbody>
       ${day.hours.map(h => {
         const r = rateHour(h, T);
         const tm = h.time.toLocaleTimeString([], { hour: 'numeric' });
-        const iconImg = h.icon ? `<img src="${h.icon}" alt="${escapeHtml(h.shortForecast || '')}" title="${escapeHtml(h.shortForecast || '')}" style="height:22px; width:22px; object-fit:contain; border-radius:4px;">` : '–';
+        const wx = weatherEmoji(h.shortForecast, h.isDaytime);
         return `<tr class="r${r.rating}">
           <td class="rating"></td>
           <td class="time">${tm}</td>
-          <td>${iconImg}</td>
           <td>${fmtWave(h.waveHeight)}${dirArrow(h.swellDir)}</td>
           <td>${h.wavePeriod != null ? h.wavePeriod.toFixed(1)+'s' : '–'}</td>
           <td>${fmtWind(h.windSpeed)}</td>
@@ -1212,6 +1234,7 @@ function renderForecast() {
           <td>${r.wavePower != null ? r.wavePower.toFixed(1) : '–'}</td>
           <td>${fmtTemp(h.temperature)}</td>
           <td>${h.precipPct != null ? Math.round(h.precipPct)+'%' : '–'}</td>
+          <td style="font-size:18px; line-height:1;" title="${escapeHtml(h.shortForecast || '')}">${wx}</td>
         </tr>`;
       }).join('')}
     </tbody>
@@ -1283,12 +1306,12 @@ async function initSpotMapIfNeeded() {
 }
 
 function spotMapEntries() {
-  // Combine saved spots + popular spots (deduped by builtinId)
+  // Combine saved spots + popular spots (deduped by builtinId AND by coord proximity ~500m)
   const entries = state.spots.map(s => ({ name: s.name, lat: s.lat, lon: s.lon, savedSpotId: s.id, offshoreDirs: s.offshoreDirs || [], thresholds: s.thresholds }));
   for (const p of POPULAR_SPOTS) {
-    if (!state.spots.some(s => s.builtinId === p.id)) {
-      entries.push({ name: p.name, lat: p.lat, lon: p.lon, savedSpotId: null, popularId: p.id, offshoreDirs: p.offshoreDirs, thresholds: null });
-    }
+    const alreadyHave = state.spots.some(s => s.builtinId === p.id || haversineMiles(s.lat, s.lon, p.lat, p.lon) < 0.31);
+    if (alreadyHave) continue;
+    entries.push({ name: p.name, lat: p.lat, lon: p.lon, savedSpotId: null, popularId: p.id, offshoreDirs: p.offshoreDirs, thresholds: null });
   }
   return entries;
 }
@@ -1502,6 +1525,7 @@ function openDefaultsThresholdsModal() {
     title: 'Default thresholds',
     sub: 'Applied to all spots that haven’t set their own.',
     showReset: false,
+    showFormula: true,
     get: () => ({ ...state.defaults }),
     save: (t) => { state.defaults = t; saveState(); toast('Defaults saved'); }
   });
@@ -1542,6 +1566,7 @@ function openThresholdsModal(opts) {
   renderThresholdsEditor(body, {
     instanceId: 'modal',
     externalSaveButtonId: 'th-modal-save',
+    showFormula: !!ctx.showFormula,
     get: ctx.get,
     set: (t) => { ctx.save(t); closeThresholdsModal(); }
   });
@@ -1549,7 +1574,7 @@ function openThresholdsModal(opts) {
 }
 function closeThresholdsModal() { document.getElementById('modal-thresholds').classList.remove('open'); thresholdsModalContext = null; }
 
-function renderThresholdsEditor(container, { get, set, instanceId, externalSaveButtonId }) {
+function renderThresholdsEditor(container, { get, set, instanceId, externalSaveButtonId, showFormula }) {
   const T = get();
   const waveUnit = state.units.wave;
   const windUnit = state.units.wind;
@@ -1557,6 +1582,31 @@ function renderThresholdsEditor(container, { get, set, instanceId, externalSaveB
   const fmt = (m) => waveUnit === 'ft' ? (m * M_TO_FT).toFixed(1) : m.toFixed(2);
   const fmtW = (k) => windUnit === 'mph' ? Math.round(k * KMH_TO_MPH) : windUnit === 'kt' ? Math.round(k * KMH_TO_KT) : Math.round(k);
   const inlineSaveButton = externalSaveButtonId ? '' : `<button class="btn small" style="margin-top:14px;" id="${id('save')}">Save thresholds</button>`;
+  const buckets = (T.buckets && T.buckets.length === 4) ? T.buckets : [0.20, 0.40, 0.60, 0.80];
+  const formulaSection = showFormula ? `
+    <details style="margin-top:14px; border-top:1px solid var(--border); padding-top:10px;">
+      <summary style="cursor:pointer; color:var(--accent); font-weight:600; padding:6px 0; list-style:revert;">Advanced: weights &amp; rating cutoffs</summary>
+      <div class="muted" style="font-size:11px; margin:6px 0 10px;">Tune how each sub-score is weighted and where the Poor/Fair/OK/Good/Epic boundaries sit.</div>
+      <div class="grid2">
+        <div><label>Wave weight</label><input type="number" step="0.05" min="0" max="1" id="${id('wWave')}" value="${T.w_wave != null ? T.w_wave : 0.35}" /></div>
+        <div><label>Period weight</label><input type="number" step="0.05" min="0" max="1" id="${id('wPeriod')}" value="${T.w_period != null ? T.w_period : 0.35}" /></div>
+      </div>
+      <label>Wind weight</label>
+      <input type="number" step="0.05" min="0" max="1" id="${id('wWind')}" value="${T.w_wind != null ? T.w_wind : 0.30}" />
+      <label>Wind gate threshold (0–1)</label>
+      <input type="number" step="0.05" min="0" max="1" id="${id('windGate')}" value="${T.windGateThreshold != null ? T.windGateThreshold : 0.65}" />
+      <div class="muted" style="font-size:11px; margin:4px 0 8px;">Wind only contributes when (w_wave·wave + w_period·period) / (w_wave + w_period) ≥ this value.</div>
+      <label>Rating cutoffs (0–1)</label>
+      <div class="grid2">
+        <div><label style="font-size:11px;">Poor → Fair</label><input type="number" step="0.05" min="0" max="1" id="${id('cutPF')}" value="${buckets[0]}" /></div>
+        <div><label style="font-size:11px;">Fair → OK</label><input type="number" step="0.05" min="0" max="1" id="${id('cutFO')}" value="${buckets[1]}" /></div>
+      </div>
+      <div class="grid2">
+        <div><label style="font-size:11px;">OK → Good</label><input type="number" step="0.05" min="0" max="1" id="${id('cutOG')}" value="${buckets[2]}" /></div>
+        <div><label style="font-size:11px;">Good → Epic</label><input type="number" step="0.05" min="0" max="1" id="${id('cutGE')}" value="${buckets[3]}" /></div>
+      </div>
+    </details>
+  ` : '';
   container.innerHTML = `
     <div class="grid2">
       <div><label>Min ideal wave (${waveUnit})</label><input type="number" step="0.1" id="${id('waveMin')}" value="${fmt(T.waveIdealMinM)}" /></div>
@@ -1574,10 +1624,12 @@ function renderThresholdsEditor(container, { get, set, instanceId, externalSaveB
     <input type="number" step="1" id="${id('windOk')}" value="${fmtW(T.windOkMaxKmh)}" />
     <label>Blown-out floor (${windUnit})</label>
     <input type="number" step="1" id="${id('windBad')}" value="${fmtW(T.windBadMinKmh)}" />
+    ${formulaSection}
     ${inlineSaveButton}`;
   const waveScale = waveUnit === 'ft' ? (1 / M_TO_FT) : 1;
   const windScale = windUnit === 'mph' ? (1 / KMH_TO_MPH) : windUnit === 'kt' ? (1 / KMH_TO_KT) : 1;
   const num = (suffix) => parseFloat(document.getElementById(id(suffix)).value);
+  const numOpt = (suffix) => { const el = document.getElementById(id(suffix)); return el ? parseFloat(el.value) : NaN; };
   const doSave = () => {
     const t = { ...T };
     t.waveIdealMinM = num('waveMin') * waveScale;
@@ -1588,6 +1640,16 @@ function renderThresholdsEditor(container, { get, set, instanceId, externalSaveB
     t.windCleanMaxKmh = num('windClean') * windScale;
     t.windOkMaxKmh    = num('windOk') * windScale;
     t.windBadMinKmh   = num('windBad') * windScale;
+    if (showFormula) {
+      const wWave = numOpt('wWave'), wPeriod = numOpt('wPeriod'), wWind = numOpt('wWind');
+      const gate = numOpt('windGate');
+      const c1 = numOpt('cutPF'), c2 = numOpt('cutFO'), c3 = numOpt('cutOG'), c4 = numOpt('cutGE');
+      if (!isNaN(wWave)) t.w_wave = wWave;
+      if (!isNaN(wPeriod)) t.w_period = wPeriod;
+      if (!isNaN(wWind)) t.w_wind = wWind;
+      if (!isNaN(gate)) t.windGateThreshold = gate;
+      if (![c1,c2,c3,c4].some(isNaN)) t.buckets = [c1, c2, c3, c4];
+    }
     set(t);
   };
   if (externalSaveButtonId) {
