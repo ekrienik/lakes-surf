@@ -1075,12 +1075,13 @@ function rateDay(hours, thresholds) {
   if (!hours || !hours.length) return { rating: 0 };
   const day = hours.filter(h => { const hr = h.time.getHours(); return hr >= 5 && hr <= 21; });
   const list = day.length ? day : hours;
-  let bestScore = 0, bestR = 0;
+  // Floor at rating 1 (Poor) so a truly flat day still renders red, not the no-class gray.
+  let bestScore = -1, bestR = 1;
   for (const h of list) {
     const r = rateHour(h, thresholds);
     if (r.score > bestScore) { bestScore = r.score; bestR = r.rating; }
   }
-  return { rating: bestR, score: bestScore };
+  return { rating: bestR, score: Math.max(0, bestScore) };
 }
 
 /* ============================================================================
