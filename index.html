@@ -59,7 +59,7 @@
   }
   header h1 { font-size: 18px; margin: 0; font-weight: 600; letter-spacing: 0.3px; }
   header .sub { color: var(--fg-dim); font-size: 12px; margin-top: 2px; }
-  main { padding: 12px 14px 24px; max-width: 720px; margin: 0 auto; }
+  main { padding: 12px 14px 60px; max-width: 720px; margin: 0 auto; }
 
   nav.tabbar {
     position: fixed; bottom: 0; left: 0; right: 0;
@@ -233,19 +233,19 @@
 
 <main>
   <section id="view-spots" class="view active">
+    <div class="legend" style="justify-content:center; margin: 0 0 12px;">
+      <span><i class="sw" style="background:var(--r-5)"></i>Epic</span>
+      <span><i class="sw" style="background:var(--r-4)"></i>Good</span>
+      <span><i class="sw" style="background:var(--r-3)"></i>OK</span>
+      <span><i class="sw" style="background:var(--r-2)"></i>Fair</span>
+      <span><i class="sw" style="background:var(--r-1)"></i>Poor</span>
+    </div>
     <div id="spots-list"></div>
     <div id="spots-empty" class="empty" style="display:none;">
       <h2>No saved spots yet</h2>
       <p>Browse the popular Lake Michigan breaks, or pin a coordinate from the map.</p>
       <button class="btn" onclick="openPopularSpotsModal()">★ Browse popular spots</button>
       <div style="margin-top:10px;"><button class="btn ghost" onclick="showAddSpotModal()">+ Add a spot manually</button></div>
-    </div>
-    <div class="legend" style="margin-top:14px;">
-      <span><i class="sw" style="background:var(--r-5)"></i>Epic</span>
-      <span><i class="sw" style="background:var(--r-4)"></i>Good</span>
-      <span><i class="sw" style="background:var(--r-3)"></i>OK</span>
-      <span><i class="sw" style="background:var(--r-2)"></i>Fair</span>
-      <span><i class="sw" style="background:var(--r-1)"></i>Poor</span>
     </div>
   </section>
 
@@ -337,6 +337,29 @@
       <button class="btn small danger" onclick="clearAll()" style="margin-left:6px;">Clear all</button>
     </div>
     <div class="card">
+      <h3 style="margin-top:0;">How ratings work</h3>
+      <p class="muted" style="margin:0 0 8px;">Each hour gets one of five ratings using a wind-gate formula. Sub-scores are 0–1.</p>
+      <div class="muted" style="font-size:12px; line-height:1.5;">
+        <b style="color:var(--fg);">Wave</b>: 0.05 if &lt; ½ ideal-min (flat) → ramps to 1.0 in the ideal range → drops if too big.<br>
+        <b style="color:var(--fg);">Period</b>: 0 if below min → 0.5–1.0 between min and good → 1.0 above.<br>
+        <b style="color:var(--fg);">Wind</b>: 1.0 light (≤10 mph) → drops to 0.05 blown out (≥25 mph). Offshore +0.15, onshore ×0.6.
+      </div>
+      <p class="muted" style="margin-top:10px; font-size:12px; line-height:1.5;">
+        <b style="color:var(--fg);">Wind-gate scoring:</b><br>
+        base = (w_wave × wave + w_period × period) / (w_wave + w_period)<br>
+        if base &lt; 0.65 → score = base (wind ignored)<br>
+        else → score = base × (0.6 + 0.4 × wind)
+      </p>
+      <div class="row" style="gap:6px; flex-wrap:wrap; margin-top:10px;">
+        <span class="chip r1">Poor &lt; 0.20</span>
+        <span class="chip r2">Fair &lt; 0.40</span>
+        <span class="chip r3">OK &lt; 0.60</span>
+        <span class="chip r4">Good &lt; 0.80</span>
+        <span class="chip r5">Epic ≥ 0.80</span>
+      </div>
+    </div>
+
+    <div class="card">
       <h3 style="margin-top:0;">About</h3>
       <p class="muted">Forecast data: NOAA <a href="https://api.weather.gov" target="_blank" style="color:var(--accent)">api.weather.gov</a>. Live observations: <a href="https://synopticdata.com" target="_blank" style="color:var(--accent)">Synoptic Mesowest</a>.</p>
       <p class="muted">No account, no tracking. Saved spots live on this device.</p>
@@ -404,7 +427,10 @@
 
 <div class="modal-bg" id="modal-popular">
   <div class="modal">
-    <h2>Popular Lake Michigan spots</h2>
+    <div class="row between" style="margin: -4px 0 4px;">
+      <h2 style="margin:0;">Popular Lake Michigan spots</h2>
+      <button class="btn small ghost" onclick="closePopularSpotsModal()" aria-label="Close" style="padding:4px 10px;">✕</button>
+    </div>
     <p class="muted" style="margin:0 0 10px;">Tap any spot to add it to your saved list. You can edit thresholds and offshore directions afterwards.</p>
     <div id="popular-list"></div>
     <div class="row between" style="margin-top:14px;">
@@ -438,7 +464,7 @@ const DIRS_8 = ['N','NE','E','SE','S','SW','W','NW'];
 
 const DEFAULT_THRESHOLDS = {
   waveIdealMinM: 0.9144, waveIdealMaxM: 2.4384, waveMaxM: 3.6576, // 3ft / 8ft / 12ft
-  periodMinS: 6, periodGoodS: 11,
+  periodMinS: 7, periodGoodS: 11,
   windCleanMaxKmh: 16, windOkMaxKmh: 32, windBadMinKmh: 40,
   offshoreDirs: [],
   w_wave: 0.35, w_period: 0.35, w_wind: 0.30,
@@ -447,13 +473,13 @@ const DEFAULT_THRESHOLDS = {
 
 const POPULAR_SPOTS = [
   { id: 'pop_montrose',   name: 'Montrose Beach',                 lat: 41.968, lon: -87.635, lake: 'Michigan', offshoreDirs: ['W','NW','SW'] },
-  { id: 'pop_greenwood',  name: 'Greenwood Beach (Evanston)',     lat: 42.052, lon: -87.674, lake: 'Michigan', offshoreDirs: ['W','NW','SW'] },
+  { id: 'pop_greenwood',  name: 'Greenwood Beach (Evanston)',     lat: 42.044815, lon: -87.670950, lake: 'Michigan', offshoreDirs: ['W','NW','SW'] },
   { id: 'pop_promontory', name: 'Promontory / 57th St Beach',     lat: 41.793, lon: -87.578, lake: 'Michigan', offshoreDirs: ['W','NW','SW'] },
   { id: 'pop_sheboygan',  name: 'Sheboygan (Deland Park)',        lat: 43.751, lon: -87.714, lake: 'Michigan', offshoreDirs: ['W','NW','SW'] },
   { id: 'pop_bradford',   name: 'Bradford Beach (Milwaukee)',     lat: 43.063, lon: -87.872, lake: 'Michigan', offshoreDirs: ['W','NW'] },
   { id: 'pop_stjoseph',   name: 'Silver Beach (St. Joseph)',      lat: 42.108, lon: -86.490, lake: 'Michigan', offshoreDirs: ['E','NE','SE'] },
   { id: 'pop_grandhaven', name: 'Grand Haven State Park',         lat: 43.057, lon: -86.247, lake: 'Michigan', offshoreDirs: ['E','NE','SE'] },
-  { id: 'pop_michcity',   name: 'Michigan City (Washington Park)',lat: 41.726, lon: -86.913, lake: 'Michigan', offshoreDirs: ['S','SW','SE'] },
+  { id: 'pop_michcity',   name: 'Washington Park (Michigan City)',lat: 41.726, lon: -86.913, lake: 'Michigan', offshoreDirs: ['S','SW','SE'] },
   { id: 'pop_newbuffalo', name: 'New Buffalo Beach',              lat: 41.799, lon: -86.745, lake: 'Michigan', offshoreDirs: ['S','SE','E'] }
 ];
 const FIRST_RUN_SEED = ['pop_montrose'];
@@ -491,7 +517,11 @@ function makeSpotFromPopular(p) {
   };
 }
 function isPopularAdded(popularId) {
-  return state.spots.some(s => s.builtinId === popularId);
+  if (state.spots.some(s => s.builtinId === popularId)) return true;
+  // Coord-proximity check: existing spot within ~500m of this popular spot counts as "already added"
+  const p = POPULAR_SPOTS.find(x => x.id === popularId);
+  if (!p) return false;
+  return state.spots.some(s => haversineMiles(s.lat, s.lon, p.lat, p.lon) < 0.31); // ~500m
 }
 function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
 let state = loadState();
@@ -523,6 +553,13 @@ function degToCompass(deg) {
   if (deg == null || isNaN(deg)) return '–';
   const d = ((deg % 360) + 360) % 360;
   return DIRS_8[Math.round(d / 45) % 8];
+}
+// Small inline arrow that rotates by the actual degree value.
+// `deg` is the FROM direction (where wind/swell is coming from); arrow points where it's going TO.
+function dirArrow(deg, size = 12) {
+  if (deg == null || isNaN(deg)) return '';
+  const rot = (parseFloat(deg) + 180) % 360;
+  return `<span style="display:inline-block; transform:rotate(${rot}deg); font-size:${size}px; line-height:1; vertical-align:-1px; margin-left:2px;">↑</span>`;
 }
 
 function switchView(name) {
@@ -595,6 +632,22 @@ async function getForecast(lat, lon) {
   const grid = await gRes.json();
   const props = grid.properties;
 
+  // Fetch hourly periods for sky icons (parallel-friendly best-effort; empty map on failure)
+  const iconByHour = new Map();
+  try {
+    const hUrl = pt.properties.forecastHourly;
+    if (hUrl) {
+      const hRes = await fetch(hUrl, { headers: { 'Accept': 'application/geo+json' } });
+      if (hRes.ok) {
+        const hData = await hRes.json();
+        for (const p of (hData.properties && hData.properties.periods) || []) {
+          const t = new Date(p.startTime); t.setMinutes(0, 0, 0);
+          iconByHour.set(t.getTime(), { icon: p.icon, shortForecast: p.shortForecast });
+        }
+      }
+    }
+  } catch (e) { console.warn('hourly icon fetch failed', e); }
+
   const series = {
     waveHeight: parseSeries(props.waveHeight),
     wavePeriod: parseSeries(props.wavePeriod),
@@ -612,6 +665,7 @@ async function getForecast(lat, lon) {
   const hours = [];
   for (let h = 0; h < 24 * 7; h++) {
     const t = new Date(start.getTime() + h * 3600 * 1000);
+    const ic = iconByHour.get(t.getTime());
     hours.push({
       time: t,
       waveHeight: sampleAt(series.waveHeight, t),
@@ -622,7 +676,9 @@ async function getForecast(lat, lon) {
       windDir: sampleAt(series.windDirection, t),
       temperature: sampleAt(series.temperature, t),
       precipPct: sampleAt(series.probabilityOfPrecipitation, t),
-      skyCover: sampleAt(series.skyCover, t)
+      skyCover: sampleAt(series.skyCover, t),
+      icon: ic ? ic.icon : null,
+      shortForecast: ic ? ic.shortForecast : null
     });
   }
 
@@ -694,20 +750,32 @@ function haversineMiles(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
+// Tier-1 networks (NWS/FAA/NDBC) are quality-controlled and well-sited.
+// Tier-2 includes RAWS, USGS, established mesonets. Tier-3 is everything else (PWS, FW-prefix, etc.)
+function stationTier(s) {
+  const m = parseInt(s.MNET_ID, 10);
+  if ([1, 96, 153, 162].includes(m)) return 1;   // NWS/FAA ASOS, NDBC C-MAN, NDBC buoys
+  if ([2, 25, 51, 138, 152].includes(m)) return 2; // RAWS, USGS, mesonets
+  return 3;
+}
+
 async function getNearestStationForSpot(lat, lon, maxMiles = 30) {
   const stations = await fetchAllLakeStations();
-  let best = null, bestDist = Infinity;
+  const candidates = [];
   for (const s of stations) {
     const sLat = parseFloat(s.LATITUDE), sLon = parseFloat(s.LONGITUDE);
     if (isNaN(sLat) || isNaN(sLon)) continue;
-    // Require at least one of wave/wind/water-temp; skip air-only stations
     const obs = s.OBSERVATIONS || {};
+    // Require at least one of wave/wind/water-temp; skip air-only stations
     const hasMarine = !!(obs.wave_height_value_1 || obs.wind_speed_value_1 || obs.water_temp_value_1 || obs.T_water_temp_value_1);
     if (!hasMarine) continue;
     const d = haversineMiles(lat, lon, sLat, sLon);
-    if (d < bestDist && d <= maxMiles) { bestDist = d; best = { ...s, distMiles: d }; }
+    if (d > maxMiles) continue;
+    candidates.push({ ...s, distMiles: d, tier: stationTier(s) });
   }
-  return best;
+  // Prefer higher quality tier; within a tier, prefer closer.
+  candidates.sort((a, b) => (a.tier - b.tier) || (a.distMiles - b.distMiles));
+  return candidates[0] || null;
 }
 
 function pickObs(obs, keys) {
@@ -748,7 +816,8 @@ function formatLiveCompact(live) {
   if (o.waveHeight) parts.push(`${parseFloat(o.waveHeight.value).toFixed(1)} ft`);
   if (o.windSpeed) {
     const dir = o.windDirection ? degToCompass(parseFloat(o.windDirection.value)) : '';
-    parts.push(`${Math.round(parseFloat(o.windSpeed.value))} mph ${dir}`.trim());
+    const arrow = o.windDirection ? dirArrow(parseFloat(o.windDirection.value)) : '';
+    parts.push(`${Math.round(parseFloat(o.windSpeed.value))} mph ${dir}${arrow}`.trim());
   }
   if (o.waterTemp) {
     parts.push(`Water ${Math.round(parseFloat(o.waterTemp.value))}°`);
@@ -942,10 +1011,7 @@ async function renderSpots() {
     card.onclick = () => openForecast(spot.id);
     card.innerHTML = `
       <div class="row between">
-        <div>
-          <h3>${escapeHtml(spot.name)}</h3>
-          <div class="coords">${spot.lat.toFixed(3)}, ${spot.lon.toFixed(3)}</div>
-        </div>
+        <h3 style="margin:0;">${escapeHtml(spot.name)}</h3>
         <div id="now-${spot.id}"><span class="chip rNA">…</span></div>
       </div>
       <div class="live-line" id="live-${spot.id}" style="display:none;"></div>
@@ -1057,7 +1123,8 @@ async function loadLiveCardForForecast(spot) {
   if (o.waveHeight) stats.push(stat('Wave', parseFloat(o.waveHeight.value).toFixed(1), 'ft'));
   if (o.windSpeed) {
     const dir = o.windDirection ? degToCompass(parseFloat(o.windDirection.value)) : '';
-    stats.push(stat('Wind', `${Math.round(parseFloat(o.windSpeed.value))} ${dir}`, 'mph'));
+    const arrow = o.windDirection ? dirArrow(parseFloat(o.windDirection.value)) : '';
+    stats.push(stat('Wind', `${Math.round(parseFloat(o.windSpeed.value))} ${dir}${arrow}`, 'mph'));
   }
   if (o.windGust) stats.push(stat('Gust', Math.round(parseFloat(o.windGust.value)), 'mph'));
   if (o.waterTemp) {
@@ -1103,7 +1170,7 @@ function renderForecast() {
       <div>
         <div class="muted">Forecast: right now</div>
         <div style="font-size:24px; font-weight:700;">${fmtWave(now.waveHeight)}</div>
-        <div class="muted">${now.wavePeriod ? now.wavePeriod.toFixed(1) + 's' : '–'} • wind ${fmtWind(now.windSpeed)} ${degToCompass(now.windDir)}</div>
+        <div class="muted">${now.wavePeriod ? now.wavePeriod.toFixed(1) + 's' : '–'} • wind ${fmtWind(now.windSpeed)} ${degToCompass(now.windDir)}${dirArrow(now.windDir)}</div>
       </div>
       <span class="chip r${nowR.rating}" style="font-size:14px; padding:6px 12px; height:auto;">${ratingLabel(nowR.rating)}</span>
     </div>
@@ -1124,20 +1191,22 @@ function renderForecast() {
   const table = document.getElementById('hourly-table');
   table.innerHTML = `
     <thead><tr>
-      <th></th><th>Time</th><th>Wave</th><th>Per</th><th>Wind</th><th>Gust</th><th>Dir</th><th>Power</th><th>Air</th><th>Rain</th>
+      <th></th><th>Time</th><th>Sky</th><th>Wave</th><th>Per</th><th>Wind</th><th>Gust</th><th>Dir</th><th>Power</th><th>Air</th><th>Rain</th>
     </tr></thead>
     <tbody>
       ${day.hours.map(h => {
         const r = rateHour(h, T);
         const tm = h.time.toLocaleTimeString([], { hour: 'numeric' });
+        const iconImg = h.icon ? `<img src="${h.icon}" alt="${escapeHtml(h.shortForecast || '')}" title="${escapeHtml(h.shortForecast || '')}" style="height:22px; width:22px; object-fit:contain; border-radius:4px;">` : '–';
         return `<tr class="r${r.rating}">
           <td class="rating"></td>
           <td class="time">${tm}</td>
-          <td>${fmtWave(h.waveHeight)}</td>
+          <td>${iconImg}</td>
+          <td>${fmtWave(h.waveHeight)}${dirArrow(h.swellDir)}</td>
           <td>${h.wavePeriod != null ? h.wavePeriod.toFixed(1)+'s' : '–'}</td>
           <td>${fmtWind(h.windSpeed)}</td>
           <td>${fmtWind(h.windGust)}</td>
-          <td>${degToCompass(h.windDir)}</td>
+          <td>${degToCompass(h.windDir)}${dirArrow(h.windDir)}</td>
           <td>${r.wavePower != null ? r.wavePower.toFixed(1) : '–'}</td>
           <td>${fmtTemp(h.temperature)}</td>
           <td>${h.precipPct != null ? Math.round(h.precipPct)+'%' : '–'}</td>
@@ -1222,6 +1291,18 @@ function spotMapEntries() {
   return entries;
 }
 
+// Heuristic: shift a spot's marker offshore so it visually sits over water on the Spot Map.
+// Only used for marker positioning; forecast fetching still uses the original coords.
+function offshoreMapCoord(lat, lon) {
+  const SHIFT = 0.012; // ~0.8 mi
+  // West shore (IL/WI) — lake is to the east → shift east
+  if (lon < -87.0) return [lat, lon + SHIFT];
+  // South shore (Indiana, far-southern Michigan) — lake to the north → shift north
+  if (lat < 41.85) return [lat + SHIFT, lon];
+  // East shore (Michigan) — lake to the west → shift west
+  return [lat, lon - SHIFT];
+}
+
 async function loadAllSpotMapForecasts() {
   const entries = spotMapEntries();
   await Promise.all(entries.map(async e => {
@@ -1275,7 +1356,8 @@ function updateSpotMapMarkers() {
         ? `<a href="#" onclick="event.preventDefault(); openForecast('${e.savedSpotId}')">Open forecast</a>`
         : `<a href="#" onclick="event.preventDefault(); addPopularSpot('${e.popularId}'); switchView('spots');">Add this spot</a>`
     }`;
-    const marker = L.marker([e.lat, e.lon], { icon }).addTo(spotMap).bindPopup(popupHtml);
+    const [mLat, mLon] = offshoreMapCoord(e.lat, e.lon);
+    const marker = L.marker([mLat, mLon], { icon }).addTo(spotMap).bindPopup(popupHtml);
     spotMapMarkers[key] = marker;
   }
 }
@@ -1583,7 +1665,7 @@ function addPopularSpot(popularId) {
   state.spots.push(makeSpotFromPopular(p));
   saveState();
   renderPopularList();
-  renderSpots(); // refresh the underlying Spots tab so the new card appears immediately
+  renderSpots();
   toast('Added ' + p.name);
 }
 
@@ -1601,7 +1683,6 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// Auto-refresh live observations every 5 min while a relevant view is active.
 setInterval(() => {
   stationsCache = null; stationsCacheTime = 0;
   const spotsView = document.getElementById('view-spots');
