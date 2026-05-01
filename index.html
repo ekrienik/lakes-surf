@@ -1616,7 +1616,7 @@ function updateSpotMiniMapArrows() {
       const v = parseFloat(currentLive.obs.windSpeed.value);
       // Mesowest wind_speed comes back in mph (with our units arg). Convert back to kmh
       // so fmtWindCompact() applies the user's unit pref consistently.
-      if (!isNaN(v)) windSpd = v / MPH_TO_KMH_FACTOR();
+      if (!isNaN(v)) windSpd = v * MPH_TO_KMH_FACTOR();
     }
   }
   const swellDeg = (h.swellDir != null && !isNaN(h.swellDir)) ? h.swellDir : null;
