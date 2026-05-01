@@ -257,6 +257,7 @@
     <div id="forecast-content" style="display:none;">
       <div id="live-card-host"></div>
       <div id="cam-host"></div>
+      <div id="water-quality-host"></div>
       <div class="card" id="forecast-summary"></div>
       <div class="day-tabs" id="day-tabs"></div>
       <div class="card" style="padding:0; overflow:hidden;">
@@ -1198,10 +1199,12 @@ async function openForecast(spotId) {
   document.getElementById('forecast-content').style.display = 'none';
   document.getElementById('live-card-host').innerHTML = '';
   document.getElementById('cam-host').innerHTML = '';
+  document.getElementById('water-quality-host').innerHTML = '';
 
   // Fire live fetch concurrently with forecast
   loadLiveCardForForecast(spot);
   renderCamSection(spot);
+  renderWaterQualityCard(spot);
 
   try {
     currentForecast = await getForecast(spot.lat, spot.lon);
@@ -1215,6 +1218,106 @@ async function openForecast(spotId) {
       <p class="muted">NOAA forecasts cover U.S. coordinates. Make sure your point is on a U.S. side of a Great Lake.</p>
       <button class="btn ghost" onclick="openForecast('${spotId}')">Retry</button>`;
   }
+}
+
+/* ============================================================================
+   Water quality (Chicago beach E. coli DNA test predictions)
+   Source: Chicago Data Portal, dataset 2ivx-z93u (CORS-open SODA API).
+   Updates daily Memorial Day–Labor Day; off-season the latest reading is stale.
+   ============================================================================ */
+
+function isChicagoAreaSpot(lat, lon) {
+  // Lakefront from Calumet up through Evanston; covers Montrose, Greenwood, Promontory, etc.
+  return lat >= 41.65 && lat <= 42.10 && lon >= -87.85 && lon <= -87.50;
+}
+
+function dnaStatus(reading) {
+  if (reading == null || isNaN(reading)) return null;
+  const v = parseFloat(reading);
+  if (v < 100) return { color: 'var(--r-5)', label: 'SAFE', emoji: '🟢' };
+  if (v < 235) return { color: 'var(--r-3)', label: 'CAUTION', emoji: '🟡' };
+  return { color: 'var(--r-1)', label: 'SWIM ADVISORY', emoji: '🔴' };
+}
+
+let beachQualityCache = null;
+let beachQualityCacheTime = 0;
+const BEACH_QUALITY_CACHE_MS = 60 * 60 * 1000; // 1 hour
+
+async function getNearestBeachQuality(lat, lon) {
+  const now = Date.now();
+  let data = beachQualityCache;
+  if (!data || (now - beachQualityCacheTime) > BEACH_QUALITY_CACHE_MS) {
+    try {
+      // Pull the most recent ~500 readings; we'll pick the latest per beach in JS
+      const url = 'https://data.cityofchicago.org/resource/2ivx-z93u.json?$where=dna_reading_mean%20IS%20NOT%20NULL&$order=dna_sample_timestamp%20DESC&$limit=500';
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      data = await res.json();
+      beachQualityCache = data;
+      beachQualityCacheTime = now;
+    } catch (e) { console.warn('beach DNA fetch failed', e); return null; }
+  }
+  // Find the nearest beach (within 6 miles), then take its most recent reading
+  let bestRow = null, bestDist = Infinity;
+  for (const r of data) {
+    if (!r.latitude || !r.longitude || !r.dna_sample_timestamp) continue;
+    const d = haversineMiles(lat, lon, parseFloat(r.latitude), parseFloat(r.longitude));
+    if (d > 6) continue;
+    if (d < bestDist) { bestDist = d; bestRow = { ...r, distMiles: d }; }
+    else if (d < bestDist + 0.05 && bestRow && r.beach === bestRow.beach && new Date(r.dna_sample_timestamp) > new Date(bestRow.dna_sample_timestamp)) {
+      bestRow = { ...r, distMiles: d };
+    }
+  }
+  return bestRow;
+}
+
+async function renderWaterQualityCard(spot) {
+  const host = document.getElementById('water-quality-host');
+  if (!host) return;
+  if (!isChicagoAreaSpot(spot.lat, spot.lon)) { host.innerHTML = ''; return; }
+
+  const links = `
+    <div style="margin-top:10px; display:flex; flex-direction:column; gap:6px;">
+      <a href="https://geohub.mwrd.org/pages/cso" target="_blank" style="color:var(--accent); font-size:12px;">View MWRD combined sewer overflow map ↗</a>
+      <a href="https://www.chicagoparkdistrict.com/parks-facilities/beaches" target="_blank" style="color:var(--accent); font-size:12px;">Chicago Park District beach status ↗</a>
+    </div>`;
+
+  // Render placeholder while fetching
+  host.innerHTML = `
+    <details class="card" style="padding:10px 14px;">
+      <summary style="cursor:pointer; font-weight:600; padding:4px 0; list-style:revert;">💧 Water quality</summary>
+      <div id="wq-body" style="margin-top:8px;"><div class="muted" style="font-size:12px;">Loading…</div>${links}</div>
+    </details>
+  `;
+  const body = document.getElementById('wq-body');
+
+  let live = '';
+  try {
+    const r = await getNearestBeachQuality(spot.lat, spot.lon);
+    if (r && r.dna_reading_mean != null) {
+      const status = dnaStatus(r.dna_reading_mean);
+      const reading = parseFloat(r.dna_reading_mean).toFixed(0);
+      const sampleDate = new Date(r.dna_sample_timestamp);
+      const ageDays = Math.round((Date.now() - sampleDate.getTime()) / 86400000);
+      const dateLabel = sampleDate.toLocaleDateString();
+      const dist = r.distMiles < 1 ? '<1 mi' : `${r.distMiles.toFixed(1)} mi`;
+      const stale = ageDays > 7;
+      live = `
+        <div style="font-size:14px;">
+          ${status.emoji} <strong style="color:${status.color};">${status.label}</strong>
+          <span class="muted" style="font-size:12px;">${stale ? ' (last reading)' : ''}</span>
+        </div>
+        <div class="muted" style="font-size:12px; margin-top:4px;">
+          ${reading} cfu/100mL · ${escapeHtml(r.beach || 'beach')} · ${dist} · ${escapeHtml(dateLabel)}${stale ? ' · ' + ageDays + ' days ago' : ''}
+        </div>
+        ${stale ? '<div class="muted" style="font-size:11px; margin-top:4px;">Beach testing is in season Memorial Day–Labor Day.</div>' : ''}`;
+    } else {
+      live = `<div class="muted" style="font-size:12px;">No nearby beach water testing data yet. Chicago tests Memorial Day–Labor Day.</div>`;
+    }
+  } catch (e) {
+    live = `<div class="muted" style="font-size:12px;">Couldn't load beach water data.</div>`;
+  }
+  if (body) body.innerHTML = live + links;
 }
 
 function renderCamSection(spot) {
@@ -1847,7 +1950,7 @@ function addPopularSpot(popularId) {
 
 /* ============================================================================
    Util + boot
-   ============================================================== */
+   ============================================================================ */
 
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
