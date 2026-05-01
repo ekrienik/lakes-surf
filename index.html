@@ -171,11 +171,6 @@
   /* Edit mode: subtle accent tint on cards */
   .loc-card.editing { background: rgba(78, 195, 255, 0.08); border-color: rgba(78, 195, 255, 0.4); }
 
-  /* 24h wave-height sparkline */
-  .wave-spark { margin: 8px 0 4px; background: rgba(78, 195, 255, 0.05); border-radius: 4px; padding: 2px 4px; }
-  .wave-spark svg { display: block; width: 100%; height: 28px; }
-  .wave-spark .lbl { font-size: 9px; color: var(--fg-dim); padding: 0 2px; display: flex; justify-content: space-between; }
-
   /* NWS Map (iframe) */
   #weather-iframe { height: calc(100vh - 130px - var(--safe-top) - var(--safe-bot)); min-height: 360px; display: block; }
 
@@ -618,31 +613,6 @@ function extractYouTubeId(url) {
   if (!url) return null;
   const m = String(url).match(/(?:youtube\.com\/(?:watch\?v=|embed\/|v\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
   return m ? m[1] : null;
-}
-
-// Build a 24-hour wave-height sparkline SVG. Returns HTML string.
-function makeWaveSparkline(hours) {
-  const sample = hours.slice(0, 24);
-  if (!sample.length) return '';
-  const heights = sample.map(h => (h.waveHeight == null ? 0 : h.waveHeight));
-  const maxFt = Math.max(...heights) * M_TO_FT;
-  // Floor the y-axis at 1ft minimum so a flat day still renders a visible line near the bottom.
-  const yMaxFt = Math.max(1, Math.ceil(maxFt));
-  const yMaxM = yMaxFt / M_TO_FT;
-  const w = 100, hSvg = 28;
-  const stepX = w / Math.max(1, heights.length - 1);
-  let pts = '', area = '';
-  heights.forEach((m, i) => {
-    const x = (i * stepX).toFixed(2);
-    const y = (hSvg - (m / yMaxM) * hSvg).toFixed(2);
-    pts += `${i === 0 ? '' : ' '}${x},${y}`;
-    area += `${i === 0 ? `M${x},${hSvg} L${x},${y}` : ` L${x},${y}`}`;
-  });
-  area += ` L${w},${hSvg} Z`;
-  const startTime = sample[0].time;
-  const endTime = sample[sample.length - 1].time;
-  const fmtTime = (t) => t.toLocaleTimeString([], { hour: 'numeric' });
-  return `<svg viewBox="0 0 ${w} ${hSvg}" preserveAspectRatio="none"><path d="${area}" fill="rgba(78,195,255,0.18)"/><polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="1.2" vector-effect="non-scaling-stroke"/></svg><div class="lbl"><span>${fmtTime(startTime)}</span><span>${yMaxFt} ft max</span><span>${fmtTime(endTime)}</span></div>`;
 }
 
 // Map NOAA's shortForecast text to a weather emoji that renders cleanly at any size.
@@ -1165,8 +1135,7 @@ async function renderSpots() {
         <div id="now-${spot.id}"><span class="chip rNA">…</span></div>
       </div>
       <div class="live-line" id="live-${spot.id}" style="display:none;"></div>
-      <div class="wave-spark" id="spark-${spot.id}" style="display:none;"></div>
-      <div class="day-strip" id="strip-${spot.id}"
+      <div class="day-strip" id="strip-${spot.id}">
         ${Array.from({length:7}).map(()=>`<div class="d"><span class="lbl">–</span><span class="pill"></span></div>`).join('')}
       </div>
     `;
@@ -1188,13 +1157,6 @@ async function loadSpotSummary(spot) {
   const nowR = rateHour(now, T);
   const nowEl = document.getElementById('now-' + spot.id);
   if (nowEl) nowEl.innerHTML = `<span class="chip r${nowR.rating}">${fmtWave(now.waveHeight)}</span>`;
-
-  // 24-hour wave sparkline
-  const spark = document.getElementById('spark-' + spot.id);
-  if (spark) {
-    spark.innerHTML = makeWaveSparkline(data.hours);
-    spark.style.display = 'block';
-  }
 
   const days = groupByLocalDay(data.hours);
   const strip = document.getElementById('strip-' + spot.id);
