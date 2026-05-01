@@ -829,13 +829,13 @@ function formatLiveCompact(live) {
   if (live.station) {
     const obsTime = (o.waveHeight && o.waveHeight.time) || (o.windSpeed && o.windSpeed.time) || (o.airTemp && o.airTemp.time);
     const ago = timeAgoStr(obsTime);
-    const distLabel = live.station.distMiles < 1 ? '<1 mi' : `${live.station.distMiles.toFixed(0)} mi`;
-    const name = (live.station.NAME || live.station.STID || '').slice(0, 30);
+    const distLabel = live.station.distMiles < 1 ? '&lt;1 mi' : `${live.station.distMiles.toFixed(0)} mi`;
+    const name = escapeHtml((live.station.NAME || live.station.STID || '').slice(0, 30));
     footer = `${distLabel} ${name}${ago ? ' · ' + ago : ''}`;
   } else if (live.waterTempOmr) {
     const ago = timeAgoStr(live.waterTempOmr.issuanceTime);
-    const distLabel = live.waterTempOmr.distMiles < 1 ? '<1 mi' : `${live.waterTempOmr.distMiles.toFixed(0)} mi`;
-    footer = `${distLabel} ${live.waterTempOmr.name} (NWS OMR)${ago ? ' · ' + ago : ''}`;
+    const distLabel = live.waterTempOmr.distMiles < 1 ? '&lt;1 mi' : `${live.waterTempOmr.distMiles.toFixed(0)} mi`;
+    footer = `${distLabel} ${escapeHtml(live.waterTempOmr.name)} (NWS OMR)${ago ? ' · ' + ago : ''}`;
   }
   return footer ? `${parts.join(' · ')} · ${footer}` : parts.join(' · ');
 }
@@ -1055,7 +1055,8 @@ async function loadLiveForSpotCard(spot) {
   const el = document.getElementById('live-' + spot.id);
   if (!el) return;
   if (compact) {
-    el.innerHTML = `<strong>Live</strong> · ${escapeHtml(compact)}`;
+    // formatLiveCompact returns trusted HTML (it escapes external station names internally)
+    el.innerHTML = `<strong>Live</strong> · ${compact}`;
     el.style.display = 'block';
   } else {
     el.style.display = 'none';
