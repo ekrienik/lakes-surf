@@ -1119,7 +1119,8 @@ async function loadLiveCardForForecast(spot) {
   if (!host) return;
   if (!live) { host.innerHTML = ''; return; }
   const o = live.obs || {};
-  const stat = (label, val, unit) => val ? `<div><div class="muted" style="font-size:11px;">${label}</div><div style="font-size:16px; font-weight:600;">${escapeHtml(String(val))}${unit?'<span class="muted" style="font-size:11px; margin-left:2px;">'+unit+'</span>':''}</div></div>` : '';
+  // Values may contain trusted HTML (e.g. wind direction arrow). All values come from numeric fields or compass strings — no user input.
+  const stat = (label, val, unit) => val !== '' && val != null ? `<div><div class="muted" style="font-size:11px;">${label}</div><div style="font-size:16px; font-weight:600;">${val}${unit?'<span class="muted" style="font-size:11px; margin-left:2px;">'+unit+'</span>':''}</div></div>` : '';
   const stats = [];
   if (o.waveHeight) stats.push(stat('Wave', parseFloat(o.waveHeight.value).toFixed(1), 'ft'));
   if (o.windSpeed) {
