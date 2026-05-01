@@ -525,13 +525,13 @@ const DEFAULT_THRESHOLDS = {
 };
 
 const POPULAR_SPOTS = [
-  { id: 'pop_montrose',   name: 'Montrose Beach',                 lat: 41.968, lon: -87.635, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=qv5XF6USv7M' },
-  { id: 'pop_greenwood',  name: 'Greenwood Beach (Evanston)',     lat: 42.044815, lon: -87.670950, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=qv5XF6USv7M' },
+  { id: 'pop_montrose',   name: 'Montrose Beach',                 lat: 41.9699, lon: -87.6336, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=qv5XF6USv7M' },
+  { id: 'pop_greenwood',  name: 'Greenwood Beach (Evanston)',     lat: 42.0049, lon: -87.6686, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=qv5XF6USv7M' },
   { id: 'pop_promontory', name: 'Promontory / 57th St Beach',     lat: 41.793, lon: -87.578, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=qv5XF6USv7M' },
-  { id: 'pop_sheboygan',  name: 'Sheboygan (Deland Park)',        lat: 43.751, lon: -87.695, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=13j5iZkMpbE' },
+  { id: 'pop_sheboygan',  name: 'Sheboygan (Deland Park)',        lat: 43.7578, lon: -87.6960, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=13j5iZkMpbE' },
   { id: 'pop_bradford',   name: 'Bradford Beach (Milwaukee)',     lat: 43.063, lon: -87.872, lake: 'Michigan', offshoreDirs: ['W','NW'], cam: null },
-  { id: 'pop_stjoseph',   name: 'Silver Beach (St. Joseph)',      lat: 42.115, lon: -86.500, lake: 'Michigan', offshoreDirs: ['E','NE','SE'], cam: null },
-  { id: 'pop_grandhaven', name: 'Grand Haven State Park',         lat: 43.057, lon: -86.247, lake: 'Michigan', offshoreDirs: ['E','NE','SE'], cam: 'https://surfshopgh.com/pages/swim-flag-cam' },
+  { id: 'pop_stjoseph',   name: 'Silver Beach (St. Joseph)',      lat: 42.1085, lon: -86.4955, lake: 'Michigan', offshoreDirs: ['E','NE','SE'], cam: null },
+  { id: 'pop_grandhaven', name: 'Grand Haven State Park',         lat: 43.0530, lon: -86.2543, lake: 'Michigan', offshoreDirs: ['E','NE','SE'], cam: 'https://surfshopgh.com/pages/swim-flag-cam' },
   { id: 'pop_michcity',   name: 'Washington Park (Michigan City)',lat: 41.726, lon: -86.913, lake: 'Michigan', offshoreDirs: ['S','SW','SE'], cam: 'https://www.youtube.com/watch?v=Y2VkN45kj_0' },
   { id: 'pop_newbuffalo', name: 'New Buffalo Beach',              lat: 41.799, lon: -86.745, lake: 'Michigan', offshoreDirs: ['S','SE','E'], cam: null }
 ];
@@ -554,17 +554,30 @@ function loadState() {
         if (p && p.cam) sp.cam = p.cam;
       }
     }
-    // Migration: nudge Sheboygan + Silver Beach offshore if user is still on the old default coords
-    // (NOAA's grid points returned no wave data at the original coords)
+    // Migration: auto-update built-in spot coords when user is still on a
+    // previous version's lat/lon. Each entry lists every prior coord pair.
     const COORD_MIGRATIONS = {
-      'pop_sheboygan': { oldLat: 43.751, oldLon: -87.714 },
-      'pop_stjoseph':  { oldLat: 42.108, oldLon: -86.490 }
+      'pop_montrose':   [{ oldLat: 41.968,    oldLon: -87.635   }],
+      'pop_greenwood':  [{ oldLat: 42.044815, oldLon: -87.670950 }],
+      'pop_sheboygan':  [
+        { oldLat: 43.751, oldLon: -87.714 },  // pre-v5.5.2 original
+        { oldLat: 43.751, oldLon: -87.695 }   // v5.5.2 nudge
+      ],
+      'pop_stjoseph':   [
+        { oldLat: 42.108, oldLon: -86.490 },  // pre-v5.5.2 original
+        { oldLat: 42.115, oldLon: -86.500 }   // v5.5.2 nudge
+      ],
+      'pop_grandhaven': [{ oldLat: 43.057,    oldLon: -86.247   }]
     };
     for (const sp of s.spots) {
-      const m = sp.builtinId && COORD_MIGRATIONS[sp.builtinId];
-      if (m && Math.abs(sp.lat - m.oldLat) < 0.0005 && Math.abs(sp.lon - m.oldLon) < 0.0005) {
-        const p = POPULAR_SPOTS.find(x => x.id === sp.builtinId);
-        if (p) { sp.lat = p.lat; sp.lon = p.lon; }
+      const candidates = sp.builtinId && COORD_MIGRATIONS[sp.builtinId];
+      if (!candidates) continue;
+      for (const m of candidates) {
+        if (Math.abs(sp.lat - m.oldLat) < 0.0005 && Math.abs(sp.lon - m.oldLon) < 0.0005) {
+          const p = POPULAR_SPOTS.find(x => x.id === sp.builtinId);
+          if (p) { sp.lat = p.lat; sp.lon = p.lon; }
+          break;
+        }
       }
     }
     return s;
