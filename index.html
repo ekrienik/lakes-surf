@@ -233,6 +233,41 @@
   .legend { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: 11px; }
   .legend span { display: inline-flex; align-items: center; gap: 4px; color: var(--fg-dim); }
   .legend .sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+  /* Mini conditions map on the "Forecast: right now" card */
+  .now-row { display: flex; gap: 12px; align-items: stretch; }
+  .now-text { flex: 1 1 auto; min-width: 0; }
+  .now-mini-map-wrap {
+    flex: 0 0 130px; width: 130px; height: 130px;
+    border-radius: 10px; overflow: hidden; position: relative;
+    border: 1px solid var(--border); background: var(--bg-3);
+  }
+  .now-mini-map { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .now-mini-arrows {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 500;
+  }
+  .now-mini-map .leaflet-control-attribution { display: none; }
+  /* SVG can extend slightly past viewBox so arrow badges don't clip near the edge */
+  .now-mini-arrows { overflow: visible; }
+  /* Selected hourly row — accent top/bottom rule, keeps rating bar + sticky cols readable */
+  table.hourly tbody tr { cursor: pointer; }
+  table.hourly tbody tr.selected td {
+    box-shadow: inset 0 2px 0 var(--accent), inset 0 -2px 0 var(--accent);
+  }
+  table.hourly tbody tr.selected td.time { color: var(--accent); font-weight: 700; }
+  /* "When" label under the mini-map (selected hour vs. now) */
+  .map-when {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.55); color: #fff;
+    font-size: 10px; padding: 3px 6px;
+    display: flex; justify-content: space-between; align-items: center; gap: 4px;
+    z-index: 600;
+  }
+  .map-when .reset-btn {
+    background: var(--accent); color: #04243a; border: 0; border-radius: 4px;
+    padding: 1px 6px; font-size: 10px; font-weight: 700; cursor: pointer; font-family: inherit;
+  }
 </style>
 </head>
 <body>
@@ -1200,11 +1235,19 @@ function groupByLocalDay(hours) {
 let currentSpotId = null;
 let currentForecast = null;
 let currentDayIndex = 0;
+let currentLive = null;
+let selectedHourIndex = null;     // global index in currentForecast.hours; null = "right now"
+let spotMiniMap = null;
+let spotMiniMapSpotId = null;
 
 async function openForecast(spotId) {
   const spot = state.spots.find(s => s.id === spotId);
   if (!spot) return;
   currentSpotId = spotId;
+  currentLive = null;
+  selectedHourIndex = null;
+  // Tear down any previous mini-map so it rebinds to the new card's div
+  if (spotMiniMap) { try { spotMiniMap.remove(); } catch (e) {} spotMiniMap = null; spotMiniMapSpotId = null; }
   switchView('forecast');
   document.getElementById('header-title').textContent = spot.name;
   document.getElementById('header-sub').textContent = `${spot.lat.toFixed(3)}, ${spot.lon.toFixed(3)}`;
@@ -1367,6 +1410,11 @@ function renderCamSection(spot) {
 
 async function loadLiveCardForForecast(spot) {
   const live = await getLiveForSpot(spot);
+  // Stash for the mini-map arrow overlay (so wind comes from live obs when available).
+  if (currentSpotId === spot.id) {
+    currentLive = live || null;
+    updateSpotMiniMapArrows();
+  }
   const host = document.getElementById('live-card-host');
   if (!host) return;
   if (!live) { host.innerHTML = ''; return; }
@@ -1420,16 +1468,25 @@ function renderForecast() {
   const nowR = rateHour(now, T);
   const summary = document.getElementById('forecast-summary');
   summary.innerHTML = `
-    <div class="row between">
-      <div>
-        <div class="muted">Forecast: right now</div>
-        <div style="font-size:24px; font-weight:700;">${fmtWave(now.waveHeight)}</div>
+    <div class="now-row">
+      <div class="now-text">
+        <div class="row" style="gap:8px; align-items:center;">
+          <div class="muted">Forecast: right now</div>
+          <span class="chip r${nowR.rating}">${ratingLabel(nowR.rating)}</span>
+        </div>
+        <div style="font-size:24px; font-weight:700; margin-top:4px;">${fmtWave(now.waveHeight)}</div>
         <div class="muted">${now.wavePeriod ? now.wavePeriod.toFixed(1) + 's' : '–'} • wind ${fmtWind(now.windSpeed)} ${degToCompass(now.windDir)}${dirArrow(now.windDir)}</div>
+        <div class="muted" style="margin-top:6px;">${nowR.reasons.slice(0,3).join(' • ')}</div>
       </div>
-      <span class="chip r${nowR.rating}" style="font-size:14px; padding:6px 12px; height:auto;">${ratingLabel(nowR.rating)}</span>
+      <div class="now-mini-map-wrap">
+        <div id="spot-mini-map" class="now-mini-map"></div>
+        <svg id="spot-mini-arrows" class="now-mini-arrows" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet"></svg>
+        <div id="spot-mini-when" class="map-when"></div>
+      </div>
     </div>
-    <div class="muted" style="margin-top:8px;">${nowR.reasons.slice(0,3).join(' • ')}</div>
   `;
+  initSpotMiniMap(spot);
+  updateSpotMiniMapArrows();
 
   const tabs = document.getElementById('day-tabs');
   tabs.innerHTML = days.map((day, i) => {
@@ -1452,7 +1509,9 @@ function renderForecast() {
         const r = rateHour(h, T);
         const tm = h.time.toLocaleTimeString([], { hour: 'numeric' });
         const wx = weatherEmoji(h.shortForecast, h.isDaytime);
-        return `<tr class="r${r.rating}">
+        const idx = currentForecast.hours.indexOf(h);
+        const isSel = (selectedHourIndex != null && selectedHourIndex === idx);
+        return `<tr class="r${r.rating}${isSel ? ' selected' : ''}" data-idx="${idx}" onclick="selectHour(${idx})">
           <td class="rating"></td>
           <td class="time">${tm}</td>
           <td>${fmtWave(h.waveHeight)}${dirArrow(h.swellDir)}</td>
@@ -1475,8 +1534,187 @@ function renderForecast() {
     : '<span class="muted">Using defaults</span>';
 }
 
-function selectDay(i) { currentDayIndex = i; renderForecast(); }
+function selectDay(i) { currentDayIndex = i; selectedHourIndex = null; renderForecast(); }
 function ratingLabel(r) { return ['–','Poor','Fair','OK','Good','Epic'][r] || '–'; }
+
+// Tap an hourly row to peek that hour on the mini-map.
+function selectHour(idx) {
+  if (!currentForecast || !currentForecast.hours[idx]) return;
+  // Toggle off if tapping the already-selected hour
+  if (selectedHourIndex === idx) selectedHourIndex = null;
+  else selectedHourIndex = idx;
+  // Highlight the row in place (no full re-render, snappy)
+  const tbody = document.querySelector('#hourly-table tbody');
+  if (tbody) {
+    tbody.querySelectorAll('tr.selected').forEach(tr => tr.classList.remove('selected'));
+    if (selectedHourIndex != null) {
+      const tr = tbody.querySelector(`tr[data-idx="${selectedHourIndex}"]`);
+      if (tr) tr.classList.add('selected');
+    }
+  }
+  updateSpotMiniMapArrows();
+}
+function resetSelectedHour() {
+  selectedHourIndex = null;
+  const tbody = document.querySelector('#hourly-table tbody');
+  if (tbody) tbody.querySelectorAll('tr.selected').forEach(tr => tr.classList.remove('selected'));
+  updateSpotMiniMapArrows();
+}
+
+/* ============================================================================
+   Mini conditions map (on Forecast: right now card)
+   - Square map centered on the spot, ~0.25 mi radius
+   - SVG overlay with wind + swell arrows from center
+   - Wind uses live obs if available, otherwise current-hour forecast
+   - Swell uses current-hour forecast
+   ============================================================================ */
+function initSpotMiniMap(spot) {
+  const el = document.getElementById('spot-mini-map');
+  if (!el || !spot) return;
+  // If a previous map is bound to a different element/spot, dispose it first.
+  if (spotMiniMap && (spotMiniMapSpotId !== spot.id || !document.body.contains(spotMiniMap.getContainer()))) {
+    try { spotMiniMap.remove(); } catch (e) {}
+    spotMiniMap = null;
+  }
+  if (!spotMiniMap) {
+    spotMiniMap = L.map(el, {
+      zoomControl: false, attributionControl: false,
+      dragging: false, scrollWheelZoom: false, doubleClickZoom: false,
+      boxZoom: false, keyboard: false, touchZoom: false, tap: false,
+      inertia: false
+    });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, crossOrigin: true
+    }).addTo(spotMiniMap);
+    spotMiniMapSpotId = spot.id;
+  }
+  // 0.25 mi ≈ 402 m radius → 800m square bounds via toBounds
+  const center = L.latLng(spot.lat, spot.lon);
+  const bounds = center.toBounds(800);
+  spotMiniMap.fitBounds(bounds, { animate: false });
+  // Make sure tiles render correctly inside a hidden-then-shown card
+  setTimeout(() => { try { spotMiniMap.invalidateSize(); } catch (e) {} }, 50);
+  spotMiniMapSpotId = spot.id;
+}
+
+function updateSpotMiniMapArrows() {
+  const svg = document.getElementById('spot-mini-arrows');
+  if (!svg || !currentForecast) return;
+  const idx = (selectedHourIndex != null) ? selectedHourIndex : 0;
+  const h = currentForecast.hours[idx];
+  if (!h) return;
+
+  // Wind direction & speed: prefer live obs ONLY when viewing "now" (hour 0, no manual selection)
+  let windDeg = (h.windDir != null && !isNaN(h.windDir)) ? h.windDir : null;
+  let windSpd = (h.windSpeed != null && !isNaN(h.windSpeed)) ? h.windSpeed : null; // kmh
+  if (selectedHourIndex == null && currentLive && currentLive.obs) {
+    if (currentLive.obs.windDirection) {
+      const v = parseFloat(currentLive.obs.windDirection.value);
+      if (!isNaN(v)) windDeg = v;
+    }
+    if (currentLive.obs.windSpeed) {
+      const v = parseFloat(currentLive.obs.windSpeed.value);
+      // Mesowest wind_speed comes back in mph (with our units arg). Convert back to kmh
+      // so fmtWindCompact() applies the user's unit pref consistently.
+      if (!isNaN(v)) windSpd = v / MPH_TO_KMH_FACTOR();
+    }
+  }
+  const swellDeg = (h.swellDir != null && !isNaN(h.swellDir)) ? h.swellDir : null;
+  const waveLabel = waveBadgeText(h.waveHeight);
+  const periodLabel = (h.wavePeriod != null && !isNaN(h.wavePeriod)) ? h.wavePeriod.toFixed(0) + 's' : null;
+  const windLabel = (windSpd != null) ? fmtWindCompact(windSpd) : null;
+
+  svg.innerHTML = makeMiniArrowsSvg(windDeg, windLabel, swellDeg, waveLabel, periodLabel);
+
+  // "When" label below the map
+  const whenEl = document.getElementById('spot-mini-when');
+  if (whenEl) {
+    if (selectedHourIndex != null) {
+      const t = h.time;
+      const dow = t.toLocaleDateString(undefined, { weekday: 'short' });
+      const hr = t.toLocaleTimeString([], { hour: 'numeric' });
+      whenEl.innerHTML = `<span>${dow} ${hr}</span><button class="reset-btn" onclick="resetSelectedHour()">Now</button>`;
+    } else {
+      whenEl.innerHTML = `<span style="opacity:0.85;">Right now</span><span style="opacity:0.6; font-size:9px;">tap an hour</span>`;
+    }
+  }
+}
+
+// Helper: kmh→mph factor used to invert Mesowest's mph values
+function MPH_TO_KMH_FACTOR() { return 1.609344; }
+
+// Compact wind label, respecting user's unit preference
+function fmtWindCompact(kmh) {
+  if (kmh == null || isNaN(kmh)) return null;
+  const u = state.units.wind;
+  if (u === 'kmh') return Math.round(kmh) + 'km/h';
+  if (u === 'kt') return Math.round(kmh / 1.852) + 'kt';
+  return Math.round(kmh / 1.609344) + 'mph';
+}
+
+// Compact wave label for the badge: e.g. "4.5ft", "0.8m", or "flat"
+function waveBadgeText(m) {
+  if (m == null || isNaN(m)) return null;
+  if (state.units.wave === 'ft') {
+    const ft = m * M_TO_FT;
+    if (ft < 1.0) return 'flat';
+    return ft.toFixed(1) + 'ft';
+  }
+  if (m < 0.3) return 'flat';
+  return m.toFixed(1) + 'm';
+}
+
+function makeMiniArrowsSvg(windDeg, windLabel, swellDeg, waveLabel, periodLabel) {
+  // viewBox 0 0 100 100; both arrows radiate from (50,50).
+  // We rotate by (deg + 180) so the arrow points where wind/swell is GOING.
+  // Swell arrow is longer than wind arrow so they're always distinguishable.
+  const cx = 50, cy = 50;
+  const swellColor = '#4ec3ff';
+  const windColor  = '#e07a26';
+  const swellLen = 30;
+  const windLen  = 18;
+  const out = [];
+
+  // Compass tick (small N indicator at top)
+  out.push(`<text x="${cx}" y="10" text-anchor="middle" font-family="-apple-system,system-ui,sans-serif" font-size="8" font-weight="700" fill="#fff" stroke="rgba(0,0,0,0.7)" stroke-width="0.6" paint-order="stroke">N</text>`);
+
+  // Build a single arrow + optional badge label at the tip. Text is counter-rotated so it stays upright.
+  function arrow(deg, color, len, badgeLines, badgeWidth) {
+    if (deg == null || isNaN(deg)) return '';
+    const rot = (deg + 180) % 360;
+    const tipY = cy - len;
+    const halfW = badgeWidth / 2;
+    const lines = (badgeLines || []).filter(Boolean);
+    const lineHeight = 7.2;
+    const badgeHeight = lines.length ? (lines.length * lineHeight + 2) : 0;
+    const badgeY = tipY - 4 - badgeHeight / 2;
+    const labelStr = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const badgeSvg = lines.length ? `<g transform="translate(${cx} ${badgeY}) rotate(${-rot})">
+      <rect x="${-halfW}" y="${-badgeHeight / 2}" width="${badgeWidth}" height="${badgeHeight}" rx="2.5"
+            fill="${color}" stroke="rgba(0,0,0,0.55)" stroke-width="0.5"/>
+      ${lines.map((line, i) => {
+        const ly = -badgeHeight / 2 + lineHeight * (i + 0.7) + 0.5;
+        return `<text x="0" y="${ly}" text-anchor="middle" font-family="-apple-system,system-ui,sans-serif" font-size="6.4" font-weight="700" fill="#fff">${labelStr(line)}</text>`;
+      }).join('')}
+    </g>` : '';
+    return `<g transform="rotate(${rot} ${cx} ${cy})" style="filter: drop-shadow(0 0 1.5px rgba(0,0,0,0.7));">
+      <line x1="${cx}" y1="${cy}" x2="${cx}" y2="${tipY}" stroke="${color}" stroke-width="3.2" stroke-linecap="round"/>
+      <polygon points="${cx},${tipY - 5} ${cx - 4},${tipY + 1} ${cx + 4},${tipY + 1}" fill="${color}"/>
+      ${badgeSvg}
+    </g>`;
+  }
+
+  // Swell first (longer, on bottom), wind on top (shorter) so both visible when overlapping.
+  const swellLines = [];
+  if (waveLabel) swellLines.push(waveLabel);
+  if (periodLabel) swellLines.push(periodLabel);
+  out.push(arrow(swellDeg, swellColor, swellLen, swellLines, 22));
+  out.push(arrow(windDeg, windColor, windLen, windLabel ? [windLabel] : [], 22));
+
+  // Center dot for orientation
+  out.push(`<circle cx="${cx}" cy="${cy}" r="2.4" fill="#fff" stroke="rgba(0,0,0,0.6)" stroke-width="0.6"/>`);
+  return out.join('');
+}
 
 /* ============================================================================
    Spot Map (custom Leaflet, Lake Michigan)
