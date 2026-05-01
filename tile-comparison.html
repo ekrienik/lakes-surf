@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mini-map tile comparison</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+<style>
+  body {
+    background: #0b1622; color: #e8f0f7;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
+    margin: 0; padding: 24px;
+  }
+  h1 { font-size: 18px; margin: 0 0 18px; font-weight: 600; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    max-width: 1200px;
+  }
+  .opt {
+    background: #122336; border: 1px solid #233a52;
+    border-radius: 12px; padding: 14px; text-align: center;
+  }
+  .opt h2 {
+    font-size: 14px; margin: 0 0 6px; font-weight: 600;
+  }
+  .opt p {
+    font-size: 12px; color: #a3b5c7; margin: 0 0 10px; line-height: 1.4;
+    min-height: 32px;
+  }
+  .map-wrap {
+    width: 100%; aspect-ratio: 1 / 1;
+    border-radius: 10px; overflow: hidden; position: relative;
+    border: 1px solid #233a52; background: #0b1622;
+    margin: 0 auto;
+  }
+  .map { position: absolute; inset: 0; }
+  .arrows {
+    position: absolute; inset: 0; pointer-events: none; z-index: 600;
+    overflow: visible;
+  }
+  .label {
+    font-size: 11px; color: #4ec3ff; margin-top: 8px; word-break: break-all;
+  }
+</style>
+</head>
+<body>
+<h1>Lakes Surf — mini-map style options</h1>
+<p style="color:#a3b5c7; margin-top:0;">Each tile uses the same Montrose Beach center, same wind (NE→SW) and swell arrows. Pick one and I'll wire it in.</p>
+
+<div class="grid">
+
+  <div class="opt">
+    <h2>A. Current (OSM Standard)</h2>
+    <p>Full-color OpenStreetMap. Lots of label/road colors compete with arrows.</p>
+    <div class="map-wrap">
+      <div id="m-osm" class="map"></div>
+      <svg id="a-osm" class="arrows" viewBox="0 0 100 100"></svg>
+    </div>
+  </div>
+
+  <div class="opt">
+    <h2>B. CartoDB Positron (light)</h2>
+    <p>Soft light-gray basemap. Arrows pop visually. Free, no API key.</p>
+    <div class="map-wrap">
+      <div id="m-positron" class="map"></div>
+      <svg id="a-positron" class="arrows" viewBox="0 0 100 100"></svg>
+    </div>
+  </div>
+
+  <div class="opt">
+    <h2>C. CartoDB Dark Matter</h2>
+    <p>Dark-gray basemap; matches the app's dark theme. Free, no key.</p>
+    <div class="map-wrap">
+      <div id="m-dark" class="map"></div>
+      <svg id="a-dark" class="arrows" viewBox="0 0 100 100"></svg>
+    </div>
+  </div>
+
+  <div class="opt">
+    <h2>D. Esri World Gray Canvas</h2>
+    <p>Light gray with more land/water differentiation. Free, no key.</p>
+    <div class="map-wrap">
+      <div id="m-esri-gray" class="map"></div>
+      <svg id="a-esri-gray" class="arrows" viewBox="0 0 100 100"></svg>
+    </div>
+  </div>
+
+  <div class="opt">
+    <h2>E. Esri Ocean Basemap</h2>
+    <p>Emphasizes water with bathymetry; subtle land. Free, no key.</p>
+    <div class="map-wrap">
+      <div id="m-ocean" class="map"></div>
+      <svg id="a-ocean" class="arrows" viewBox="0 0 100 100"></svg>
+    </div>
+  </div>
+
+  <div class="opt">
+    <h2>F. Compass (no map)</h2>
+    <p>Drop tiles entirely — just a compass rose. Maximum arrow legibility, no geographic context.</p>
+    <div class="map-wrap" style="background: radial-gradient(circle, #1a3148 0%, #0b1622 80%);">
+      <svg id="a-compass" class="arrows" viewBox="0 0 100 100" style="background:none;"></svg>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const LAT = 41.968, LON = -87.635; // Montrose Beach
+const ZOOM_BOUNDS = L.latLng(LAT, LON).toBounds(800);
+
+function makeMap(id, tileUrl, opts) {
+  const map = L.map(id, {
+    zoomControl: false, attributionControl: false,
+    dragging: false, scrollWheelZoom: false, doubleClickZoom: false,
+    boxZoom: false, keyboard: false, touchZoom: false, tap: false
+  });
+  L.tileLayer(tileUrl, Object.assign({ maxZoom: 19, crossOrigin: true }, opts || {})).addTo(map);
+  map.fitBounds(ZOOM_BOUNDS, { animate: false });
+  setTimeout(() => map.invalidateSize(), 80);
+  return map;
+}
+
+makeMap('m-osm',       'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
+makeMap('m-positron',  'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',  { subdomains: 'abcd' });
+makeMap('m-dark',      'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',   { subdomains: 'abcd' });
+makeMap('m-esri-gray', 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}');
+makeMap('m-ocean',     'https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}');
+
+// Arrows overlay — same on every option
+function arrowsSvg(includeCompass) {
+  const cx = 50, cy = 50;
+  const swellColor = '#4ec3ff';
+  const windColor = '#e07a26';
+  const swellLen = 30, windLen = 18;
+
+  // Wind from NE (45°) → going SW; rotation = (45+180)%360 = 225°
+  const windDeg = 45;
+  // Swell from NW (315°) → going SE; rotation = (315+180)%360 = 135°
+  const swellDeg = 315;
+
+  function arrow(deg, color, len, lines, badgeWidth) {
+    const rot = (deg + 180) % 360;
+    const tipY = cy - len;
+    const halfW = badgeWidth / 2;
+    const lineHeight = 7.2;
+    const badgeH = lines.length * lineHeight + 2;
+    const badgeY = tipY - 4 - badgeH / 2;
+    return `<g transform="rotate(${rot} ${cx} ${cy})" style="filter: drop-shadow(0 0 1.5px rgba(0,0,0,0.7));">
+      <line x1="${cx}" y1="${cy}" x2="${cx}" y2="${tipY}" stroke="${color}" stroke-width="3.2" stroke-linecap="round"/>
+      <polygon points="${cx},${tipY - 5} ${cx - 4},${tipY + 1} ${cx + 4},${tipY + 1}" fill="${color}"/>
+      <g transform="translate(${cx} ${badgeY}) rotate(${-rot})">
+        <rect x="${-halfW}" y="${-badgeH/2}" width="${badgeWidth}" height="${badgeH}" rx="2.5"
+              fill="${color}" stroke="rgba(0,0,0,0.55)" stroke-width="0.5"/>
+        ${lines.map((line, i) => {
+          const ly = -badgeH/2 + lineHeight * (i + 0.7) + 0.5;
+          return `<text x="0" y="${ly}" text-anchor="middle"
+                    font-family="-apple-system,system-ui,sans-serif"
+                    font-size="6.4" font-weight="700" fill="#fff">${line}</text>`;
+        }).join('')}
+      </g>
+    </g>`;
+  }
+
+  let compass = '';
+  if (includeCompass) {
+    // Cardinal ticks for the no-map option
+    compass = `
+      <circle cx="${cx}" cy="${cy}" r="42" fill="none" stroke="#4ec3ff" stroke-width="0.4" stroke-dasharray="0.8 1.5" opacity="0.6"/>
+      <text x="${cx}" y="9"  text-anchor="middle" font-size="8" font-weight="700" fill="#a3b5c7">N</text>
+      <text x="${cx}" y="98" text-anchor="middle" font-size="8" font-weight="700" fill="#a3b5c7">S</text>
+      <text x="2"    y="53"  text-anchor="start"  font-size="8" font-weight="700" fill="#a3b5c7">W</text>
+      <text x="98"   y="53"  text-anchor="end"    font-size="8" font-weight="700" fill="#a3b5c7">E</text>`;
+  } else {
+    compass = `<text x="${cx}" y="10" text-anchor="middle" font-size="8" font-weight="700"
+       fill="#fff" stroke="rgba(0,0,0,0.7)" stroke-width="0.6" paint-order="stroke">N</text>`;
+  }
+
+  return compass +
+    arrow(swellDeg, swellColor, swellLen, ['1.0ft', '4s'], 22) +
+    arrow(windDeg, windColor, windLen, ['8mph'], 22) +
+    `<circle cx="${cx}" cy="${cy}" r="2.4" fill="#fff" stroke="rgba(0,0,0,0.6)" stroke-width="0.6"/>`;
+}
+
+['osm','positron','dark','esri-gray','ocean'].forEach(k => {
+  document.getElementById('a-' + k).innerHTML = arrowsSvg(false);
+});
+document.getElementById('a-compass').innerHTML = arrowsSvg(true);
+</script>
+</body>
+</html>

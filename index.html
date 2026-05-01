@@ -256,18 +256,16 @@
     box-shadow: inset 0 2px 0 var(--accent), inset 0 -2px 0 var(--accent);
   }
   table.hourly tbody tr.selected td.time { color: var(--accent); font-weight: 700; }
-  /* "When" label under the mini-map (selected hour vs. now) */
-  .map-when {
-    position: absolute; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.55); color: #fff;
-    font-size: 10px; padding: 3px 6px;
-    display: flex; justify-content: space-between; align-items: center; gap: 4px;
-    z-index: 600;
+  /* Map + caption column on the Forecast card */
+  .now-mini-map-col { display: flex; flex-direction: column; flex: 0 0 130px; align-items: center; }
+  .now-mini-map-col .now-mini-map-wrap { flex: 0 0 130px; width: 130px; height: 130px; }
+  /* Caption appears only when an hour is manually selected */
+  .map-when-caption {
+    color: var(--accent); font-size: 11px; font-weight: 600;
+    margin-top: 4px; min-height: 14px; text-align: center;
+    width: 130px; opacity: 0; transition: opacity 0.15s;
   }
-  .map-when .reset-btn {
-    background: var(--accent); color: #04243a; border: 0; border-radius: 4px;
-    padding: 1px 6px; font-size: 10px; font-weight: 700; cursor: pointer; font-family: inherit;
-  }
+  .map-when-caption.visible { opacity: 1; }
 </style>
 </head>
 <body>
@@ -866,7 +864,7 @@ async function fetchAllLakeStations() {
   const now = Date.now();
   if (stationsCache && (now - stationsCacheTime) < STATIONS_CACHE_MS) return stationsCache;
   if (stationsInflight) return stationsInflight;
-  const url = `${MESOWEST_BASE}/latest?bbox=${LAKE_MI_BBOX}&within=180&vars=wave_height,wind_speed,wind_direction,wind_gust,water_temp,T_water_temp,air_temp&varoperator=or&status=active&output=json&units=temp|F,speed|mph,height|ft&token=${MESOWEST_TOKEN}`;
+  const url = `${MESOWEST_BASE}/latest?bbox=${LAKE_MI_BBOX}&within=180&vars=wave_height,wave_period,dominant_wave_period,wind_speed,wind_direction,wind_gust,water_temp,T_water_temp,air_temp&varoperator=or&status=active&output=json&units=temp|F,speed|mph,height|ft&token=${MESOWEST_TOKEN}`;
   stationsInflight = fetch(url).then(r => {
     if (!r.ok) throw new Error('Mesowest fetch failed: ' + r.status);
     return r.json();
@@ -934,6 +932,7 @@ function extractObs(station) {
   const o = station.OBSERVATIONS;
   return {
     waveHeight: pickObs(o, ['wave_height']),
+    wavePeriod: pickObs(o, ['dominant_wave_period', 'wave_period']),
     windSpeed: pickObs(o, ['wind_speed']),
     windGust: pickObs(o, ['wind_gust']),
     windDirection: pickObs(o, ['wind_direction']),
@@ -1417,37 +1416,54 @@ async function loadLiveCardForForecast(spot) {
   }
   const host = document.getElementById('live-card-host');
   if (!host) return;
-  if (!live) { host.innerHTML = ''; return; }
-  const o = live.obs || {};
-  // Values may contain trusted HTML (e.g. wind direction arrow). All values come from numeric fields or compass strings — no user input.
-  const stat = (label, val, unit) => val !== '' && val != null ? `<div><div class="muted" style="font-size:11px;">${label}</div><div style="font-size:16px; font-weight:600;">${val}${unit?'<span class="muted" style="font-size:11px; margin-left:2px;">'+unit+'</span>':''}</div></div>` : '';
-  const stats = [];
-  if (o.waveHeight) stats.push(stat('Wave', parseFloat(o.waveHeight.value).toFixed(1), 'ft'));
+  const o = (live && live.obs) || {};
+
+  // statHtml renders a stat column. When val is null we render a muted "n/a"
+  // placeholder so the card always shows the same six columns.
+  const statHtml = (label, val, unit) => `<div><div class="muted" style="font-size:11px;">${label}</div><div style="font-size:16px; font-weight:600;">${val == null ? '<span class="muted" style="font-weight:400;">n/a</span>' : val + (unit ? '<span class="muted" style="font-size:11px; margin-left:2px;">'+unit+'</span>' : '')}</div></div>`;
+
+  // Track which fields actually came from the primary buoy/station so the
+  // footer can list them explicitly (e.g. "Wind, Gust, Air from Oak St ...").
+  const stationFields = [];
+  let waveVal = null, perVal = null, windVal = null, gustVal = null;
+  let waterVal = null, airVal = null, waterFromOmr = false;
+
+  if (o.waveHeight) { waveVal = parseFloat(o.waveHeight.value).toFixed(1); stationFields.push('Wave'); }
+  if (o.wavePeriod) { perVal = Math.round(parseFloat(o.wavePeriod.value)); stationFields.push('Per'); }
   if (o.windSpeed) {
     const dir = o.windDirection ? degToCompass(parseFloat(o.windDirection.value)) : '';
     const arrow = o.windDirection ? dirArrow(parseFloat(o.windDirection.value)) : '';
-    stats.push(stat('Wind', `${Math.round(parseFloat(o.windSpeed.value))} ${dir}${arrow}`, 'mph'));
+    windVal = `${Math.round(parseFloat(o.windSpeed.value))} ${dir}${arrow}`.trim();
+    stationFields.push('Wind');
   }
-  if (o.windGust) stats.push(stat('Gust', Math.round(parseFloat(o.windGust.value)), 'mph'));
-  if (o.waterTemp) {
-    stats.push(stat('Water', Math.round(parseFloat(o.waterTemp.value)), '°F'));
-  } else if (live.waterTempOmr) {
-    stats.push(stat('Water', live.waterTempOmr.temp, '°F'));
-  }
-  if (o.airTemp) stats.push(stat('Air', Math.round(parseFloat(o.airTemp.value)), '°F'));
-  if (stats.length === 0) { host.innerHTML = ''; return; }
+  if (o.windGust) { gustVal = Math.round(parseFloat(o.windGust.value)); stationFields.push('Gust'); }
+  if (o.waterTemp) { waterVal = Math.round(parseFloat(o.waterTemp.value)); stationFields.push('Water'); }
+  else if (live && live.waterTempOmr) { waterVal = live.waterTempOmr.temp; waterFromOmr = true; }
+  if (o.airTemp) { airVal = Math.round(parseFloat(o.airTemp.value)); stationFields.push('Air'); }
+
+  const stats = [
+    statHtml('Wave', waveVal, waveVal == null ? '' : 'ft'),
+    statHtml('Per', perVal, perVal == null ? '' : 's'),
+    statHtml('Wind', windVal, windVal == null ? '' : 'mph'),
+    statHtml('Gust', gustVal, gustVal == null ? '' : 'mph'),
+    statHtml('Water', waterVal, waterVal == null ? '' : '°F'),
+    statHtml('Air', airVal, airVal == null ? '' : '°F')
+  ];
+
   const footers = [];
-  if (live.station) {
+  if (live && live.station && stationFields.length) {
     const obsTime = (o.waveHeight && o.waveHeight.time) || (o.windSpeed && o.windSpeed.time) || (o.airTemp && o.airTemp.time);
     const distLabel = live.station.distMiles < 1 ? '<1 mi' : `${live.station.distMiles.toFixed(0)} mi`;
     const ago = timeAgoStr(obsTime);
-    footers.push(escapeHtml((live.station.NAME || live.station.STID || 'Buoy') + ` · ${distLabel} away`) + (ago ? ' · ' + ago : ''));
+    const stationName = escapeHtml(live.station.NAME || live.station.STID || 'Buoy');
+    footers.push(`${stationFields.join(', ')} from ${stationName} (Mesowest) · ${distLabel}${ago ? ' · ' + ago : ''}`);
   }
-  if (live.waterTempOmr && !o.waterTemp) {
+  if (waterFromOmr && live && live.waterTempOmr) {
     const distLabel = live.waterTempOmr.distMiles < 1 ? '<1 mi' : `${live.waterTempOmr.distMiles.toFixed(0)} mi`;
     const ago = timeAgoStr(live.waterTempOmr.issuanceTime);
-    footers.push(`Water from ${escapeHtml(live.waterTempOmr.name)} · ${distLabel} · NWS OMR${ago ? ' · ' + ago : ''}`);
+    footers.push(`Water from ${escapeHtml(live.waterTempOmr.name)} (NWS OMR) · ${distLabel}${ago ? ' · ' + ago : ''}`);
   }
+
   host.innerHTML = `<div class="card">
     <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">Right now (live)</div>
     <div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:8px;">${stats.join('')}</div>
@@ -1467,21 +1483,22 @@ function renderForecast() {
   const now = currentForecast.hours[0];
   const nowR = rateHour(now, T);
   const summary = document.getElementById('forecast-summary');
+  const perTxt = (now.wavePeriod != null && !isNaN(now.wavePeriod)) ? now.wavePeriod.toFixed(1) + 's' : '–';
   summary.innerHTML = `
     <div class="now-row">
       <div class="now-text">
-        <div class="row" style="gap:8px; align-items:center;">
-          <div class="muted">Forecast: right now</div>
-          <span class="chip r${nowR.rating}">${ratingLabel(nowR.rating)}</span>
-        </div>
-        <div style="font-size:24px; font-weight:700; margin-top:4px;">${fmtWave(now.waveHeight)}</div>
-        <div class="muted">${now.wavePeriod ? now.wavePeriod.toFixed(1) + 's' : '–'} • wind ${fmtWind(now.windSpeed)} ${degToCompass(now.windDir)}${dirArrow(now.windDir)}</div>
+        <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">Forecast (next hr)</div>
+        <div style="margin-top:6px;"><span class="chip r${nowR.rating}">${ratingLabel(nowR.rating)}</span></div>
+        <div style="font-size:16px; font-weight:600; margin-top:8px;">${fmtWave(now.waveHeight)} · ${perTxt}</div>
+        <div class="muted" style="margin-top:2px;">wind ${fmtWind(now.windSpeed)} ${degToCompass(now.windDir)}${dirArrow(now.windDir)}</div>
         <div class="muted" style="margin-top:6px;">${nowR.reasons.slice(0,3).join(' • ')}</div>
       </div>
-      <div class="now-mini-map-wrap">
-        <div id="spot-mini-map" class="now-mini-map"></div>
-        <svg id="spot-mini-arrows" class="now-mini-arrows" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet"></svg>
-        <div id="spot-mini-when" class="map-when"></div>
+      <div class="now-mini-map-col">
+        <div class="now-mini-map-wrap">
+          <div id="spot-mini-map" class="now-mini-map"></div>
+          <svg id="spot-mini-arrows" class="now-mini-arrows" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+        <div id="spot-mini-when" class="map-when-caption"></div>
       </div>
     </div>
   `;
@@ -1583,8 +1600,8 @@ function initSpotMiniMap(spot) {
       boxZoom: false, keyboard: false, touchZoom: false, tap: false,
       inertia: false
     });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, crossOrigin: true
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19, subdomains: 'abcd', crossOrigin: true
     }).addTo(spotMiniMap);
     spotMiniMapSpotId = spot.id;
   }
@@ -1626,16 +1643,19 @@ function updateSpotMiniMapArrows() {
 
   svg.innerHTML = makeMiniArrowsSvg(windDeg, windLabel, swellDeg, waveLabel, periodLabel);
 
-  // "When" label below the map
+  // "When" caption beneath the map. Only renders text when an hour is
+  // selected; tapping the same row again deselects (no reset button needed).
   const whenEl = document.getElementById('spot-mini-when');
   if (whenEl) {
     if (selectedHourIndex != null) {
       const t = h.time;
       const dow = t.toLocaleDateString(undefined, { weekday: 'short' });
       const hr = t.toLocaleTimeString([], { hour: 'numeric' });
-      whenEl.innerHTML = `<span>${dow} ${hr}</span><button class="reset-btn" onclick="resetSelectedHour()">Now</button>`;
+      whenEl.textContent = `Showing ${dow} ${hr}`;
+      whenEl.classList.add('visible');
     } else {
-      whenEl.innerHTML = `<span style="opacity:0.85;">Right now</span><span style="opacity:0.6; font-size:9px;">tap an hour</span>`;
+      whenEl.textContent = '';
+      whenEl.classList.remove('visible');
     }
   }
 }
