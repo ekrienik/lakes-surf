@@ -526,7 +526,7 @@ const DEFAULT_THRESHOLDS = {
 
 const POPULAR_SPOTS = [
   { id: 'pop_montrose',   name: 'Montrose Beach',                 lat: 41.9699, lon: -87.6336, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=qv5XF6USv7M' },
-  { id: 'pop_greenwood',  name: 'Greenwood Beach (Evanston)',     lat: 42.0049, lon: -87.6686, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=qv5XF6USv7M' },
+  { id: 'pop_greenwood',  name: 'Greenwood Beach (Evanston)',     lat: 42.0449, lon: -87.6686, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=qv5XF6USv7M' },
   { id: 'pop_promontory', name: 'Promontory / 57th St Beach',     lat: 41.793, lon: -87.578, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=qv5XF6USv7M' },
   { id: 'pop_sheboygan',  name: 'Sheboygan (Deland Park)',        lat: 43.7578, lon: -87.6960, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=13j5iZkMpbE' },
   { id: 'pop_bradford',   name: 'Bradford Beach (Milwaukee)',     lat: 43.063, lon: -87.872, lake: 'Michigan', offshoreDirs: ['W','NW'], cam: null },
@@ -558,7 +558,10 @@ function loadState() {
     // previous version's lat/lon. Each entry lists every prior coord pair.
     const COORD_MIGRATIONS = {
       'pop_montrose':   [{ oldLat: 41.968,    oldLon: -87.635   }],
-      'pop_greenwood':  [{ oldLat: 42.044815, oldLon: -87.670950 }],
+      'pop_greenwood':  [
+        { oldLat: 42.044815, oldLon: -87.670950 }, // pre-v5.7.2
+        { oldLat: 42.0049,   oldLon: -87.6686   }  // v5.7.2 typo (Edgewater, not Evanston)
+      ],
       'pop_sheboygan':  [
         { oldLat: 43.751, oldLon: -87.714 },  // pre-v5.5.2 original
         { oldLat: 43.751, oldLon: -87.695 }   // v5.5.2 nudge
@@ -1618,9 +1621,9 @@ function initSpotMiniMap(spot) {
     }).addTo(spotMiniMap);
     spotMiniMapSpotId = spot.id;
   }
-  // 0.25 mi ≈ 402 m radius → 800m square bounds via toBounds
+  // 0.5 mi ≈ 805 m radius → 1600m square bounds via toBounds
   const center = L.latLng(spot.lat, spot.lon);
-  const bounds = center.toBounds(800);
+  const bounds = center.toBounds(1600);
   spotMiniMap.fitBounds(bounds, { animate: false });
   // Make sure tiles render correctly inside a hidden-then-shown card
   setTimeout(() => { try { spotMiniMap.invalidateSize(); } catch (e) {} }, 50);
