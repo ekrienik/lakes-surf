@@ -127,7 +127,7 @@
   /* Sticky day-of-week header on the Spots tab */
   .spots-day-header {
     position: sticky;
-    top: calc(var(--safe-top, 0px) + 56px);
+    top: calc(var(--safe-top, 0px) + 72px);
     z-index: 40;
     background: var(--bg);
     padding: 8px 14px 10px;
@@ -149,7 +149,7 @@
     /* Sticky below the main app header so days stay visible while scrolling
        the hourly table */
     position: sticky;
-    top: calc(var(--safe-top, 0px) + 56px);
+    top: calc(var(--safe-top, 0px) + 72px);
     z-index: 40;
     background: var(--bg);
     padding: 8px 0 10px;
@@ -180,14 +180,11 @@
     color: var(--fg-dim); font-weight: 500; font-size: 10px;
     text-transform: uppercase; letter-spacing: 0.5px;
     position: sticky;
-    /* Below main header (~70px) + day-tabs sticky (top:56 + height ~66 = 122) */
-    top: calc(var(--safe-top, 0px) + 122px);
+    /* Below main header (72) + day-tabs sticky height (~67) = 140 */
+    top: calc(var(--safe-top, 0px) + 140px);
     z-index: 30;
     background: var(--bg);
   }
-  /* Top-left corner cell needs higher z-index so it stays above other thead
-     cells when scrolling horizontally (left-sticky overlaps top-sticky). */
-  table.hourly thead th:first-child { z-index: 31; }
   table.hourly td.time { text-align: left; padding-left: 10px; }
   table.hourly td.rating { width: 6px; padding: 0; background-color: #2c4258; }
   table.hourly tr.r1 td.rating { background-color: var(--r-1); }
@@ -202,8 +199,8 @@
   table.hourly th:nth-child(2), table.hourly td.time {
     position: sticky; left: 6px; z-index: 2; background: var(--bg-2);
   }
-  table.hourly thead th { z-index: 3; }
-  table.hourly thead th:first-child, table.hourly thead th:nth-child(2) { z-index: 4; }
+  table.hourly thead th { z-index: 30; }
+  table.hourly thead th:first-child, table.hourly thead th:nth-child(2) { z-index: 31; }
 
   /* Edit mode: subtle accent tint on cards */
   .loc-card.editing { background: rgba(78, 195, 255, 0.08); border-color: rgba(78, 195, 255, 0.4); }
