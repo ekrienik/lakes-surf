@@ -120,8 +120,23 @@
 
   .day-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 10px; }
   .day-strip .d { text-align: center; padding: 6px 2px; border-radius: 8px; font-size: 10px; background: var(--bg-3); }
-  .day-strip .d .lbl { color: var(--fg-dim); }
+  .day-strip .d .lbl { color: var(--fg); font-weight: 600; }
   .day-strip .d .pill { display: block; margin: 4px auto 0; height: 6px; width: 70%; border-radius: 3px; background: #2c4258; }
+
+  /* Sticky day-of-week header on the Spots tab */
+  .spots-day-header {
+    position: sticky;
+    top: calc(var(--safe-top, 0px) + 56px);
+    z-index: 40;
+    background: var(--bg);
+    padding: 8px 0 10px;
+    margin: 0 0 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .spots-day-header .day-strip { margin-top: 0; }
+  .spots-day-header .d { background: transparent; padding: 4px 2px; }
+  .spots-day-header .d .dow { display: block; font-size: 11px; font-weight: 700; color: var(--fg); }
+  .spots-day-header .d .date { display: block; font-size: 9px; color: var(--fg-dim); margin-top: 2px; }
   .day-strip .d .pill.r1 { background: var(--r-1); }
   .day-strip .d .pill.r2 { background: var(--r-2); }
   .day-strip .d .pill.r3 { background: var(--r-3); }
@@ -280,6 +295,9 @@
 
 <main>
   <section id="view-spots" class="view active">
+    <div class="spots-day-header" id="spots-day-header">
+      <div class="day-strip" id="spots-day-strip"></div>
+    </div>
     <div class="legend" style="justify-content:center; margin: 0 0 12px;">
       <span><i class="sw" style="background:var(--r-5)"></i>Epic</span>
       <span><i class="sw" style="background:var(--r-4)"></i>Good</span>
@@ -1159,9 +1177,27 @@ function rateDay(hours, thresholds) {
 async function renderSpots() {
   const list = document.getElementById('spots-list');
   const empty = document.getElementById('spots-empty');
-  if (!state.spots.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
+  const header = document.getElementById('spots-day-header');
+  if (!state.spots.length) {
+    list.innerHTML = '';
+    empty.style.display = 'block';
+    if (header) header.style.display = 'none';
+    return;
+  }
   empty.style.display = 'none';
   list.innerHTML = '';
+  if (header) header.style.display = '';
+  // Render the sticky day-of-week header — same days every spot uses below.
+  const headerStrip = document.getElementById('spots-day-strip');
+  if (headerStrip) {
+    const today = new Date();
+    headerStrip.innerHTML = Array.from({length: 7}).map((_, i) => {
+      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
+      const dow = d.toLocaleDateString(undefined, { weekday: 'short' });
+      const date = (d.getMonth() + 1) + '/' + d.getDate();
+      return `<div class="d"><span class="dow">${dow}</span><span class="date">${date}</span></div>`;
+    }).join('');
+  }
 
   for (let i = 0; i < state.spots.length; i++) {
     const spot = state.spots[i];
@@ -1213,10 +1249,24 @@ async function loadSpotSummary(spot) {
   if (strip) {
     strip.innerHTML = days.slice(0,7).map(day => {
       const dr = rateDay(day.hours, T);
-      const dow = day.date.toLocaleDateString(undefined, { weekday: 'short' });
-      return `<div class="d"><span class="lbl">${dow}</span><span class="pill r${dr.rating}"></span></div>`;
+      const range = waveRangeText(day.hours);
+      return `<div class="d"><span class="lbl">${range}</span><span class="pill r${dr.rating}"></span></div>`;
     }).join('');
   }
+}
+
+// Compact min-max wave label for the daily pill on the Spots tab.
+// Uses the user's wave unit. "flat" when peak < 1 ft / 0.3 m. Single number
+// when min and max round to the same value.
+function waveRangeText(hours) {
+  const ws = hours.map(h => h.waveHeight).filter(w => w != null && !isNaN(w));
+  if (!ws.length) return '–';
+  let min = Math.min(...ws), max = Math.max(...ws);
+  if (state.units.wave === 'ft') { min = min * M_TO_FT; max = max * M_TO_FT; }
+  const flatThreshold = state.units.wave === 'ft' ? 1.0 : 0.3;
+  if (max < flatThreshold) return 'flat';
+  const lo = Math.round(min), hi = Math.round(max);
+  return lo === hi ? `${lo}` : `${lo}–${hi}`;
 }
 
 async function loadLiveForSpotCard(spot) {
