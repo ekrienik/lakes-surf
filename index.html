@@ -949,7 +949,7 @@ function haversineMiles(lat1, lon1, lat2, lon2) {
 // Tier-2 includes RAWS, USGS, established mesonets. Tier-3 is everything else (PWS, FW-prefix, etc.)
 function stationTier(s) {
   const m = parseInt(s.MNET_ID, 10);
-  if ([1, 96, 153, 162].includes(m)) return 1;   // NWS/FAA ASOS, NDBC C-MAN, NDBC buoys
+  if ([1, 96, 153, 162, 286].includes(m)) return 1;   // NWS/FAA ASOS, NDBC C-MAN, NDBC buoys (286 = newer NDBC listings)
   if ([2, 25, 51, 138, 152].includes(m)) return 2; // RAWS, USGS, mesonets
   return 3;
 }
