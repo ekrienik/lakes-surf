@@ -919,7 +919,7 @@ async function fetchAllLakeStations() {
   const now = Date.now();
   if (stationsCache && (now - stationsCacheTime) < STATIONS_CACHE_MS) return stationsCache;
   if (stationsInflight) return stationsInflight;
-  const url = `${MESOWEST_BASE}/latest?bbox=${LAKE_MI_BBOX}&within=180&vars=wave_height,wave_period,dominant_wave_period,wind_speed,wind_direction,wind_gust,water_temp,T_water_temp,air_temp&varoperator=or&status=active&output=json&units=temp|F,speed|mph,height|ft&token=${MESOWEST_TOKEN}`;
+  const url = `${MESOWEST_BASE}/latest?bbox=${LAKE_MI_BBOX}&within=180&vars=wave_height,wave_period,dominant_wave_period,mean_wave_direction,wind_speed,wind_direction,wind_gust,water_temp,T_water_temp,air_temp&varoperator=or&status=active&output=json&units=temp|F,speed|mph,height|ft&token=${MESOWEST_TOKEN}`;
   stationsInflight = fetch(url).then(r => {
     if (!r.ok) throw new Error('Mesowest fetch failed: ' + r.status);
     return r.json();
@@ -973,6 +973,25 @@ async function getNearestStationForSpot(lat, lon, maxMiles = 30) {
   return candidates[0] || null;
 }
 
+// Separate lookup for the nearest wave-reporting buoy. Used when the primary
+// nearest station doesn't have wave_height (e.g. Sheboygan's nearest station
+// is a tide gauge — wave data is at Rawley Point East, ~38 mi offshore).
+async function getNearestWaveBuoyForSpot(lat, lon, maxMiles = 60) {
+  const stations = await fetchAllLakeStations();
+  const candidates = [];
+  for (const s of stations) {
+    const sLat = parseFloat(s.LATITUDE), sLon = parseFloat(s.LONGITUDE);
+    if (isNaN(sLat) || isNaN(sLon)) continue;
+    const obs = s.OBSERVATIONS || {};
+    if (!obs.wave_height_value_1) continue;
+    const d = haversineMiles(lat, lon, sLat, sLon);
+    if (d > maxMiles) continue;
+    candidates.push({ ...s, distMiles: d, tier: stationTier(s) });
+  }
+  candidates.sort((a, b) => (a.tier - b.tier) || (a.distMiles - b.distMiles));
+  return candidates[0] || null;
+}
+
 function pickObs(obs, keys) {
   if (!obs) return null;
   for (const k of keys) {
@@ -988,6 +1007,7 @@ function extractObs(station) {
   return {
     waveHeight: pickObs(o, ['wave_height']),
     wavePeriod: pickObs(o, ['dominant_wave_period', 'wave_period']),
+    waveDirection: pickObs(o, ['mean_wave_direction']),
     windSpeed: pickObs(o, ['wind_speed']),
     windGust: pickObs(o, ['wind_gust']),
     windDirection: pickObs(o, ['wind_direction']),
@@ -1008,8 +1028,15 @@ function timeAgoStr(iso) {
 function formatLiveCompact(live) {
   if (!live) return null;
   const o = live.obs || {};
+  const wo = live.waveObs || {};
   const parts = [];
-  if (o.waveHeight) parts.push(`${parseFloat(o.waveHeight.value).toFixed(1)} ft`);
+  const waveSrc = o.waveHeight ? o : (wo.waveHeight ? wo : null);
+  if (waveSrc) {
+    const ht = parseFloat(waveSrc.waveHeight.value).toFixed(1);
+    const dirDeg = waveSrc.waveDirection ? parseFloat(waveSrc.waveDirection.value) : null;
+    const dir = (dirDeg != null && !isNaN(dirDeg)) ? ' ' + degToCompass(dirDeg) + dirArrow(dirDeg) : '';
+    parts.push(`${ht} ft${dir}`);
+  }
   if (o.windSpeed) {
     const dir = o.windDirection ? degToCompass(parseFloat(o.windDirection.value)) : '';
     const arrow = o.windDirection ? dirArrow(parseFloat(o.windDirection.value)) : '';
@@ -1040,12 +1067,20 @@ async function getLiveForSpot(spot) {
   try {
     const station = await getNearestStationForSpot(spot.lat, spot.lon, 30);
     const obs = station ? extractObs(station) : null;
+    // If the primary station doesn't have wave data, look up a nearby wave buoy
+    // separately (broader radius) and merge in its wave/period/direction fields.
+    let waveStation = null, waveObs = null;
+    if (!obs || !obs.waveHeight) {
+      waveStation = await getNearestWaveBuoyForSpot(spot.lat, spot.lon, 60);
+      if (waveStation && station && waveStation.STID === station.STID) waveStation = null;
+      if (waveStation) waveObs = extractObs(waveStation);
+    }
     let waterTempOmr = null;
-    if (!obs || !obs.waterTemp) {
+    if ((!obs || !obs.waterTemp) && (!waveObs || !waveObs.waterTemp)) {
       waterTempOmr = await getOMRWaterTempForSpot(spot.lat, spot.lon, 50).catch(() => null);
     }
-    if (!station && !waterTempOmr) return null;
-    return { station, obs, waterTempOmr };
+    if (!station && !waveStation && !waterTempOmr) return null;
+    return { station, obs, waveStation, waveObs, waterTempOmr };
   } catch (e) { return null; }
 }
 
@@ -1504,46 +1539,67 @@ async function loadLiveCardForForecast(spot) {
   const host = document.getElementById('live-card-host');
   if (!host) return;
   const o = (live && live.obs) || {};
+  const wo = (live && live.waveObs) || {};
 
-  // statHtml renders a stat column. When val is null we render a muted "n/a"
-  // placeholder so the card always shows the same six columns.
-  const statHtml = (label, val, unit) => `<div><div class="muted" style="font-size:11px;">${label}</div><div style="font-size:16px; font-weight:600;">${val == null ? '<span class="muted" style="font-weight:400;">n/a</span>' : val + (unit ? '<span class="muted" style="font-size:11px; margin-left:2px;">'+unit+'</span>' : '')}</div></div>`;
+  // Value format inside each stat cell: "VALUE <small>UNIT</small> DIR↗".
+  // Unit is muted small text between the value and the optional direction.
+  const stat = (label, val) => `<div><div class="muted" style="font-size:11px;">${label}</div><div style="font-size:16px; font-weight:600;">${val == null ? '<span class="muted" style="font-weight:400;">n/a</span>' : val}</div></div>`;
+  const u = (unit) => `<span class="muted" style="font-size:11px; margin-left:2px;">${unit}</span>`;
 
-  // Track which fields actually came from the primary buoy/station so the
-  // footer can list them explicitly (e.g. "Wind, Gust, Air from Oak St ...").
-  const stationFields = [];
+  // Track which fields came from the primary station vs the wave buoy
+  const primaryFields = [], waveFields = [];
   let waveVal = null, perVal = null, windVal = null, gustVal = null;
   let waterVal = null, airVal = null, waterFromOmr = false;
 
-  if (o.waveHeight) { waveVal = parseFloat(o.waveHeight.value).toFixed(1); stationFields.push('Wave'); }
-  if (o.wavePeriod) { perVal = Math.round(parseFloat(o.wavePeriod.value)); stationFields.push('Per'); }
-  if (o.windSpeed) {
-    const dir = o.windDirection ? degToCompass(parseFloat(o.windDirection.value)) : '';
-    const arrow = o.windDirection ? dirArrow(parseFloat(o.windDirection.value)) : '';
-    windVal = `${Math.round(parseFloat(o.windSpeed.value))} ${dir}${arrow}`.trim();
-    stationFields.push('Wind');
+  // Wave — primary if available, else wave-buoy fallback
+  function buildWave(src) {
+    const ht = parseFloat(src.waveHeight.value).toFixed(1);
+    const dirDeg = src.waveDirection ? parseFloat(src.waveDirection.value) : null;
+    const dir = (dirDeg != null && !isNaN(dirDeg)) ? ' ' + degToCompass(dirDeg) + dirArrow(dirDeg) : '';
+    return `${ht}${u('ft')}${dir}`;
   }
-  if (o.windGust) { gustVal = Math.round(parseFloat(o.windGust.value)); stationFields.push('Gust'); }
-  if (o.waterTemp) { waterVal = Math.round(parseFloat(o.waterTemp.value)); stationFields.push('Water'); }
-  else if (live && live.waterTempOmr) { waterVal = live.waterTempOmr.temp; waterFromOmr = true; }
-  if (o.airTemp) { airVal = Math.round(parseFloat(o.airTemp.value)); stationFields.push('Air'); }
+  if (o.waveHeight) { waveVal = buildWave(o); primaryFields.push('Wave'); }
+  else if (wo.waveHeight) { waveVal = buildWave(wo); waveFields.push('Wave'); }
+
+  if (o.wavePeriod) { perVal = `${Math.round(parseFloat(o.wavePeriod.value))}${u('s')}`; primaryFields.push('Per'); }
+  else if (wo.wavePeriod) { perVal = `${Math.round(parseFloat(wo.wavePeriod.value))}${u('s')}`; waveFields.push('Per'); }
+
+  if (o.windSpeed) {
+    const sp = Math.round(parseFloat(o.windSpeed.value));
+    const dirDeg = o.windDirection ? parseFloat(o.windDirection.value) : null;
+    const dir = (dirDeg != null && !isNaN(dirDeg)) ? ' ' + degToCompass(dirDeg) + dirArrow(dirDeg) : '';
+    windVal = `${sp}${u('mph')}${dir}`;
+    primaryFields.push('Wind');
+  }
+  if (o.windGust) { gustVal = `${Math.round(parseFloat(o.windGust.value))}${u('mph')}`; primaryFields.push('Gust'); }
+  if (o.waterTemp) { waterVal = `${Math.round(parseFloat(o.waterTemp.value))}${u('°F')}`; primaryFields.push('Water'); }
+  else if (wo.waterTemp) { waterVal = `${Math.round(parseFloat(wo.waterTemp.value))}${u('°F')}`; waveFields.push('Water'); }
+  else if (live && live.waterTempOmr) { waterVal = `${live.waterTempOmr.temp}${u('°F')}`; waterFromOmr = true; }
+  if (o.airTemp) { airVal = `${Math.round(parseFloat(o.airTemp.value))}${u('°F')}`; primaryFields.push('Air'); }
 
   const stats = [
-    statHtml('Wave', waveVal, waveVal == null ? '' : 'ft'),
-    statHtml('Per', perVal, perVal == null ? '' : 's'),
-    statHtml('Wind', windVal, windVal == null ? '' : 'mph'),
-    statHtml('Gust', gustVal, gustVal == null ? '' : 'mph'),
-    statHtml('Water', waterVal, waterVal == null ? '' : '°F'),
-    statHtml('Air', airVal, airVal == null ? '' : '°F')
+    stat('Wave', waveVal),
+    stat('Per', perVal),
+    stat('Wind', windVal),
+    stat('Gust', gustVal),
+    stat('Water', waterVal),
+    stat('Air', airVal)
   ];
 
   const footers = [];
-  if (live && live.station && stationFields.length) {
+  if (live && live.station && primaryFields.length) {
     const obsTime = (o.waveHeight && o.waveHeight.time) || (o.windSpeed && o.windSpeed.time) || (o.airTemp && o.airTemp.time);
     const distLabel = live.station.distMiles < 1 ? '<1 mi' : `${live.station.distMiles.toFixed(0)} mi`;
     const ago = timeAgoStr(obsTime);
-    const stationName = escapeHtml(live.station.NAME || live.station.STID || 'Buoy');
-    footers.push(`${stationFields.join(', ')} from ${stationName} (Mesowest) · ${distLabel}${ago ? ' · ' + ago : ''}`);
+    const name = escapeHtml(live.station.NAME || live.station.STID || 'Buoy');
+    footers.push(`${primaryFields.join(', ')} from ${name} (Mesowest) · ${distLabel}${ago ? ' · ' + ago : ''}`);
+  }
+  if (live && live.waveStation && waveFields.length) {
+    const obsTime = (wo.waveHeight && wo.waveHeight.time) || (wo.wavePeriod && wo.wavePeriod.time);
+    const distLabel = live.waveStation.distMiles < 1 ? '<1 mi' : `${live.waveStation.distMiles.toFixed(0)} mi`;
+    const ago = timeAgoStr(obsTime);
+    const name = escapeHtml(live.waveStation.NAME || live.waveStation.STID || 'Buoy');
+    footers.push(`${waveFields.join(', ')} from ${name} (Mesowest) · ${distLabel}${ago ? ' · ' + ago : ''}`);
   }
   if (waterFromOmr && live && live.waterTempOmr) {
     const distLabel = live.waterTempOmr.distMiles < 1 ? '<1 mi' : `${live.waterTempOmr.distMiles.toFixed(0)} mi`;
@@ -1571,12 +1627,13 @@ function renderForecast() {
   const nowR = rateHour(now, T);
   const summary = document.getElementById('forecast-summary');
   const perTxt = (now.wavePeriod != null && !isNaN(now.wavePeriod)) ? now.wavePeriod.toFixed(1) + 's' : '–';
+  const waveDirTxt = (now.swellDir != null && !isNaN(now.swellDir)) ? ' ' + degToCompass(now.swellDir) + dirArrow(now.swellDir) : '';
   summary.innerHTML = `
     <div class="now-row">
       <div class="now-text">
         <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">Forecast (next hr)</div>
         <div style="margin-top:6px;"><span class="chip r${nowR.rating}">${ratingLabel(nowR.rating)}</span></div>
-        <div style="font-size:16px; font-weight:600; margin-top:8px;">${fmtWave(now.waveHeight)} · ${perTxt}</div>
+        <div style="font-size:16px; font-weight:600; margin-top:8px;">${fmtWave(now.waveHeight)}${waveDirTxt} · ${perTxt}</div>
         <div class="muted" style="margin-top:2px;">wind ${fmtWind(now.windSpeed)} ${degToCompass(now.windDir)}${dirArrow(now.windDir)}</div>
         <div class="muted" style="margin-top:6px;">${nowR.reasons.slice(0,3).join(' • ')}</div>
       </div>
@@ -2324,7 +2381,7 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-setInterval(() => {
+function refreshLiveData() {
   stationsCache = null; stationsCacheTime = 0;
   const spotsView = document.getElementById('view-spots');
   const forecastView = document.getElementById('view-forecast');
@@ -2334,7 +2391,24 @@ setInterval(() => {
     const spot = state.spots.find(s => s.id === currentSpotId);
     if (spot) loadLiveCardForForecast(spot);
   }
-}, 5 * 60 * 1000);
+}
+setInterval(refreshLiveData, 5 * 60 * 1000);
+
+// Also refresh when the app becomes visible (iOS PWA backgrounding throttles
+// setInterval timers, so users would otherwise see hours-old data on resume).
+let lastVisibleRefresh = Date.now();
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && (Date.now() - lastVisibleRefresh) > 60 * 1000) {
+    lastVisibleRefresh = Date.now();
+    refreshLiveData();
+  }
+});
+window.addEventListener('pageshow', () => {
+  if ((Date.now() - lastVisibleRefresh) > 60 * 1000) {
+    lastVisibleRefresh = Date.now();
+    refreshLiveData();
+  }
+});
 
 switchView('spots');
 </script>
