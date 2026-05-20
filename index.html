@@ -722,7 +722,9 @@ function extractYouTubeId(url) {
   return m ? m[1] : null;
 }
 
-// Compute approximate sunrise/sunset for a lat/lon and Date (NOAA algorithm).
+// Compute approximate civil twilight bounds (sun 6° below horizon) for a
+// lat/lon and Date (NOAA algorithm). Civil twilight = first light to last
+// light, a more useful 'usable surf window' than strict sunrise/sunset.
 // Returns {sunrise, sunset, daylightHours} as Date objects + number; or null at
 // extreme latitudes / polar day/night.
 function sunriseSunset(lat, lon, dateObj) {
@@ -743,7 +745,7 @@ function sunriseSunset(lat, lon, dateObj) {
     RA = (RA + (Lq - RAq)) / 15;
     const sinDec = 0.39782 * Math.sin(L * rad);
     const cosDec = Math.cos(Math.asin(sinDec));
-    const cosH = (Math.cos(90.833 * rad) - sinDec * Math.sin(lat * rad)) / (cosDec * Math.cos(lat * rad));
+    const cosH = (Math.cos(96 * rad) - sinDec * Math.sin(lat * rad)) / (cosDec * Math.cos(lat * rad));
     if (cosH > 1 || cosH < -1) return null;
     let H = rising ? 360 - Math.acos(cosH) / rad : Math.acos(cosH) / rad;
     H = H / 15;
