@@ -1707,6 +1707,10 @@ async function openForecast(spotId) {
     currentForecast = await getForecast(spot.lat, spot.lon);
     currentDayIndex = 0;
     renderForecast();
+    // Re-render the LIVE card now that the forecast is available — lets the
+    // wave-direction fallback (forecast swellDir) take effect when the buoy
+    // didn't report a direction.
+    loadLiveCardForForecast(spot);
   } catch (err) {
     document.getElementById('forecast-loading').style.display = 'none';
     const errEl = document.getElementById('forecast-error');
@@ -1882,7 +1886,14 @@ async function loadLiveCardForForecast(spot) {
   // Wave — primary if available, else wave-buoy fallback
   function buildWave(src) {
     const ht = parseFloat(src.waveHeight.value).toFixed(1);
-    const dirDeg = src.waveDirection ? parseFloat(src.waveDirection.value) : null;
+    let dirDeg = src.waveDirection ? parseFloat(src.waveDirection.value) : null;
+    // Fallback: when the buoy doesn't report mean_wave_direction, use the
+    // current-hour forecast's swell direction so the LIVE card still shows
+    // a direction. Same convention as Forecast (next hr).
+    if ((dirDeg == null || isNaN(dirDeg)) && currentForecast && currentForecast.hours && currentForecast.hours[0]) {
+      const fd = currentForecast.hours[0].swellDir;
+      if (fd != null && !isNaN(fd)) dirDeg = fd;
+    }
     const dir = (dirDeg != null && !isNaN(dirDeg)) ? ' ' + degToCompass(dirDeg) + dirArrow(dirDeg) : '';
     return `${ht}${u('ft')}${dir}`;
   }
