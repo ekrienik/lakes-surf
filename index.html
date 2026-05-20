@@ -835,7 +835,7 @@ function switchView(name) {
       popBtn.onclick = () => openPopularSpotsModal();
       action.appendChild(popBtn);
       const addBtn = document.createElement('button');
-      addBtn.className = 'btn icon-btn'; addBtn.textContent = '+'; addBtn.title = 'Add spot'; addBtn.setAttribute('aria-label', 'Add spot'); addBtn.style.marginRight = '6px';
+      addBtn.className = 'btn ghost icon-btn'; addBtn.textContent = '+'; addBtn.title = 'Add spot'; addBtn.setAttribute('aria-label', 'Add spot'); addBtn.style.marginRight = '6px';
       addBtn.onclick = () => showAddSpotModal();
       action.appendChild(addBtn);
       const editBtn = document.createElement('button');
@@ -997,7 +997,7 @@ function sampleAt(series, t) {
 
 let stationsCache = null;
 let stationsCacheTime = 0;
-const STATIONS_CACHE_MS = 5 * 60 * 1000; // 5 min — Mesowest data updates every 10-30 min
+const STATIONS_CACHE_MS = 90 * 1000; // 90 sec — re-fetch quickly so the live timestamps stay current
 let stationsInflight = null;
 
 async function fetchAllLakeStations() {
@@ -2624,21 +2624,33 @@ function refreshLiveData() {
     if (spot) loadLiveCardForForecast(spot);
   }
 }
-setInterval(refreshLiveData, 5 * 60 * 1000);
+setInterval(refreshLiveData, 2 * 60 * 1000);
 
 // Also refresh when the app becomes visible (iOS PWA backgrounding throttles
 // setInterval timers, so users would otherwise see hours-old data on resume).
 let lastVisibleRefresh = Date.now();
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && (Date.now() - lastVisibleRefresh) > 60 * 1000) {
+  if (document.visibilityState === 'visible' && (Date.now() - lastVisibleRefresh) > 15 * 1000) {
     lastVisibleRefresh = Date.now();
     refreshLiveData();
   }
 });
 window.addEventListener('pageshow', () => {
-  if ((Date.now() - lastVisibleRefresh) > 60 * 1000) {
+  if ((Date.now() - lastVisibleRefresh) > 15 * 1000) {
     lastVisibleRefresh = Date.now();
     refreshLiveData();
+  }
+});
+// Manual click-to-refresh on the live card. Lets the user force-update if the
+// data ever looks stale.
+document.addEventListener('click', (e) => {
+  const liveCard = e.target.closest('#live-card-host .card');
+  if (liveCard) {
+    refreshLiveData();
+    // Brief visual feedback
+    liveCard.style.transition = 'opacity 0.15s';
+    liveCard.style.opacity = '0.55';
+    setTimeout(() => { liveCard.style.opacity = ''; }, 250);
   }
 });
 
