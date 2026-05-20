@@ -1823,22 +1823,14 @@ function dayPartSegments(lat, lon, day, T) {
     const hoursInSeg = day.hours.filter(h => h.time >= segStart && h.time < segEnd);
     let rating = 0;
     if (hoursInSeg.length) {
-      // Most frequent rating across this segment (mode). Ties broken toward
-      // the higher rating so a "good window" within a mostly-poor segment
-      // still gets reflected.
-      const counts = {};
+      // Best (max) rating across the segment — surfers want to know whether
+      // any hour in that window could be worth paddling out.
+      let best = 0;
       for (const h of hoursInSeg) {
-        const rr = rateHour(h, T).rating;
-        counts[rr] = (counts[rr] || 0) + 1;
+        const r = rateHour(h, T);
+        if (r.rating > best) best = r.rating;
       }
-      let bestCount = 0, mostFreq = 0;
-      for (const [r, c] of Object.entries(counts)) {
-        const ri = parseInt(r);
-        if (c > bestCount || (c === bestCount && ri > mostFreq)) {
-          bestCount = c; mostFreq = ri;
-        }
-      }
-      rating = mostFreq || 1;
+      rating = best || 1;
     }
     segs.push({ rating, past: segEnd < now });
   }
