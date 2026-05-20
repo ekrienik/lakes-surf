@@ -1084,6 +1084,36 @@ function stationTier(s) {
   return 3;
 }
 
+// Extract the bare numeric station ID so duplicate listings (e.g. "45174" and
+// "NDBC45174") collapse to the same physical buoy.
+function stationBaseId(stid) {
+  const m = String(stid || '').match(/(\d+)$/);
+  return m ? m[1] : String(stid || '');
+}
+
+// When two listings refer to the same physical buoy (same numeric ID), keep the
+// one with the freshest observation so we don't show 30-min-stale data when a
+// real-time feed exists.
+function dedupeByStation(candidates) {
+  const byBase = new Map();
+  for (const c of candidates) {
+    const base = stationBaseId(c.STID);
+    const existing = byBase.get(base);
+    if (!existing) { byBase.set(base, c); continue; }
+    const t = (st) => {
+      const o = st.OBSERVATIONS || {};
+      const stamps = [
+        o.wave_height_value_1 && o.wave_height_value_1.date_time,
+        o.wind_speed_value_1 && o.wind_speed_value_1.date_time,
+        o.air_temp_value_1 && o.air_temp_value_1.date_time
+      ].filter(Boolean).map(s => new Date(s).getTime());
+      return stamps.length ? Math.max(...stamps) : 0;
+    };
+    if (t(c) > t(existing)) byBase.set(base, c);
+  }
+  return [...byBase.values()];
+}
+
 async function getNearestStationForSpot(lat, lon, maxMiles = 30) {
   const stations = await fetchAllLakeStations();
   const candidates = [];
@@ -1098,9 +1128,11 @@ async function getNearestStationForSpot(lat, lon, maxMiles = 30) {
     if (d > maxMiles) continue;
     candidates.push({ ...s, distMiles: d, tier: stationTier(s) });
   }
-  // Prefer higher quality tier; within a tier, prefer closer.
-  candidates.sort((a, b) => (a.tier - b.tier) || (a.distMiles - b.distMiles));
-  return candidates[0] || null;
+  // De-duplicate same-buoy listings (keeping the freshest), then sort by
+  // quality tier then distance.
+  const deduped = dedupeByStation(candidates);
+  deduped.sort((a, b) => (a.tier - b.tier) || (a.distMiles - b.distMiles));
+  return deduped[0] || null;
 }
 
 // Separate lookup for the nearest wave-reporting buoy. Used when the primary
@@ -1118,8 +1150,9 @@ async function getNearestWaveBuoyForSpot(lat, lon, maxMiles = 60) {
     if (d > maxMiles) continue;
     candidates.push({ ...s, distMiles: d, tier: stationTier(s) });
   }
-  candidates.sort((a, b) => (a.tier - b.tier) || (a.distMiles - b.distMiles));
-  return candidates[0] || null;
+  const deduped = dedupeByStation(candidates);
+  deduped.sort((a, b) => (a.tier - b.tier) || (a.distMiles - b.distMiles));
+  return deduped[0] || null;
 }
 
 function pickObs(obs, keys) {
