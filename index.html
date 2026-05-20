@@ -1908,8 +1908,20 @@ function renderCommentaryBanner(spot, days, T) {
   const today = days[0];
   if (!today || !today.hours.length) { host.innerHTML = ''; return; }
   const now = new Date();
-  const futureHours = today.hours.filter(h => h.time >= now);
-  const sampleHours = futureHours.length ? futureHours : today.hours;
+  // After civil dusk we shift focus to tomorrow — "today" isn't actionable.
+  const todayLight = sunriseSunset(spot.lat, spot.lon, today.date);
+  const isAfterDusk = todayLight && now > todayLight.sunset;
+  const targetDay = (isAfterDusk && days[1] && days[1].hours.length) ? days[1] : today;
+  const dayLabel = (targetDay === today) ? 'Today' : 'Tomorrow';
+  // For today, only consider hours from now onward. For tomorrow, use all
+  // hours since the whole day is still ahead.
+  let sampleHours;
+  if (targetDay === today) {
+    const futureHours = today.hours.filter(h => h.time >= now);
+    sampleHours = futureHours.length ? futureHours : today.hours;
+  } else {
+    sampleHours = targetDay.hours;
+  }
   let best = null, bestH = null;
   for (const h of sampleHours) {
     const r = rateHour(h, T);
@@ -1918,7 +1930,7 @@ function renderCommentaryBanner(spot, days, T) {
   const narrative = todayNarrative(best, bestH, T);
 
   host.innerHTML = `<div class="card" style="padding:8px 12px; font-size:13px;">
-    <strong style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--fg-dim);">Today</strong>
+    <strong style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--fg-dim);">${dayLabel}</strong>
     <span style="margin-left:6px;">${narrative}</span>
   </div>`;
 }
