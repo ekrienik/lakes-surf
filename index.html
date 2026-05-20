@@ -1501,9 +1501,17 @@ function selectSubtab(name) {
   document.querySelectorAll('.subtab-content').forEach(el => {
     el.hidden = (el.dataset.subtab !== name);
   });
-  // Map needs a fresh invalidateSize if the Forecast tab just became visible
-  if (name === 'forecast' && spotMiniMap) {
-    setTimeout(() => { try { spotMiniMap.invalidateSize(); } catch (e) {} }, 30);
+  // Map needs invalidateSize AND a re-fit if it was initialized while its
+  // container was display:none — Leaflet would have computed bounds against
+  // a 0×0 container and gotten the wrong zoom.
+  if (name === 'forecast' && spotMiniMap && currentSpotId) {
+    const spot = state.spots.find(s => s.id === currentSpotId);
+    setTimeout(() => {
+      try {
+        spotMiniMap.invalidateSize();
+        if (spot) spotMiniMap.fitBounds(L.latLng(spot.lat, spot.lon).toBounds(1600), { animate: false });
+      } catch (e) {}
+    }, 30);
   }
 }
 
@@ -1544,10 +1552,15 @@ function makeLineChart(opts) {
     return `<div class="muted" style="font-size:12px; padding:10px;">No recent ${title.toLowerCase()} data.</div>`;
   }
   const vs = valid.map(p => p.v);
-  let yMin = Math.min(...vs), yMax = Math.max(...vs);
-  const pad = Math.max(0.3, (yMax - yMin) * 0.15);
-  yMin = Math.max(0, yMin - pad);
-  yMax = yMax + pad;
+  const dataMax = Math.max(...vs);
+  const yMin = 0;
+  let yMax = Math.max(1, Math.ceil(dataMax + 0.5));
+  let step = 1;
+  if (yMax > 10) step = 2;
+  if (yMax > 20) step = 5;
+  yMax = Math.ceil(yMax / step) * step;
+  const ticks = [];
+  for (let y = 0; y <= yMax; y += step) ticks.push(y);
   const plotW = W - padding.l - padding.r;
   const plotH = H - padding.t - padding.b;
   const xToPx = (t) => padding.l + ((t - start) / (now - start)) * plotW;
@@ -1555,24 +1568,29 @@ function makeLineChart(opts) {
 
   const path = valid.map((p, i) => (i === 0 ? 'M' : 'L') + xToPx(p.t).toFixed(1) + ',' + yToPx(p.v).toFixed(1)).join(' ');
 
-  // Hourly minor gridlines, 3-hourly major lines with local-time labels
-  let gridMinor = '', gridMajor = '', labels = '';
+  // Faint horizontal gridlines at each integer tick; no vertical gridlines
+  let hGrid = '';
+  for (const y of ticks) {
+    const py = yToPx(y).toFixed(1);
+    hGrid += `<line x1="${padding.l}" y1="${py}" x2="${(padding.l + plotW).toFixed(0)}" y2="${py}" stroke="#1f3850" stroke-width="0.5"/>`;
+  }
+  // Y-axis labels — one per tick
+  let yLabels = '';
+  for (const y of ticks) {
+    const py = yToPx(y).toFixed(1);
+    yLabels += `<text x="${(padding.l - 4).toFixed(0)}" y="${py}" text-anchor="end" font-size="9" fill="#a3b5c7" dominant-baseline="central">${y}</text>`;
+  }
+  // X-axis labels every 3h (no vertical gridlines)
+  let xLabels = '';
   const oneHour = 3600 * 1000;
   for (let t = Math.ceil(start / oneHour) * oneHour; t <= now; t += oneHour) {
-    const x = xToPx(t).toFixed(1);
     const d = new Date(t);
-    const isMajor = (d.getHours() % 3 === 0);
-    if (isMajor) {
-      gridMajor += `<line x1="${x}" y1="${padding.t}" x2="${x}" y2="${(padding.t + plotH).toFixed(0)}" stroke="#2c4258" stroke-width="0.6"/>`;
+    if (d.getHours() % 3 === 0) {
+      const x = xToPx(t).toFixed(1);
       const lbl = d.toLocaleTimeString([], { hour: 'numeric' });
-      labels += `<text x="${x}" y="${(H - 6).toFixed(0)}" text-anchor="middle" font-size="9" fill="#a3b5c7">${lbl}</text>`;
-    } else {
-      gridMinor += `<line x1="${x}" y1="${padding.t}" x2="${x}" y2="${(padding.t + plotH).toFixed(0)}" stroke="#1a3148" stroke-width="0.4"/>`;
+      xLabels += `<text x="${x}" y="${(H - 6).toFixed(0)}" text-anchor="middle" font-size="9" fill="#a3b5c7">${lbl}</text>`;
     }
   }
-  // Y-axis labels (min + max)
-  const yLabelHi = `<text x="${padding.l - 4}" y="${(padding.t + 8).toFixed(0)}" text-anchor="end" font-size="9" fill="#a3b5c7">${yMax.toFixed(1)}</text>`;
-  const yLabelLo = `<text x="${padding.l - 4}" y="${(padding.t + plotH).toFixed(0)}" text-anchor="end" font-size="9" fill="#a3b5c7">${yMin.toFixed(1)}</text>`;
   // Latest-value dot
   const last = valid[valid.length - 1];
   const dot = `<circle cx="${xToPx(last.t).toFixed(1)}" cy="${yToPx(last.v).toFixed(1)}" r="2.5" fill="${color}"/>`;
@@ -1583,9 +1601,9 @@ function makeLineChart(opts) {
       &middot; <span style="text-transform:none; font-weight:400;">last 24h</span>
     </div>
     <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%; height:${H}px;">
-      ${gridMinor}${gridMajor}
-      ${labels}
-      ${yLabelHi}${yLabelLo}
+      ${hGrid}
+      ${yLabels}
+      ${xLabels}
       <path d="${path}" fill="none" stroke="${color}" stroke-width="1.6"/>
       ${dot}
     </svg>
