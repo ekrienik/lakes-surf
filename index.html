@@ -153,10 +153,10 @@
 
   .day-tabs {
     display: flex; gap: 4px;
-    /* Sticky below the main app header so days stay visible while scrolling
-       the hourly table */
+    /* Sticky below the main app header + sub-tab bar so days stay visible
+       while scrolling the hourly table */
     position: sticky;
-    top: calc(var(--safe-top, 0px) + 72px);
+    top: calc(var(--safe-top, 0px) + 120px);
     z-index: 40;
     background: var(--bg);
     padding: 8px 0 10px;
@@ -189,8 +189,8 @@
     color: var(--fg-dim); font-weight: 500; font-size: 10px;
     text-transform: uppercase; letter-spacing: 0.5px;
     position: sticky;
-    /* Below main header (72) + day-tabs sticky height (~67) = 140 */
-    top: calc(var(--safe-top, 0px) + 140px);
+    /* Below main header (72) + sub-tabs (~48) + day-tabs (~67) = 188 */
+    top: calc(var(--safe-top, 0px) + 188px);
     z-index: 30;
     background: var(--bg);
   }
@@ -303,6 +303,28 @@
     box-shadow: inset 0 2px 0 var(--accent), inset 0 -2px 0 var(--accent);
   }
   table.hourly tbody tr.selected td.time { color: var(--accent); font-weight: 700; }
+  /* Sub-tab bar on spot page (Live / Forecast / Cam / Water) */
+  .subtab-bar {
+    display: flex; gap: 4px;
+    position: sticky;
+    top: calc(var(--safe-top, 0px) + 72px);
+    z-index: 45;
+    background: var(--bg);
+    padding: 8px 0 10px;
+    margin: 0 0 12px;
+  }
+  .subtab-bar button {
+    flex: 1; background: transparent; border: 1px solid var(--border);
+    color: var(--fg-dim); padding: 7px 4px; border-radius: 8px;
+    font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .subtab-bar button.active {
+    border-color: var(--accent); background: var(--bg-3); color: var(--fg);
+  }
+  .subtab-content[hidden] { display: none; }
+  .chart-card svg { width: 100%; display: block; }
+  .empty-note { text-align: center; padding: 20px; color: var(--fg-dim); font-size: 13px; }
+
   /* Forecast + map cards side-by-side on the spot page */
   .forecast-row { display: flex; gap: 10px; align-items: stretch; margin-bottom: 12px; }
   .forecast-row #forecast-summary { flex: 1 1 auto; margin-bottom: 0; }
@@ -356,26 +378,45 @@
     <div id="forecast-loading" class="empty">Loading forecast…</div>
     <div id="forecast-error" class="empty" style="display:none;"></div>
     <div id="forecast-content" style="display:none;">
-      <div id="commentary-host"></div>
-      <div id="live-card-host"></div>
-      <div id="cam-host"></div>
-      <div id="water-quality-host"></div>
-      <div class="forecast-row">
-        <div class="card" id="forecast-summary"></div>
-        <div id="mini-map-host"></div>
+      <nav class="subtab-bar" id="subtab-bar">
+        <button data-subtab="live" class="active" onclick="selectSubtab('live')">Live</button>
+        <button data-subtab="forecast" onclick="selectSubtab('forecast')">Forecast</button>
+        <button data-subtab="cam" onclick="selectSubtab('cam')">Cam</button>
+        <button data-subtab="water" onclick="selectSubtab('water')">Water</button>
+      </nav>
+
+      <div class="subtab-content" data-subtab="live">
+        <div id="commentary-host"></div>
+        <div id="live-card-host"></div>
+        <div id="live-charts-host"></div>
       </div>
-      <div class="day-tabs" id="day-tabs"></div>
-      <div class="card hourly-card" style="padding:0;">
-        <table class="hourly" id="hourly-table"></table>
-      </div>
-      <div class="card" style="margin-bottom: 80px;">
-        <div class="row between">
-          <div>
-            <div style="font-weight:600;">Rating thresholds</div>
-            <div id="threshold-status" style="font-size:12px; margin-top:2px;"></div>
-          </div>
-          <button class="btn small ghost" onclick="openThresholdsModal()">Edit</button>
+
+      <div class="subtab-content" data-subtab="forecast" hidden>
+        <div class="forecast-row">
+          <div class="card" id="forecast-summary"></div>
+          <div id="mini-map-host"></div>
         </div>
+        <div class="day-tabs" id="day-tabs"></div>
+        <div class="card hourly-card" style="padding:0;">
+          <table class="hourly" id="hourly-table"></table>
+        </div>
+        <div class="card" style="margin-bottom: 80px;">
+          <div class="row between">
+            <div>
+              <div style="font-weight:600;">Rating thresholds</div>
+              <div id="threshold-status" style="font-size:12px; margin-top:2px;"></div>
+            </div>
+            <button class="btn small ghost" onclick="openThresholdsModal()">Edit</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="subtab-content" data-subtab="cam" hidden>
+        <div id="cam-host"></div>
+      </div>
+
+      <div class="subtab-content" data-subtab="water" hidden>
+        <div id="water-quality-host"></div>
       </div>
     </div>
   </section>
@@ -1448,12 +1489,147 @@ let selectedHourIndex = null;     // global index in currentForecast.hours; null
 let spotMiniMap = null;
 let spotMiniMapSpotId = null;
 
+// Current sub-tab on the spot page. Always resets to "live" when a new spot
+// is opened (default to Live tab).
+let currentSubtab = 'live';
+
+function selectSubtab(name) {
+  currentSubtab = name;
+  document.querySelectorAll('#subtab-bar button').forEach(b => {
+    b.classList.toggle('active', b.dataset.subtab === name);
+  });
+  document.querySelectorAll('.subtab-content').forEach(el => {
+    el.hidden = (el.dataset.subtab !== name);
+  });
+  // Map needs a fresh invalidateSize if the Forecast tab just became visible
+  if (name === 'forecast' && spotMiniMap) {
+    setTimeout(() => { try { spotMiniMap.invalidateSize(); } catch (e) {} }, 30);
+  }
+}
+
+// ── Charts: 24h wave height + dominant wave period from the buoy ──────────
+async function fetchWaveTimeseries(stid, hoursBack = 24) {
+  if (!stid) return null;
+  const end = new Date();
+  const start = new Date(end.getTime() - hoursBack * 3600 * 1000);
+  const fmt = (d) => {
+    const z = (n) => String(n).padStart(2, '0');
+    return d.getUTCFullYear().toString() + z(d.getUTCMonth() + 1) + z(d.getUTCDate()) + z(d.getUTCHours()) + z(d.getUTCMinutes());
+  };
+  const url = `${MESOWEST_BASE}/timeseries?stid=${encodeURIComponent(stid)}&start=${fmt(start)}&end=${fmt(end)}&vars=wave_height,wave_period,dominant_wave_period,mean_wave_direction&units=temp|F,speed|mph,height|ft&token=${MESOWEST_TOKEN}`;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const data = await r.json();
+    const st = data.STATION && data.STATION[0];
+    if (!st) return null;
+    const obs = st.OBSERVATIONS || {};
+    const times = (obs.date_time || []).map(t => new Date(t));
+    const wh = obs.wave_height_set_1 || [];
+    const wp = obs.dominant_wave_period_set_1 || obs.wave_period_set_1 || [];
+    return { times, waveHeight: wh, wavePeriod: wp, station: st };
+  } catch (e) { return null; }
+}
+
+function makeLineChart(opts) {
+  const { title, unit, times, values, color, height = 90 } = opts;
+  const W = 600, H = height;
+  const padding = { l: 32, r: 8, t: 14, b: 20 };
+  const pts = times.map((t, i) => ({ t: t.getTime(), v: parseFloat(values[i]) }))
+                   .filter(p => !isNaN(p.v) && p.v !== null);
+  const now = Date.now();
+  const start = now - 24 * 3600 * 1000;
+  const valid = pts.filter(p => p.t >= start && p.t <= now);
+  if (!valid.length) {
+    return `<div class="muted" style="font-size:12px; padding:10px;">No recent ${title.toLowerCase()} data.</div>`;
+  }
+  const vs = valid.map(p => p.v);
+  let yMin = Math.min(...vs), yMax = Math.max(...vs);
+  const pad = Math.max(0.3, (yMax - yMin) * 0.15);
+  yMin = Math.max(0, yMin - pad);
+  yMax = yMax + pad;
+  const plotW = W - padding.l - padding.r;
+  const plotH = H - padding.t - padding.b;
+  const xToPx = (t) => padding.l + ((t - start) / (now - start)) * plotW;
+  const yToPx = (v) => padding.t + (1 - (v - yMin) / (yMax - yMin)) * plotH;
+
+  const path = valid.map((p, i) => (i === 0 ? 'M' : 'L') + xToPx(p.t).toFixed(1) + ',' + yToPx(p.v).toFixed(1)).join(' ');
+
+  // Hourly minor gridlines, 3-hourly major lines with local-time labels
+  let gridMinor = '', gridMajor = '', labels = '';
+  const oneHour = 3600 * 1000;
+  for (let t = Math.ceil(start / oneHour) * oneHour; t <= now; t += oneHour) {
+    const x = xToPx(t).toFixed(1);
+    const d = new Date(t);
+    const isMajor = (d.getHours() % 3 === 0);
+    if (isMajor) {
+      gridMajor += `<line x1="${x}" y1="${padding.t}" x2="${x}" y2="${(padding.t + plotH).toFixed(0)}" stroke="#2c4258" stroke-width="0.6"/>`;
+      const lbl = d.toLocaleTimeString([], { hour: 'numeric' });
+      labels += `<text x="${x}" y="${(H - 6).toFixed(0)}" text-anchor="middle" font-size="9" fill="#a3b5c7">${lbl}</text>`;
+    } else {
+      gridMinor += `<line x1="${x}" y1="${padding.t}" x2="${x}" y2="${(padding.t + plotH).toFixed(0)}" stroke="#1a3148" stroke-width="0.4"/>`;
+    }
+  }
+  // Y-axis labels (min + max)
+  const yLabelHi = `<text x="${padding.l - 4}" y="${(padding.t + 8).toFixed(0)}" text-anchor="end" font-size="9" fill="#a3b5c7">${yMax.toFixed(1)}</text>`;
+  const yLabelLo = `<text x="${padding.l - 4}" y="${(padding.t + plotH).toFixed(0)}" text-anchor="end" font-size="9" fill="#a3b5c7">${yMin.toFixed(1)}</text>`;
+  // Latest-value dot
+  const last = valid[valid.length - 1];
+  const dot = `<circle cx="${xToPx(last.t).toFixed(1)}" cy="${yToPx(last.v).toFixed(1)}" r="2.5" fill="${color}"/>`;
+
+  return `<div style="margin-bottom:14px;">
+    <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">
+      ${title} <span style="text-transform:none; letter-spacing:0;">(${unit})</span>
+      &middot; <span style="text-transform:none; font-weight:400;">last 24h</span>
+    </div>
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%; height:${H}px;">
+      ${gridMinor}${gridMajor}
+      ${labels}
+      ${yLabelHi}${yLabelLo}
+      <path d="${path}" fill="none" stroke="${color}" stroke-width="1.6"/>
+      ${dot}
+    </svg>
+  </div>`;
+}
+
+async function renderLiveCharts(spot, live) {
+  const host = document.getElementById('live-charts-host');
+  if (!host) return;
+  // Pick the wave-reporting station (prefer the wave-buoy fallback if used)
+  const stid = (live && live.waveStation && live.waveStation.STID) ||
+               (live && live.station && live.station.OBSERVATIONS && live.station.OBSERVATIONS.wave_height_value_1 && live.station.STID);
+  if (!stid) {
+    host.innerHTML = `<div class="card chart-card"><div class="empty-note">No nearby wave-reporting buoy for 24h charts.</div></div>`;
+    return;
+  }
+  host.innerHTML = `<div class="card chart-card"><div class="muted" style="font-size:12px;">Loading 24h charts…</div></div>`;
+  const ts = await fetchWaveTimeseries(stid, 24);
+  if (!ts || !ts.times.length) {
+    host.innerHTML = `<div class="card chart-card"><div class="empty-note">Couldn't load 24h chart data.</div></div>`;
+    return;
+  }
+  const sourceStation = (live && live.waveStation) || (live && live.station);
+  const distLabel = sourceStation && sourceStation.distMiles != null
+    ? (sourceStation.distMiles < 1 ? '<1 mi' : `${sourceStation.distMiles.toFixed(0)} mi`) : '';
+  const sourceName = sourceStation ? escapeHtml(sourceStation.NAME || sourceStation.STID || 'Buoy') : '';
+  const sourceLine = sourceStation
+    ? `<div class="muted" style="font-size:11px; margin-top:6px;">From ${sourceName}${distLabel ? ' · ' + distLabel : ''}</div>`
+    : '';
+  host.innerHTML = `<div class="card chart-card">
+    ${makeLineChart({title: 'Wave height', unit: 'ft', times: ts.times, values: ts.waveHeight, color: '#4ec3ff'})}
+    ${makeLineChart({title: 'Wave period', unit: 's',  times: ts.times, values: ts.wavePeriod, color: '#4ec3ff'})}
+    ${sourceLine}
+  </div>`;
+}
+
 async function openForecast(spotId) {
   const spot = state.spots.find(s => s.id === spotId);
   if (!spot) return;
   currentSpotId = spotId;
   currentLive = null;
   selectedHourIndex = null;
+  // Always default to Live sub-tab when opening a spot.
+  selectSubtab('live');
   // Tear down any previous mini-map so it rebinds to the new card's div
   if (spotMiniMap) { try { spotMiniMap.remove(); } catch (e) {} spotMiniMap = null; spotMiniMapSpotId = null; }
   switchView('forecast');
@@ -1542,7 +1718,13 @@ async function getNearestBeachQuality(lat, lon) {
 async function renderWaterQualityCard(spot) {
   const host = document.getElementById('water-quality-host');
   if (!host) return;
-  if (!isChicagoAreaSpot(spot.lat, spot.lon)) { host.innerHTML = ''; return; }
+  if (!isChicagoAreaSpot(spot.lat, spot.lon)) {
+    host.innerHTML = `<div class="card">
+      <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">💧 Water quality</div>
+      <div class="empty-note">Beach water-quality testing data is only available for Chicago lakefront spots (Memorial Day–Labor Day).</div>
+    </div>`;
+    return;
+  }
 
   const links = `
     <div style="margin-top:10px; display:flex; flex-direction:column; gap:6px;">
@@ -1550,12 +1732,11 @@ async function renderWaterQualityCard(spot) {
       <a href="https://www.chicagoparkdistrict.com/parks-facilities/beaches" target="_blank" style="color:var(--accent); font-size:12px;">Chicago Park District beach status ↗</a>
     </div>`;
 
-  // Render placeholder while fetching
   host.innerHTML = `
-    <details class="card" style="padding:10px 14px;">
-      <summary style="cursor:pointer; padding:4px 0; list-style:revert; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--fg-dim);">💧 Water quality</summary>
+    <div class="card" style="padding:10px 14px;">
+      <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">💧 Water quality</div>
       <div id="wq-body" style="margin-top:8px;"><div class="muted" style="font-size:12px;">Loading…</div>${links}</div>
-    </details>
+    </div>
   `;
   const body = document.getElementById('wq-body');
 
@@ -1591,27 +1772,32 @@ async function renderWaterQualityCard(spot) {
 function renderCamSection(spot) {
   const host = document.getElementById('cam-host');
   if (!host) return;
-  if (!spot || !spot.cam) { host.innerHTML = ''; return; }
+  if (!spot || !spot.cam) {
+    host.innerHTML = `<div class="card">
+      <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">Live cam</div>
+      <div class="empty-note">No live cam configured for this spot.</div>
+    </div>`;
+    return;
+  }
   const ytId = extractYouTubeId(spot.cam);
   if (ytId) {
     const embedUrl = `https://www.youtube.com/embed/${ytId}`;
     host.innerHTML = `
-      <details class="card" style="padding:10px 14px;">
-        <summary style="cursor:pointer; padding:4px 0; list-style:revert; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--fg-dim);">📹 Live cam</summary>
+      <div class="card" style="padding:10px 14px;">
+        <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">📹 Live cam</div>
         <div style="position:relative; padding-bottom:56.25%; height:0; margin-top:10px; background:#000; border-radius:8px; overflow:hidden;">
           <iframe src="${escapeHtml(embedUrl)}" frameborder="0" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture" style="position:absolute; top:0; left:0; width:100%; height:100%;"></iframe>
         </div>
         <div style="margin-top:6px; font-size:11px;"><a href="${escapeHtml(spot.cam)}" target="_blank" style="color:var(--accent);">Open in new tab ↗</a></div>
-      </details>
+      </div>
     `;
   } else {
-    // Non-YouTube — just link out (most sites block iframing)
     host.innerHTML = `
-      <details class="card" style="padding:10px 14px;">
-        <summary style="cursor:pointer; padding:4px 0; list-style:revert; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--fg-dim);">📹 Live cam</summary>
+      <div class="card" style="padding:10px 14px;">
+        <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">📹 Live cam</div>
         <div style="margin-top:8px;"><a href="${escapeHtml(spot.cam)}" target="_blank" class="btn small" style="display:inline-block; text-decoration:none;">Open cam in new tab ↗</a></div>
         <div class="muted" style="margin-top:6px; font-size:11px;">${escapeHtml(spot.cam)}</div>
-      </details>
+      </div>
     `;
   }
 }
@@ -1622,6 +1808,8 @@ async function loadLiveCardForForecast(spot) {
   if (currentSpotId === spot.id) {
     currentLive = live || null;
     updateSpotMiniMapArrows();
+    // Refresh the 24h charts whenever live data refreshes
+    renderLiveCharts(spot, live);
   }
   const host = document.getElementById('live-card-host');
   if (!host) return;
