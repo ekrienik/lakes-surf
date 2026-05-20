@@ -824,15 +824,15 @@ function switchView(name) {
   if (name === 'spots') {
     if (!editingSpots) {
       const popBtn = document.createElement('button');
-      popBtn.className = 'btn small ghost'; popBtn.textContent = '★ Popular'; popBtn.style.marginRight = '4px';
+      popBtn.className = 'btn small ghost'; popBtn.textContent = '🔍'; popBtn.title = 'Browse popular spots'; popBtn.setAttribute('aria-label', 'Browse popular spots'); popBtn.style.marginRight = '4px';
       popBtn.onclick = () => openPopularSpotsModal();
       action.appendChild(popBtn);
       const addBtn = document.createElement('button');
-      addBtn.className = 'btn small'; addBtn.textContent = '+ Add'; addBtn.style.marginRight = '4px';
+      addBtn.className = 'btn small'; addBtn.textContent = '+'; addBtn.title = 'Add spot'; addBtn.setAttribute('aria-label', 'Add spot'); addBtn.style.marginRight = '4px';
       addBtn.onclick = () => showAddSpotModal();
       action.appendChild(addBtn);
       const editBtn = document.createElement('button');
-      editBtn.className = 'btn small ghost'; editBtn.textContent = '✎ Edit';
+      editBtn.className = 'btn small ghost'; editBtn.textContent = '✎'; editBtn.title = 'Edit spots'; editBtn.setAttribute('aria-label', 'Edit spots');
       editBtn.onclick = toggleEditingSpots;
       action.appendChild(editBtn);
     } else {
@@ -1451,7 +1451,7 @@ async function openForecast(spotId) {
   document.getElementById('header-title').textContent = spot.name;
   document.getElementById('header-sub').textContent = '';
   const action = document.getElementById('header-action');
-  action.innerHTML = '<span id="header-rating" style="margin-right:8px;"></span><button class="btn small ghost" onclick="editCurrentSpot()">Edit</button>';
+  action.innerHTML = '<span id="header-rating" style="margin-right:8px;"></span><button class="btn small ghost" onclick="editCurrentSpot()" title="Edit spot" aria-label="Edit spot">✎</button>';
 
   document.getElementById('forecast-loading').style.display = 'block';
   document.getElementById('forecast-error').style.display = 'none';
@@ -1708,7 +1708,7 @@ function renderForecast() {
   // "VALUE <small>UNIT</small> DIR↗".
   const fStat = (label, val) => `<div><div class="muted" style="font-size:11px;">${label}</div><div style="font-size:16px; font-weight:600;">${val == null ? '<span class="muted" style="font-weight:400;">n/a</span>' : val}</div></div>`;
   const fU = (unit) => `<span class="muted" style="font-size:11px; margin-left:2px;">${unit}</span>`;
-  let fWave = null, fPer = null, fWind = null, fGust = null, fAir = null;
+  let fWave = null, fPer = null, fWind = null, fGust = null;
   if (now.waveHeight != null && !isNaN(now.waveHeight)) {
     const ht = (now.waveHeight * M_TO_FT).toFixed(1);
     const dirDeg = now.swellDir;
@@ -1727,9 +1727,6 @@ function renderForecast() {
   if (now.windGust != null && !isNaN(now.windGust)) {
     fGust = `${Math.round(now.windGust * KMH_TO_MPH)}${fU('mph')}`;
   }
-  if (now.temperature != null && !isNaN(now.temperature)) {
-    fAir = `${Math.round(now.temperature * 9/5 + 32)}${fU('°F')}`;
-  }
   summary.innerHTML = `
     <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">Forecast (next hr)</div>
     <div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:8px;">
@@ -1737,7 +1734,6 @@ function renderForecast() {
       ${fStat('Per', fPer)}
       ${fStat('Wind', fWind)}
       ${fStat('Gust', fGust)}
-      ${fStat('Air', fAir)}
     </div>
   `;
   const headerRating = document.getElementById('header-rating');
@@ -1820,16 +1816,89 @@ function dayPartSegments(lat, lon, day, T) {
     const hoursInSeg = day.hours.filter(h => h.time >= segStart && h.time < segEnd);
     let rating = 0;
     if (hoursInSeg.length) {
-      let best = 0;
+      // Most frequent rating across this segment (mode). Ties broken toward
+      // the higher rating so a "good window" within a mostly-poor segment
+      // still gets reflected.
+      const counts = {};
       for (const h of hoursInSeg) {
-        const r = rateHour(h, T);
-        if (r.rating > best) best = r.rating;
+        const rr = rateHour(h, T).rating;
+        counts[rr] = (counts[rr] || 0) + 1;
       }
-      rating = best || 1;
+      let bestCount = 0, mostFreq = 0;
+      for (const [r, c] of Object.entries(counts)) {
+        const ri = parseInt(r);
+        if (c > bestCount || (c === bestCount && ri > mostFreq)) {
+          bestCount = c; mostFreq = ri;
+        }
+      }
+      rating = mostFreq || 1;
     }
     segs.push({ rating, past: segEnd < now });
   }
   return segs;
+}
+
+// Map best hour's rating + reasons + wind character to a one-line surf
+// description. Wind character is "offshore" / "onshore" / "side" if the spot
+// has offshoreDirs configured; otherwise omitted from messaging.
+function todayNarrative(best, bestH, T) {
+  const r = best.rating;
+  const reasons = (best.reasons || []).map(s => s.toLowerCase());
+  const has = (substr) => reasons.some(s => s.includes(substr));
+  const t = bestH.time.toLocaleTimeString([], { hour: 'numeric' });
+  const hasOffshoreDirs = T.offshoreDirs && T.offshoreDirs.length;
+  let windChar = null;
+  if (has('offshore')) windChar = 'offshore';
+  else if (has('onshore')) windChar = 'onshore';
+  else if (hasOffshoreDirs) windChar = 'side';
+
+  // POOR
+  if (r <= 1) {
+    if (has('flat')) return 'Flat all day — skip the suit.';
+    if (has('blown')) return 'Blown out today. Not surfable.';
+    if (has('too big')) return 'Storm conditions today — too big and messy.';
+    if (has('short') && windChar === 'onshore') return 'Short-period chop with onshore wind. Not surfable.';
+    if (has('short')) return 'Short-period chop today. Not really surfable.';
+    if (windChar === 'onshore') return 'Onshore wind all day. Not surfable.';
+    return 'Conditions are poor today — not really surfable.';
+  }
+  // FAIR
+  if (r === 2) {
+    if (has('blown')) return `Blown out around ${t}. Not really surfable.`;
+    if (has('too big')) return `Big and messy around ${t}. Tough day.`;
+    if (windChar === 'onshore' && has('short')) return `Short-period chop and onshore wind around ${t}. Not surfable.`;
+    if (windChar === 'onshore')              return `Onshore wind at ${t}. Marginal — not really surfable.`;
+    if (has('short'))                         return `Short period and small around ${t}. Not really surfable.`;
+    if (has('small'))                         return `Small around ${t}. Marginal for surf.`;
+    return `Marginal around ${t}. Not really surfable.`;
+  }
+  // OK
+  if (r === 3) {
+    if (windChar === 'offshore') return `OK conditions with offshore wind around ${t}. Worth a paddle.`;
+    if (windChar === 'side')      return `OK around ${t} with side-shore wind. Paddle out if you have time.`;
+    if (windChar === 'onshore')   return `OK around ${t} but onshore. Paddle out if nothing else is going on.`;
+    if (has('blown'))             return `Decent waves but windy at ${t}. Marginal.`;
+    if (has('short'))             return `OK size but short period at ${t}. Paddle out if you're keen.`;
+    return `OK conditions around ${t}. Worth a paddle out if you have time.`;
+  }
+  // GOOD
+  if (r === 4) {
+    if (windChar === 'offshore' && has('ideal')) return `Clean, well-shaped waves around ${t}. Get in the water.`;
+    if (windChar === 'offshore') return `Good waves and offshore winds around ${t}. Get in the water.`;
+    if (windChar === 'side')      return `Good waves with side-shore wind at ${t}. Solid window.`;
+    if (windChar === 'onshore')   return `Good waves at ${t}, slight onshore. Still surfable.`;
+    if (has('light wind'))        return `Good and clean around ${t}. Get out there.`;
+    return `Good surf around ${t}. Worth getting in the water.`;
+  }
+  // EPIC
+  if (r === 5) {
+    if (windChar === 'offshore' && has('ideal')) return `Epic — clean offshore waves around ${t}. Drop everything.`;
+    if (windChar === 'offshore') return `Epic offshore at ${t}. Don't miss it.`;
+    if (windChar === 'side')      return `Epic with side-shore wind around ${t}. Drop everything.`;
+    if (has('light wind'))        return `Epic and glassy around ${t}. Drop everything.`;
+    return `Epic conditions around ${t}. Drop everything.`;
+  }
+  return '';
 }
 
 function renderCommentaryBanner(spot, days, T) {
@@ -1845,31 +1914,11 @@ function renderCommentaryBanner(spot, days, T) {
     const r = rateHour(h, T);
     if (best == null || r.rating > best.rating) { best = r; bestH = h; }
   }
-  const bestTime = bestH.time.toLocaleTimeString([], { hour: 'numeric' });
-  const bestLabel = ratingLabel(best.rating);
-  const waveStr = waveRangeText(today.hours);
-  // Append 'ft' / 'm' unit when the value is a number (not 'flat')
-  const waveUnit = state.units.wave === 'ft' ? 'ft' : 'm';
-  const waveStrWithUnit = (waveStr === 'flat' || waveStr === '–') ? waveStr : `${waveStr} ${waveUnit}`;
-  const swellDir = (bestH.swellDir != null && !isNaN(bestH.swellDir))
-    ? ' ' + degToCompass(bestH.swellDir) + dirArrow(bestH.swellDir) : '';
-  const winds = today.hours.map(h => h.windSpeed).filter(w => w != null && !isNaN(w));
-  let windStr = '';
-  if (winds.length) {
-    const min = Math.round(Math.min(...winds) * KMH_TO_MPH);
-    const max = Math.round(Math.max(...winds) * KMH_TO_MPH);
-    const winDirVal = bestH.windDir;
-    const winDir = (winDirVal != null && !isNaN(winDirVal))
-      ? ' ' + degToCompass(winDirVal) + dirArrow(winDirVal) : '';
-    windStr = (min === max ? `${min} mph` : `${min}-${max} mph`) + winDir;
-  }
-  const parts = [];
-  parts.push(`Best at ${bestTime} (${bestLabel})`);
-  parts.push(`${waveStrWithUnit}${swellDir}`);
-  if (windStr) parts.push(`wind ${windStr}`);
-  host.innerHTML = `<div class="card" style="padding:8px 12px; border-left:3px solid var(--accent); font-size:13px;">
+  const narrative = todayNarrative(best, bestH, T);
+
+  host.innerHTML = `<div class="card" style="padding:8px 12px; font-size:13px;">
     <strong style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--fg-dim);">Today</strong>
-    <span style="margin-left:6px;">${parts.join(' · ')}</span>
+    <span style="margin-left:6px;">${narrative}</span>
   </div>`;
 }
 function ratingLabel(r) { return ['–','Poor','Fair','OK','Good','Epic'][r] || '–'; }
