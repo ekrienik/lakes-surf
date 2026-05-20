@@ -1839,14 +1839,32 @@ function dayPartSegments(lat, lon, day, T) {
   return segs;
 }
 
+// Convert a Date inside civil-daylight to a textual time-of-day label like
+// "early afternoon". Divides daylight into 3 segments (morning/afternoon/
+// evening), then each segment into 3 sub-buckets (early/mid/late).
+function timeOfDayLabel(t, sunrise, sunset) {
+  if (!sunrise || !sunset) {
+    return t.toLocaleTimeString([], { hour: 'numeric' });
+  }
+  const dayLen = sunset - sunrise;
+  if (dayLen <= 0) return t.toLocaleTimeString([], { hour: 'numeric' });
+  const offset = Math.max(0, Math.min(dayLen, t - sunrise));
+  const segLen = dayLen / 3;
+  const seg = Math.min(2, Math.floor(offset / segLen));
+  const sub = Math.min(2, Math.floor((offset - seg * segLen) / (segLen / 3)));
+  const segNames = ['morning', 'afternoon', 'evening'];
+  const subNames = ['early', 'mid', 'late'];
+  return `${subNames[sub]} ${segNames[seg]}`;
+}
+
 // Map best hour's rating + reasons + wind character to a one-line surf
 // description. Wind character is "offshore" / "onshore" / "side" if the spot
 // has offshoreDirs configured; otherwise omitted from messaging.
-function todayNarrative(best, bestH, T) {
+function todayNarrative(best, bestH, T, timeLabel) {
   const r = best.rating;
   const reasons = (best.reasons || []).map(s => s.toLowerCase());
   const has = (substr) => reasons.some(s => s.includes(substr));
-  const t = bestH.time.toLocaleTimeString([], { hour: 'numeric' });
+  const t = timeLabel || bestH.time.toLocaleTimeString([], { hour: 'numeric' });
   const hasOffshoreDirs = T.offshoreDirs && T.offshoreDirs.length;
   let windChar = null;
   if (has('offshore')) windChar = 'offshore';
@@ -1913,21 +1931,25 @@ function renderCommentaryBanner(spot, days, T) {
   const isAfterDusk = todayLight && now > todayLight.sunset;
   const targetDay = (isAfterDusk && days[1] && days[1].hours.length) ? days[1] : today;
   const dayLabel = (targetDay === today) ? 'Today' : 'Tomorrow';
-  // For today, only consider hours from now onward. For tomorrow, use all
-  // hours since the whole day is still ahead.
-  let sampleHours;
-  if (targetDay === today) {
-    const futureHours = today.hours.filter(h => h.time >= now);
-    sampleHours = futureHours.length ? futureHours : today.hours;
-  } else {
-    sampleHours = targetDay.hours;
+  const targetLight = (targetDay === today) ? todayLight : sunriseSunset(spot.lat, spot.lon, targetDay.date);
+  // Only consider hours within civil-daylight for the "best window" search —
+  // we don't want to recommend surfing at 11 PM.
+  let sampleHours = targetDay.hours;
+  if (targetLight) {
+    sampleHours = sampleHours.filter(h => h.time >= targetLight.sunrise && h.time <= targetLight.sunset);
   }
+  if (targetDay === today) {
+    const future = sampleHours.filter(h => h.time >= now);
+    if (future.length) sampleHours = future;
+  }
+  if (!sampleHours.length) { host.innerHTML = ''; return; }
   let best = null, bestH = null;
   for (const h of sampleHours) {
     const r = rateHour(h, T);
     if (best == null || r.rating > best.rating) { best = r; bestH = h; }
   }
-  const narrative = todayNarrative(best, bestH, T);
+  const timeLabel = timeOfDayLabel(bestH.time, targetLight && targetLight.sunrise, targetLight && targetLight.sunset);
+  const narrative = todayNarrative(best, bestH, T, timeLabel);
 
   host.innerHTML = `<div class="card" style="padding:8px 12px; font-size:13px;">
     <strong style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--fg-dim);">${dayLabel}</strong>
