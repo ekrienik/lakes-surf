@@ -164,14 +164,16 @@
   .day-tabs button .dow { font-weight: 700; font-size: 12px; line-height: 1.1; }
   .day-tabs button .range { font-size: 11px; color: var(--fg-dim); line-height: 1.1; }
   .day-tabs button .rating-bar {
-    display: block; width: 80%; height: 5px; border-radius: 3px;
-    background: #2c4258; margin-top: 2px;
+    display: flex; width: 80%; height: 5px; border-radius: 3px;
+    overflow: hidden; margin-top: 2px; gap: 1px; background: transparent;
   }
-  .day-tabs button.r1 .rating-bar { background: var(--r-1); }
-  .day-tabs button.r2 .rating-bar { background: var(--r-2); }
-  .day-tabs button.r3 .rating-bar { background: var(--r-3); }
-  .day-tabs button.r4 .rating-bar { background: var(--r-4); }
-  .day-tabs button.r5 .rating-bar { background: var(--r-5); }
+  .day-tabs button .rating-bar .seg { flex: 1; background: #2c4258; }
+  .day-tabs button .rating-bar .seg.r1 { background: var(--r-1); }
+  .day-tabs button .rating-bar .seg.r2 { background: var(--r-2); }
+  .day-tabs button .rating-bar .seg.r3 { background: var(--r-3); }
+  .day-tabs button .rating-bar .seg.r4 { background: var(--r-4); }
+  .day-tabs button .rating-bar .seg.r5 { background: var(--r-5); }
+  .day-tabs button .rating-bar .seg.past { opacity: 0.3; }
   .day-tabs button.active { border-color: var(--accent); background: var(--bg-3); }
 
   table.hourly { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -341,10 +343,12 @@
     <div id="forecast-loading" class="empty">Loading forecast…</div>
     <div id="forecast-error" class="empty" style="display:none;"></div>
     <div id="forecast-content" style="display:none;">
+      <div id="commentary-host"></div>
       <div id="live-card-host"></div>
       <div id="cam-host"></div>
       <div id="water-quality-host"></div>
       <div class="card" id="forecast-summary"></div>
+      <div id="mini-map-host"></div>
       <div class="day-tabs" id="day-tabs"></div>
       <div class="card hourly-card" style="padding:0;">
         <table class="hourly" id="hourly-table"></table>
@@ -703,6 +707,63 @@ function extractYouTubeId(url) {
   return m ? m[1] : null;
 }
 
+// Compute approximate sunrise/sunset for a lat/lon and Date (NOAA algorithm).
+// Returns {sunrise, sunset, daylightHours} as Date objects + number; or null at
+// extreme latitudes / polar day/night.
+function sunriseSunset(lat, lon, dateObj) {
+  const rad = Math.PI / 180;
+  const date = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+  const start = Date.UTC(date.getUTCFullYear(), 0, 0);
+  const N = Math.floor((Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) - start) / 86400000);
+  const lngHour = lon / 15;
+  function calc(rising) {
+    const t = N + ((rising ? 6 : 18) - lngHour) / 24;
+    const M = 0.9856 * t - 3.289;
+    let L = M + 1.916 * Math.sin(M * rad) + 0.020 * Math.sin(2 * M * rad) + 282.634;
+    L = ((L % 360) + 360) % 360;
+    let RA = Math.atan(0.91764 * Math.tan(L * rad)) / rad;
+    RA = ((RA % 360) + 360) % 360;
+    const Lq = Math.floor(L / 90) * 90;
+    const RAq = Math.floor(RA / 90) * 90;
+    RA = (RA + (Lq - RAq)) / 15;
+    const sinDec = 0.39782 * Math.sin(L * rad);
+    const cosDec = Math.cos(Math.asin(sinDec));
+    const cosH = (Math.cos(90.833 * rad) - sinDec * Math.sin(lat * rad)) / (cosDec * Math.cos(lat * rad));
+    if (cosH > 1 || cosH < -1) return null;
+    let H = rising ? 360 - Math.acos(cosH) / rad : Math.acos(cosH) / rad;
+    H = H / 15;
+    let T = H + RA - 0.06571 * t - 6.622;
+    let UT = T - lngHour;
+    UT = ((UT % 24) + 24) % 24;
+    return UT;
+  }
+  const srUTC = calc(true), ssUTC = calc(false);
+  if (srUTC == null || ssUTC == null) return null;
+  const utcMid = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  const sunrise = new Date(utcMid + srUTC * 3600 * 1000);
+  const sunset = new Date(utcMid + ssUTC * 3600 * 1000);
+  const daylightHours = (sunset - sunrise) / 3600000;
+  return { sunrise, sunset, daylightHours };
+}
+
+function isDaytimeAt(lat, lon, dateObj) {
+  const s = sunriseSunset(lat, lon, dateObj);
+  if (!s) return null;
+  return dateObj >= s.sunrise && dateObj <= s.sunset;
+}
+
+function synthesizeShortForecast(skyCover, precipPct, temperatureC) {
+  if (precipPct != null && precipPct >= 60) {
+    if (temperatureC != null && temperatureC <= 0) return 'snow';
+    return 'rain';
+  }
+  if (precipPct != null && precipPct >= 30) return 'showers';
+  if (skyCover == null) return 'partly cloudy';
+  if (skyCover < 20) return 'sunny';
+  if (skyCover < 60) return 'partly cloudy';
+  return 'cloudy';
+}
+
 // Map NOAA's shortForecast text to a weather emoji that renders cleanly at any size.
 function weatherEmoji(shortForecast, isDaytime) {
   if (!shortForecast) return '';
@@ -860,6 +921,11 @@ async function getForecast(lat, lon) {
   for (let h = 0; h < 24 * 7; h++) {
     const t = new Date(start.getTime() + h * 3600 * 1000);
     const ic = iconByHour.get(t.getTime());
+    const sky = sampleAt(series.skyCover, t);
+    const pp = sampleAt(series.probabilityOfPrecipitation, t);
+    const temp = sampleAt(series.temperature, t);
+    const synthShort = ic ? null : synthesizeShortForecast(sky, pp, temp);
+    const synthDay = ic ? null : isDaytimeAt(lat, lon, t);
     hours.push({
       time: t,
       waveHeight: sampleAt(series.waveHeight, t),
@@ -868,12 +934,12 @@ async function getForecast(lat, lon) {
       windSpeed: sampleAt(series.windSpeed, t),
       windGust: sampleAt(series.windGust, t),
       windDir: sampleAt(series.windDirection, t),
-      temperature: sampleAt(series.temperature, t),
-      precipPct: sampleAt(series.probabilityOfPrecipitation, t),
-      skyCover: sampleAt(series.skyCover, t),
+      temperature: temp,
+      precipPct: pp,
+      skyCover: sky,
       icon: ic ? ic.icon : null,
-      shortForecast: ic ? ic.shortForecast : null,
-      isDaytime: ic ? ic.isDaytime : null
+      shortForecast: ic ? ic.shortForecast : synthShort,
+      isDaytime: ic ? ic.isDaytime : synthDay
     });
   }
 
@@ -1371,9 +1437,9 @@ async function openForecast(spotId) {
   if (spotMiniMap) { try { spotMiniMap.remove(); } catch (e) {} spotMiniMap = null; spotMiniMapSpotId = null; }
   switchView('forecast');
   document.getElementById('header-title').textContent = spot.name;
-  document.getElementById('header-sub').textContent = `${spot.lat.toFixed(3)}, ${spot.lon.toFixed(3)}`;
+  document.getElementById('header-sub').textContent = '';
   const action = document.getElementById('header-action');
-  action.innerHTML = '<button class="btn small ghost" onclick="editCurrentSpot()">Edit</button>';
+  action.innerHTML = '<span id="header-rating" style="margin-right:8px;"></span><button class="btn small ghost" onclick="editCurrentSpot()">Edit</button>';
 
   document.getElementById('forecast-loading').style.display = 'block';
   document.getElementById('forecast-error').style.display = 'none';
@@ -1466,7 +1532,7 @@ async function renderWaterQualityCard(spot) {
   // Render placeholder while fetching
   host.innerHTML = `
     <details class="card" style="padding:10px 14px;">
-      <summary style="cursor:pointer; font-weight:600; padding:4px 0; list-style:revert;">💧 Water quality</summary>
+      <summary style="cursor:pointer; padding:4px 0; list-style:revert; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--fg-dim);">💧 Water quality</summary>
       <div id="wq-body" style="margin-top:8px;"><div class="muted" style="font-size:12px;">Loading…</div>${links}</div>
     </details>
   `;
@@ -1510,7 +1576,7 @@ function renderCamSection(spot) {
     const embedUrl = `https://www.youtube.com/embed/${ytId}`;
     host.innerHTML = `
       <details class="card" style="padding:10px 14px;">
-        <summary style="cursor:pointer; font-weight:600; padding:4px 0; list-style:revert;">📹 Live cam</summary>
+        <summary style="cursor:pointer; padding:4px 0; list-style:revert; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--fg-dim);">📹 Live cam</summary>
         <div style="position:relative; padding-bottom:56.25%; height:0; margin-top:10px; background:#000; border-radius:8px; overflow:hidden;">
           <iframe src="${escapeHtml(embedUrl)}" frameborder="0" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture" style="position:absolute; top:0; left:0; width:100%; height:100%;"></iframe>
         </div>
@@ -1521,7 +1587,7 @@ function renderCamSection(spot) {
     // Non-YouTube — just link out (most sites block iframing)
     host.innerHTML = `
       <details class="card" style="padding:10px 14px;">
-        <summary style="cursor:pointer; font-weight:600; padding:4px 0; list-style:revert;">📹 Live cam</summary>
+        <summary style="cursor:pointer; padding:4px 0; list-style:revert; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--fg-dim);">📹 Live cam</summary>
         <div style="margin-top:8px;"><a href="${escapeHtml(spot.cam)}" target="_blank" class="btn small" style="display:inline-block; text-decoration:none;">Open cam in new tab ↗</a></div>
         <div class="muted" style="margin-top:6px; font-size:11px;">${escapeHtml(spot.cam)}</div>
       </details>
@@ -1626,36 +1692,39 @@ function renderForecast() {
   const now = currentForecast.hours[0];
   const nowR = rateHour(now, T);
   const summary = document.getElementById('forecast-summary');
-  const perTxt = (now.wavePeriod != null && !isNaN(now.wavePeriod)) ? now.wavePeriod.toFixed(1) + 's' : '–';
+  const perTxt = (now.wavePeriod != null && !isNaN(now.wavePeriod)) ? Math.round(now.wavePeriod) + 's' : '–';
   const waveDirTxt = (now.swellDir != null && !isNaN(now.swellDir)) ? ' ' + degToCompass(now.swellDir) + dirArrow(now.swellDir) : '';
   summary.innerHTML = `
-    <div class="now-row">
-      <div class="now-text">
-        <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">Forecast (next hr)</div>
-        <div style="margin-top:6px;"><span class="chip r${nowR.rating}">${ratingLabel(nowR.rating)}</span></div>
-        <div style="font-size:16px; font-weight:600; margin-top:8px;">${fmtWave(now.waveHeight)}${waveDirTxt} · ${perTxt}</div>
-        <div class="muted" style="margin-top:2px;">wind ${fmtWind(now.windSpeed)} ${degToCompass(now.windDir)}${dirArrow(now.windDir)}</div>
-        <div class="muted" style="margin-top:6px;">${nowR.reasons.slice(0,3).join(' • ')}</div>
-      </div>
-      <div class="now-mini-map-col">
+    <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">Forecast (next hr)</div>
+    <div style="font-size:16px; font-weight:600; margin-top:8px;">${fmtWave(now.waveHeight)}${waveDirTxt} · ${perTxt}</div>
+    <div class="muted" style="margin-top:2px;">wind ${fmtWind(now.windSpeed)} ${degToCompass(now.windDir)}${dirArrow(now.windDir)}</div>
+  `;
+  const headerRating = document.getElementById('header-rating');
+  if (headerRating) headerRating.innerHTML = `<span class="chip r${nowR.rating}">${ratingLabel(nowR.rating)}</span>`;
+  const mapHost = document.getElementById('mini-map-host');
+  if (mapHost) {
+    mapHost.innerHTML = `
+      <div class="card" style="padding:10px; display:flex; flex-direction:column; align-items:center;">
         <div class="now-mini-map-wrap">
           <div id="spot-mini-map" class="now-mini-map"></div>
           <svg id="spot-mini-arrows" class="now-mini-arrows" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet"></svg>
         </div>
         <div id="spot-mini-when" class="map-when-caption"></div>
-      </div>
-    </div>
-  `;
+      </div>`;
+  }
   initSpotMiniMap(spot);
   updateSpotMiniMapArrows();
+  renderCommentaryBanner(spot, days, T);
 
   const tabs = document.getElementById('day-tabs');
   tabs.innerHTML = days.map((day, i) => {
     const dr = rateDay(day.hours, T);
     const dow = day.date.toLocaleDateString(undefined, { weekday: 'short' });
     const range = waveRangeText(day.hours);
+    const segs = dayPartSegments(spot.lat, spot.lon, day, T);
+    const segHtml = segs.map(s => `<span class="seg r${s.rating}${s.past ? ' past' : ''}"></span>`).join('');
     return `<button class="r${dr.rating} ${i===currentDayIndex?'active':''}" onclick="selectDay(${i})">
-      <span class="dow">${dow}</span><span class="range">${range}</span><span class="rating-bar"></span>
+      <span class="dow">${dow}</span><span class="range">${range}</span><span class="rating-bar">${segHtml}</span>
     </button>`;
   }).join('');
 
@@ -1696,6 +1765,69 @@ function renderForecast() {
 }
 
 function selectDay(i) { currentDayIndex = i; selectedHourIndex = null; renderForecast(); }
+
+function dayPartSegments(lat, lon, day, T) {
+  const ss = sunriseSunset(lat, lon, day.date);
+  const dayStart = ss ? ss.sunrise : new Date(day.date.getFullYear(), day.date.getMonth(), day.date.getDate(), 6);
+  const dayEnd   = ss ? ss.sunset  : new Date(day.date.getFullYear(), day.date.getMonth(), day.date.getDate(), 21);
+  const span = (dayEnd - dayStart) / 3;
+  const now = new Date();
+  const segs = [];
+  for (let s = 0; s < 3; s++) {
+    const segStart = new Date(dayStart.getTime() + s * span);
+    const segEnd   = new Date(dayStart.getTime() + (s + 1) * span);
+    const hoursInSeg = day.hours.filter(h => h.time >= segStart && h.time < segEnd);
+    let rating = 0;
+    if (hoursInSeg.length) {
+      let best = 0;
+      for (const h of hoursInSeg) {
+        const r = rateHour(h, T);
+        if (r.rating > best) best = r.rating;
+      }
+      rating = best || 1;
+    }
+    segs.push({ rating, past: segEnd < now });
+  }
+  return segs;
+}
+
+function renderCommentaryBanner(spot, days, T) {
+  const host = document.getElementById('commentary-host');
+  if (!host) return;
+  const today = days[0];
+  if (!today || !today.hours.length) { host.innerHTML = ''; return; }
+  const now = new Date();
+  const futureHours = today.hours.filter(h => h.time >= now);
+  const sampleHours = futureHours.length ? futureHours : today.hours;
+  let best = null, bestH = null;
+  for (const h of sampleHours) {
+    const r = rateHour(h, T);
+    if (best == null || r.rating > best.rating) { best = r; bestH = h; }
+  }
+  const bestTime = bestH.time.toLocaleTimeString([], { hour: 'numeric' });
+  const bestLabel = ratingLabel(best.rating);
+  const waveStr = waveRangeText(today.hours);
+  const swellDir = (bestH.swellDir != null && !isNaN(bestH.swellDir))
+    ? ' ' + degToCompass(bestH.swellDir) + dirArrow(bestH.swellDir) : '';
+  const winds = today.hours.map(h => h.windSpeed).filter(w => w != null && !isNaN(w));
+  let windStr = '';
+  if (winds.length) {
+    const min = Math.round(Math.min(...winds) * KMH_TO_MPH);
+    const max = Math.round(Math.max(...winds) * KMH_TO_MPH);
+    const winDirVal = bestH.windDir;
+    const winDir = (winDirVal != null && !isNaN(winDirVal))
+      ? ' ' + degToCompass(winDirVal) + dirArrow(winDirVal) : '';
+    windStr = (min === max ? `${min} mph` : `${min}-${max} mph`) + winDir;
+  }
+  const parts = [];
+  parts.push(`Best at ${bestTime} (${bestLabel})`);
+  parts.push(`${waveStr}${swellDir}`);
+  if (windStr) parts.push(`wind ${windStr}`);
+  host.innerHTML = `<div class="card" style="padding:8px 12px; border-left:3px solid var(--accent); font-size:13px;">
+    <strong style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--fg-dim);">Today</strong>
+    <span style="margin-left:6px;">${parts.join(' · ')}</span>
+  </div>`;
+}
 function ratingLabel(r) { return ['–','Poor','Fair','OK','Good','Epic'][r] || '–'; }
 
 // Tap an hourly row to peek that hour on the mini-map.
