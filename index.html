@@ -1946,7 +1946,15 @@ function renderCommentaryBanner(spot, days, T) {
   let best = null, bestH = null;
   for (const h of sampleHours) {
     const r = rateHour(h, T);
-    if (best == null || r.rating > best.rating) { best = r; bestH = h; }
+    // Pick highest rating; on ties, pick the hour with the higher underlying
+    // score (cleaner wind, better wave/period mix) — keeps the commentary
+    // pointing at the genuinely best window rather than the first hour to
+    // cross a rating threshold.
+    if (best == null
+        || r.rating > best.rating
+        || (r.rating === best.rating && (r.score || 0) > (best.score || 0))) {
+      best = r; bestH = h;
+    }
   }
   const timeLabel = timeOfDayLabel(bestH.time, targetLight && targetLight.sunrise, targetLight && targetLight.sunset);
   const narrative = todayNarrative(best, bestH, T, timeLabel);
