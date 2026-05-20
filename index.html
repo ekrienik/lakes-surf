@@ -296,6 +296,12 @@
     box-shadow: inset 0 2px 0 var(--accent), inset 0 -2px 0 var(--accent);
   }
   table.hourly tbody tr.selected td.time { color: var(--accent); font-weight: 700; }
+  /* Forecast + map cards side-by-side on the spot page */
+  .forecast-row { display: flex; gap: 10px; align-items: stretch; margin-bottom: 12px; }
+  .forecast-row #forecast-summary { flex: 1 1 auto; margin-bottom: 0; }
+  .forecast-row #mini-map-host { flex: 0 0 auto; }
+  .forecast-row #mini-map-host .card { margin-bottom: 0; padding: 10px; }
+
   /* Map + caption column on the Forecast card */
   .now-mini-map-col { display: flex; flex-direction: column; flex: 0 0 130px; align-items: center; }
   .now-mini-map-col .now-mini-map-wrap { flex: 0 0 130px; width: 130px; height: 130px; }
@@ -347,8 +353,10 @@
       <div id="live-card-host"></div>
       <div id="cam-host"></div>
       <div id="water-quality-host"></div>
-      <div class="card" id="forecast-summary"></div>
-      <div id="mini-map-host"></div>
+      <div class="forecast-row">
+        <div class="card" id="forecast-summary"></div>
+        <div id="mini-map-host"></div>
+      </div>
       <div class="day-tabs" id="day-tabs"></div>
       <div class="card hourly-card" style="padding:0;">
         <table class="hourly" id="hourly-table"></table>
@@ -737,8 +745,12 @@ function sunriseSunset(lat, lon, dateObj) {
     UT = ((UT % 24) + 24) % 24;
     return UT;
   }
-  const srUTC = calc(true), ssUTC = calc(false);
+  const srUTC = calc(true);
+  let ssUTC = calc(false);
   if (srUTC == null || ssUTC == null) return null;
+  // For western longitudes (US), sunset's UT may wrap past midnight UTC; add
+  // 24 so the resulting Date lands on the same local day as sunrise.
+  if (ssUTC < srUTC) ssUTC += 24;
   const utcMid = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
   const sunrise = new Date(utcMid + srUTC * 3600 * 1000);
   const sunset = new Date(utcMid + ssUTC * 3600 * 1000);
@@ -1692,12 +1704,41 @@ function renderForecast() {
   const now = currentForecast.hours[0];
   const nowR = rateHour(now, T);
   const summary = document.getElementById('forecast-summary');
-  const perTxt = (now.wavePeriod != null && !isNaN(now.wavePeriod)) ? Math.round(now.wavePeriod) + 's' : '–';
-  const waveDirTxt = (now.swellDir != null && !isNaN(now.swellDir)) ? ' ' + degToCompass(now.swellDir) + dirArrow(now.swellDir) : '';
+  // Build forecast stat cells in the same format as the Right Now (LIVE) card:
+  // "VALUE <small>UNIT</small> DIR↗".
+  const fStat = (label, val) => `<div><div class="muted" style="font-size:11px;">${label}</div><div style="font-size:16px; font-weight:600;">${val == null ? '<span class="muted" style="font-weight:400;">n/a</span>' : val}</div></div>`;
+  const fU = (unit) => `<span class="muted" style="font-size:11px; margin-left:2px;">${unit}</span>`;
+  let fWave = null, fPer = null, fWind = null, fGust = null, fAir = null;
+  if (now.waveHeight != null && !isNaN(now.waveHeight)) {
+    const ht = (now.waveHeight * M_TO_FT).toFixed(1);
+    const dirDeg = now.swellDir;
+    const dir = (dirDeg != null && !isNaN(dirDeg)) ? ' ' + degToCompass(dirDeg) + dirArrow(dirDeg) : '';
+    fWave = `${ht}${fU('ft')}${dir}`;
+  }
+  if (now.wavePeriod != null && !isNaN(now.wavePeriod)) {
+    fPer = `${Math.round(now.wavePeriod)}${fU('s')}`;
+  }
+  if (now.windSpeed != null && !isNaN(now.windSpeed)) {
+    const sp = Math.round(now.windSpeed * KMH_TO_MPH);
+    const dirDeg = now.windDir;
+    const dir = (dirDeg != null && !isNaN(dirDeg)) ? ' ' + degToCompass(dirDeg) + dirArrow(dirDeg) : '';
+    fWind = `${sp}${fU('mph')}${dir}`;
+  }
+  if (now.windGust != null && !isNaN(now.windGust)) {
+    fGust = `${Math.round(now.windGust * KMH_TO_MPH)}${fU('mph')}`;
+  }
+  if (now.temperature != null && !isNaN(now.temperature)) {
+    fAir = `${Math.round(now.temperature * 9/5 + 32)}${fU('°F')}`;
+  }
   summary.innerHTML = `
     <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">Forecast (next hr)</div>
-    <div style="font-size:16px; font-weight:600; margin-top:8px;">${fmtWave(now.waveHeight)}${waveDirTxt} · ${perTxt}</div>
-    <div class="muted" style="margin-top:2px;">wind ${fmtWind(now.windSpeed)} ${degToCompass(now.windDir)}${dirArrow(now.windDir)}</div>
+    <div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:8px;">
+      ${fStat('Wave', fWave)}
+      ${fStat('Per', fPer)}
+      ${fStat('Wind', fWind)}
+      ${fStat('Gust', fGust)}
+      ${fStat('Air', fAir)}
+    </div>
   `;
   const headerRating = document.getElementById('header-rating');
   if (headerRating) headerRating.innerHTML = `<span class="chip r${nowR.rating}">${ratingLabel(nowR.rating)}</span>`;
@@ -1807,6 +1848,9 @@ function renderCommentaryBanner(spot, days, T) {
   const bestTime = bestH.time.toLocaleTimeString([], { hour: 'numeric' });
   const bestLabel = ratingLabel(best.rating);
   const waveStr = waveRangeText(today.hours);
+  // Append 'ft' / 'm' unit when the value is a number (not 'flat')
+  const waveUnit = state.units.wave === 'ft' ? 'ft' : 'm';
+  const waveStrWithUnit = (waveStr === 'flat' || waveStr === '–') ? waveStr : `${waveStr} ${waveUnit}`;
   const swellDir = (bestH.swellDir != null && !isNaN(bestH.swellDir))
     ? ' ' + degToCompass(bestH.swellDir) + dirArrow(bestH.swellDir) : '';
   const winds = today.hours.map(h => h.windSpeed).filter(w => w != null && !isNaN(w));
@@ -1821,7 +1865,7 @@ function renderCommentaryBanner(spot, days, T) {
   }
   const parts = [];
   parts.push(`Best at ${bestTime} (${bestLabel})`);
-  parts.push(`${waveStr}${swellDir}`);
+  parts.push(`${waveStrWithUnit}${swellDir}`);
   if (windStr) parts.push(`wind ${windStr}`);
   host.innerHTML = `<div class="card" style="padding:8px 12px; border-left:3px solid var(--accent); font-size:13px;">
     <strong style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--fg-dim);">Today</strong>
