@@ -1212,7 +1212,11 @@ function formatLiveCompact(live) {
     const ht = parseFloat(waveSrc.waveHeight.value).toFixed(1);
     const dirDeg = waveSrc.waveDirection ? parseFloat(waveSrc.waveDirection.value) : null;
     const dir = (dirDeg != null && !isNaN(dirDeg)) ? ' ' + degToCompass(dirDeg) + dirArrow(dirDeg) : '';
-    parts.push(`${ht} ft${dir}`);
+    let per = '';
+    if (waveSrc.wavePeriod && !isNaN(parseFloat(waveSrc.wavePeriod.value))) {
+      per = ' ' + Math.round(parseFloat(waveSrc.wavePeriod.value)) + 's';
+    }
+    parts.push(`${ht} ft${dir}${per}`);
   }
   if (o.windSpeed) {
     const dir = o.windDirection ? degToCompass(parseFloat(o.windDirection.value)) : '';
