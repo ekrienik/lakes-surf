@@ -629,10 +629,10 @@ const POPULAR_SPOTS = [
   { id: 'pop_promontory', name: 'Promontory / 57th St Beach',     lat: 41.793, lon: -87.578, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=qv5XF6USv7M' },
   { id: 'pop_sheboygan',  name: 'Sheboygan (Deland Park)',        lat: 43.7578, lon: -87.6960, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=13j5iZkMpbE' },
   { id: 'pop_bradford',   name: 'Bradford Beach (Milwaukee)',     lat: 43.063, lon: -87.872, lake: 'Michigan', offshoreDirs: ['W','NW'], cam: null },
-  { id: 'pop_stjoseph',   name: 'Silver Beach (St. Joseph)',      lat: 42.1085, lon: -86.4955, lake: 'Michigan', offshoreDirs: ['E','NE','SE'], cam: null },
+  { id: 'pop_stjoseph',   name: 'Silver Beach (St. Joseph)',      lat: 42.1085, lon: -86.5005, lake: 'Michigan', offshoreDirs: ['E','NE','SE'], cam: null },
   { id: 'pop_grandhaven', name: 'Grand Haven State Park',         lat: 43.0530, lon: -86.2543, lake: 'Michigan', offshoreDirs: ['E','NE','SE'], cam: 'https://surfshopgh.com/pages/swim-flag-cam' },
   { id: 'pop_michcity',   name: 'Washington Park (Michigan City)',lat: 41.726, lon: -86.913, lake: 'Michigan', offshoreDirs: ['S','SW','SE'], cam: 'https://www.youtube.com/watch?v=Y2VkN45kj_0' },
-  { id: 'pop_newbuffalo', name: 'New Buffalo Beach',              lat: 41.799, lon: -86.745, lake: 'Michigan', offshoreDirs: ['S','SE','E'], cam: null }
+  { id: 'pop_newbuffalo', name: 'New Buffalo Beach',              lat: 41.799, lon: -86.760, lake: 'Michigan', offshoreDirs: ['S','SE','E'], cam: null }
 ];
 const FIRST_RUN_SEED = ['pop_montrose'];
 const DEFAULT_UNITS = { wave: 'ft', wind: 'mph', temp: 'F' };
@@ -666,10 +666,12 @@ function loadState() {
         { oldLat: 43.751, oldLon: -87.695 }   // v5.5.2 nudge
       ],
       'pop_stjoseph':   [
-        { oldLat: 42.108, oldLon: -86.490 },  // pre-v5.5.2 original
-        { oldLat: 42.115, oldLon: -86.500 }   // v5.5.2 nudge
+        { oldLat: 42.108,  oldLon: -86.490  }, // pre-v5.5.2 original
+        { oldLat: 42.115,  oldLon: -86.500  }, // v5.5.2 nudge
+        { oldLat: 42.1085, oldLon: -86.4955 }  // v5.7.3 (still on-shore for waves)
       ],
-      'pop_grandhaven': [{ oldLat: 43.057,    oldLon: -86.247   }]
+      'pop_grandhaven': [{ oldLat: 43.057, oldLon: -86.247 }],
+      'pop_newbuffalo': [{ oldLat: 41.799, oldLon: -86.745 }]
     };
     for (const sp of s.spots) {
       const candidates = sp.builtinId && COORD_MIGRATIONS[sp.builtinId];
