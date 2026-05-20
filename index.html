@@ -289,6 +289,19 @@
     isolation: isolate;
     z-index: 0;
   }
+  /* Full-width LIVE conditions map on the Live tab */
+  .live-map-wrap {
+    width: 100%; height: 260px;
+    border-radius: 10px; overflow: hidden; position: relative;
+    border: 1px solid var(--border); background: var(--bg-3);
+    isolation: isolate;
+    z-index: 0;
+  }
+  .live-map-wrap .spot-live-map { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .live-map-wrap .live-arrows {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 500; overflow: visible;
+  }
   .now-mini-map { position: absolute; inset: 0; width: 100%; height: 100%; }
   .now-mini-arrows {
     position: absolute; inset: 0; width: 100%; height: 100%;
@@ -389,6 +402,7 @@
         <div id="commentary-host"></div>
         <div id="live-card-host"></div>
         <div id="live-charts-host"></div>
+        <div id="live-map-host"></div>
       </div>
 
       <div class="subtab-content" data-subtab="forecast" hidden>
@@ -1523,6 +1537,8 @@ let currentLive = null;
 let selectedHourIndex = null;     // global index in currentForecast.hours; null = "right now"
 let spotMiniMap = null;
 let spotMiniMapSpotId = null;
+let spotLiveMap = null;
+let spotLiveMapSpotId = null;
 
 // Current sub-tab on the spot page. Always resets to "live" when a new spot
 // is opened (default to Live tab).
@@ -1545,6 +1561,15 @@ function selectSubtab(name) {
       try {
         spotMiniMap.invalidateSize();
         if (spot) spotMiniMap.fitBounds(L.latLng(spot.lat, spot.lon).toBounds(1600), { animate: false });
+      } catch (e) {}
+    }, 30);
+  }
+  if (name === 'live' && spotLiveMap && currentSpotId) {
+    const spot = state.spots.find(s => s.id === currentSpotId);
+    setTimeout(() => {
+      try {
+        spotLiveMap.invalidateSize();
+        if (spot) spotLiveMap.fitBounds(L.latLng(spot.lat, spot.lon).toBounds(1600), { animate: false });
       } catch (e) {}
     }, 30);
   }
@@ -1683,8 +1708,9 @@ async function openForecast(spotId) {
   selectedHourIndex = null;
   // Always default to Live sub-tab when opening a spot.
   selectSubtab('live');
-  // Tear down any previous mini-map so it rebinds to the new card's div
+  // Tear down any previous mini-maps so they rebind to the new card's divs
   if (spotMiniMap) { try { spotMiniMap.remove(); } catch (e) {} spotMiniMap = null; spotMiniMapSpotId = null; }
+  if (spotLiveMap) { try { spotLiveMap.remove(); } catch (e) {} spotLiveMap = null; spotLiveMapSpotId = null; }
   switchView('forecast');
   document.getElementById('header-title').textContent = spot.name;
   document.getElementById('header-sub').textContent = '';
@@ -1867,6 +1893,9 @@ async function loadLiveCardForForecast(spot) {
     updateSpotMiniMapArrows();
     // Refresh the 24h charts whenever live data refreshes
     renderLiveCharts(spot, live);
+    // Initialize / refresh the LIVE-tab full-width map and its arrows
+    initSpotLiveMap(spot);
+    updateSpotLiveMapArrows();
   }
   const host = document.getElementById('live-card-host');
   if (!host) return;
@@ -2346,6 +2375,79 @@ function waveBadgeText(m) {
   }
   if (m < 0.3) return 'flat';
   return m.toFixed(1) + 'm';
+}
+
+// Initialize / refresh the LIVE-tab full-width conditions map.
+function initSpotLiveMap(spot) {
+  const host = document.getElementById('live-map-host');
+  if (!host || !spot) return;
+  // First time? Inject the structure.
+  if (!host.querySelector('.live-map-wrap')) {
+    host.innerHTML = `<div class="card" style="padding:6px; margin-bottom:80px;">
+      <div class="live-map-wrap">
+        <div id="spot-live-map" class="spot-live-map"></div>
+        <svg id="spot-live-arrows" class="live-arrows" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+    </div>`;
+  }
+  const el = document.getElementById('spot-live-map');
+  if (!el) return;
+  if (spotLiveMap && (spotLiveMapSpotId !== spot.id || !document.body.contains(spotLiveMap.getContainer()))) {
+    try { spotLiveMap.remove(); } catch (e) {}
+    spotLiveMap = null;
+  }
+  if (!spotLiveMap) {
+    spotLiveMap = L.map(el, {
+      zoomControl: false, attributionControl: false,
+      dragging: false, scrollWheelZoom: false, doubleClickZoom: false,
+      boxZoom: false, keyboard: false, touchZoom: false, tap: false,
+      inertia: false
+    });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19, subdomains: 'abcd', crossOrigin: true
+    }).addTo(spotLiveMap);
+    spotLiveMapSpotId = spot.id;
+  }
+  spotLiveMap.fitBounds(L.latLng(spot.lat, spot.lon).toBounds(1600), { animate: false });
+  setTimeout(() => { try { spotLiveMap.invalidateSize(); } catch (e) {} }, 50);
+  spotLiveMapSpotId = spot.id;
+}
+
+// Re-render the LIVE map's arrows using buoy data (falling back to forecast
+// when the buoy doesn't report direction).
+function updateSpotLiveMapArrows() {
+  const svg = document.getElementById('spot-live-arrows');
+  if (!svg) return;
+  const o = (currentLive && currentLive.obs) || {};
+  const wo = (currentLive && currentLive.waveObs) || {};
+
+  // Wind from the primary station
+  let windDeg = (o.windDirection && !isNaN(parseFloat(o.windDirection.value))) ? parseFloat(o.windDirection.value) : null;
+  let windSpdMph = (o.windSpeed && !isNaN(parseFloat(o.windSpeed.value))) ? Math.round(parseFloat(o.windSpeed.value)) : null;
+
+  // Wave from the wave-buoy station (or primary if it has waves)
+  const waveSrc = o.waveHeight ? o : (wo.waveHeight ? wo : null);
+  let waveHt = null, wavePer = null, waveDeg = null;
+  if (waveSrc) {
+    waveHt = parseFloat(waveSrc.waveHeight.value).toFixed(1);
+    if (waveSrc.wavePeriod && !isNaN(parseFloat(waveSrc.wavePeriod.value))) {
+      wavePer = Math.round(parseFloat(waveSrc.wavePeriod.value));
+    }
+    if (waveSrc.waveDirection && !isNaN(parseFloat(waveSrc.waveDirection.value))) {
+      waveDeg = parseFloat(waveSrc.waveDirection.value);
+    }
+  }
+  // Fallback to forecast swell direction when buoy doesn't report one
+  if ((waveDeg == null || isNaN(waveDeg)) && currentForecast && currentForecast.hours && currentForecast.hours[0]) {
+    const fd = currentForecast.hours[0].swellDir;
+    if (fd != null && !isNaN(fd)) waveDeg = fd;
+  }
+
+  const windLabel = windSpdMph != null ? `${windSpdMph}mph` : null;
+  const waveLabel = waveHt;
+  const periodLabel = wavePer != null ? `${wavePer}s` : null;
+
+  svg.innerHTML = makeMiniArrowsSvg(windDeg, windLabel, waveDeg, waveLabel, periodLabel);
 }
 
 function makeMiniArrowsSvg(windDeg, windLabel, swellDeg, waveLabel, periodLabel) {
