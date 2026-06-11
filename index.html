@@ -1856,6 +1856,13 @@ async function renderWaterQualityCard(spot) {
   if (body) body.innerHTML = live + links;
 }
 
+// YouTube video IDs whose channel owners have disabled iframe embedding
+// (YouTube error 153). For these we render the same "Open in new tab" button
+// we use for non-YouTube cams so users still get a one-click path to the feed.
+const CAM_NO_EMBED = new Set([
+  'qv5XF6USv7M' // City of Evanston — Dempster Street Boat Launch
+]);
+
 function renderCamSection(spot) {
   const host = document.getElementById('cam-host');
   if (!host) return;
@@ -1867,7 +1874,7 @@ function renderCamSection(spot) {
     return;
   }
   const ytId = extractYouTubeId(spot.cam);
-  if (ytId) {
+  if (ytId && !CAM_NO_EMBED.has(ytId)) {
     const embedUrl = `https://www.youtube.com/embed/${ytId}`;
     host.innerHTML = `
       <div class="card" style="padding:10px 14px;">
