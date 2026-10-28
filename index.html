@@ -218,6 +218,9 @@
   #view-nwsmap.active { display: flex; flex-direction: column; height: calc(100vh - 170px - var(--safe-top) - var(--safe-bot)); }
   #nws-map-wrap { position: relative; flex: 1 1 auto; min-height: 240px; }
   #nws-map { width: 100%; height: 100%; min-height: 240px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #0b1622; }
+  #nws-map.pin-mode { cursor: crosshair; }
+  #nws-drop-pin-btn { position: absolute; top: 10px; right: 10px; z-index: 500; box-shadow: 0 2px 10px rgba(0,0,0,0.4); }
+  #nws-drop-pin-btn.active { background: var(--r-1); color: #fff; border: 1px solid var(--r-1); }
   #nws-map-loading { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 500; background: rgba(4,36,58,0.85); color: var(--fg); font-size: 11px; padding: 4px 10px; border-radius: 999px; display: none; pointer-events: none; }
   #nws-map-controls { margin-top: 10px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
   #nws-layer-row { display: flex; gap: 6px; margin-bottom: 8px; }
@@ -475,6 +478,7 @@
   <section id="view-nwsmap" class="view">
     <div id="nws-map-wrap">
       <div id="nws-map"></div>
+      <button id="nws-drop-pin-btn" class="btn small" onclick="toggleNwsDropPinMode()">+ Drop pin</button>
       <div id="nws-map-loading">Loading forecast…</div>
     </div>
     <div id="nws-map-controls">
@@ -1166,22 +1170,35 @@ function stationBaseId(stid) {
 // When two listings refer to the same physical buoy (same numeric ID), keep the
 // one with the freshest observation so we don't show 30-min-stale data when a
 // real-time feed exists.
+// The same physical buoy is often listed twice (e.g. "45174" and
+// "NDBC45174"), and only one listing may carry mean_wave_direction or
+// dominant_wave_period. Keep the listing with the most variables as the base
+// (its STID drives the 24h timeseries) and fill any missing variables from
+// the other listings, so a direction arrow never disappears just because the
+// sparser listing happened to be a few minutes fresher.
 function dedupeByStation(candidates) {
   const byBase = new Map();
+  const obsCount = (st) => Object.keys(st.OBSERVATIONS || {}).filter(k => /_value_1d?$/.test(k)).length;
+  const t = (st) => {
+    const o = st.OBSERVATIONS || {};
+    const stamps = [
+      o.wave_height_value_1 && o.wave_height_value_1.date_time,
+      o.wind_speed_value_1 && o.wind_speed_value_1.date_time,
+      o.air_temp_value_1 && o.air_temp_value_1.date_time
+    ].filter(Boolean).map(s => new Date(s).getTime());
+    return stamps.length ? Math.max(...stamps) : 0;
+  };
   for (const c of candidates) {
     const base = stationBaseId(c.STID);
     const existing = byBase.get(base);
-    if (!existing) { byBase.set(base, c); continue; }
-    const t = (st) => {
-      const o = st.OBSERVATIONS || {};
-      const stamps = [
-        o.wave_height_value_1 && o.wave_height_value_1.date_time,
-        o.wind_speed_value_1 && o.wind_speed_value_1.date_time,
-        o.air_temp_value_1 && o.air_temp_value_1.date_time
-      ].filter(Boolean).map(s => new Date(s).getTime());
-      return stamps.length ? Math.max(...stamps) : 0;
-    };
-    if (t(c) > t(existing)) byBase.set(base, c);
+    if (!existing) { byBase.set(base, { ...c, OBSERVATIONS: { ...(c.OBSERVATIONS || {}) } }); continue; }
+    const cBetter = obsCount(c) > obsCount(existing) || (obsCount(c) === obsCount(existing) && t(c) > t(existing));
+    const primary = cBetter ? { ...c, OBSERVATIONS: { ...(c.OBSERVATIONS || {}) } } : existing;
+    const secondary = cBetter ? existing : c;
+    for (const [k, v] of Object.entries(secondary.OBSERVATIONS || {})) {
+      if (primary.OBSERVATIONS[k] == null) primary.OBSERVATIONS[k] = v;
+    }
+    byBase.set(base, primary);
   }
   return [...byBase.values()];
 }
@@ -2667,7 +2684,7 @@ const NWS_LAYERS = {
 };
 const NWS_OPACITY = 0.8;
 let nwsMap = null, nwsOverlay = null, nwsTimes = [], nwsTimeIndex = 0, nwsLayer = 'waveheight';
-let nwsPlayInterval = null, nwsPrefetchToken = 0, nwsMoveTimer = null;
+let nwsPlayInterval = null, nwsPrefetchToken = 0, nwsMoveTimer = null, nwsDropPinMode = false;
 const nwsImgCache = new Map(); // url -> HTMLImageElement (warms the browser cache)
 
 function nwsWindMs() {
@@ -2784,6 +2801,17 @@ async function initNwsMapIfNeeded() {
       maxZoom: 18, attribution: '© OpenStreetMap · NOAA NDFD'
     }).addTo(nwsMap);
     nwsMap.fitBounds([[41.5, -88.0], [46.1, -84.7]]); // Lake Michigan, same as Spot Map
+    // Tap-to-drop after pressing "+ Drop pin"; long-press / right-click also works.
+    nwsMap.on('click', e => {
+      if (!nwsDropPinMode) return;
+      toggleNwsDropPinMode();
+      nwsMapPause();
+      showAddSpotModal({ lat: e.latlng.lat.toFixed(4), lon: e.latlng.lng.toFixed(4), name: '' });
+    });
+    nwsMap.on('contextmenu', e => {
+      nwsMapPause();
+      showAddSpotModal({ lat: e.latlng.lat.toFixed(4), lon: e.latlng.lng.toFixed(4), name: '' });
+    });
     // Re-request the frame for the new view (debounced), then warm the cache.
     nwsMap.on('moveend zoomend', () => {
       clearTimeout(nwsMoveTimer);
@@ -2808,6 +2836,16 @@ async function initNwsMapIfNeeded() {
     nwsUpdateLegend();
     nwsPrefetch();
   }, 100);
+}
+function toggleNwsDropPinMode() {
+  nwsDropPinMode = !nwsDropPinMode;
+  const btn = document.getElementById('nws-drop-pin-btn');
+  if (btn) {
+    btn.textContent = nwsDropPinMode ? '✕ Cancel' : '+ Drop pin';
+    btn.classList.toggle('active', nwsDropPinMode);
+  }
+  const mapEl = document.getElementById('nws-map');
+  if (mapEl) mapEl.classList.toggle('pin-mode', nwsDropPinMode);
 }
 function nwsMapSetLayer(layer) {
   if (!NWS_LAYERS[layer]) return;
