@@ -461,7 +461,7 @@
   <section id="view-nwsmap" class="view">
     <p class="muted" style="margin:0 0 8px;">Live NOAA Great Lakes marine forecast (loaded from weather.gov).</p>
     <iframe id="weather-iframe" src="https://www.weather.gov/greatlakes/" style="width:100%; border:1px solid var(--border); border-radius:12px; background:#fff;"></iframe>
-    <div style="margin-top:8px;"><a href="https://www.weather.gov/greatlakes/" target="_blank" style="color:var(--accent); font-size:12px;">Open weather.gov in new tab ↗</a></div>
+    <div style="margin-top:8px;"><a href="https://www.weather.gov/greatlakes/" target="_blank" rel="noopener" style="color:var(--accent); font-size:12px;">Open weather.gov in new tab ↗</a></div>
   </section>
 
   <section id="view-settings" class="view">
@@ -638,9 +638,9 @@ const DEFAULT_THRESHOLDS = {
 };
 
 const POPULAR_SPOTS = [
-  { id: 'pop_montrose',   name: 'Montrose Beach',                 lat: 41.9699, lon: -87.6336, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=qv5XF6USv7M' },
-  { id: 'pop_greenwood',  name: 'Greenwood Beach (Evanston)',     lat: 42.0449, lon: -87.6686, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=qv5XF6USv7M' },
-  { id: 'pop_promontory', name: 'Promontory / 57th St Beach',     lat: 41.793, lon: -87.578, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=qv5XF6USv7M' },
+  { id: 'pop_montrose',   name: 'Montrose Beach',                 lat: 41.9699, lon: -87.6336, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/live/xrqe-P1uT_I', camAlt: 'https://www.webcamtaxi.com/en/usa/illinois/evanston-beach-cam.html', camLabel: 'Nearest cam: Evanston (Dempster St)' },
+  { id: 'pop_greenwood',  name: 'Greenwood Beach (Evanston)',     lat: 42.0449, lon: -87.6686, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/live/xrqe-P1uT_I', camAlt: 'https://www.webcamtaxi.com/en/usa/illinois/evanston-beach-cam.html' },
+  { id: 'pop_promontory', name: 'Promontory / 57th St Beach',     lat: 41.793, lon: -87.578, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/live/xrqe-P1uT_I', camAlt: 'https://www.webcamtaxi.com/en/usa/illinois/evanston-beach-cam.html', camLabel: 'Nearest cam: Evanston (Dempster St)' },
   { id: 'pop_sheboygan',  name: 'Sheboygan (Deland Park)',        lat: 43.7578, lon: -87.6960, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=13j5iZkMpbE' },
   { id: 'pop_bradford',   name: 'Bradford Beach (Milwaukee)',     lat: 43.063, lon: -87.872, lake: 'Michigan', offshoreDirs: ['W','NW'], cam: null },
   { id: 'pop_stjoseph',   name: 'Silver Beach (St. Joseph)',      lat: 42.1085, lon: -86.5005, lake: 'Michigan', offshoreDirs: ['E','NE','SE'], cam: null },
@@ -666,6 +666,21 @@ function loadState() {
         const p = POPULAR_SPOTS.find(x => x.id === sp.builtinId);
         if (p && p.cam) sp.cam = p.cam;
       }
+    }
+    // Migration (v5.11.8): the Evanston Dempster St stream moved to a new live ID.
+    const OLD_EVANSTON_CAM_ID = 'qv5XF6USv7M';
+    for (const sp of s.spots) {
+      if (sp.cam && extractYouTubeId(sp.cam) === OLD_EVANSTON_CAM_ID) {
+        sp.cam = 'https://www.youtube.com/live/xrqe-P1uT_I';
+      }
+    }
+    // Backfill camAlt / camLabel for built-in spots still on the stock cam.
+    for (const sp of s.spots) {
+      if (!sp.builtinId) continue;
+      const p = POPULAR_SPOTS.find(x => x.id === sp.builtinId);
+      if (!p || !p.cam || sp.cam !== p.cam) continue;
+      if (!sp.camAlt && p.camAlt) sp.camAlt = p.camAlt;
+      if (!sp.camLabel && p.camLabel) sp.camLabel = p.camLabel;
     }
     // Migration: auto-update built-in spot coords when user is still on a
     // previous version's lat/lon. Each entry lists every prior coord pair.
@@ -718,7 +733,9 @@ function makeSpotFromPopular(p) {
     name: p.name, lat: p.lat, lon: p.lon,
     offshoreDirs: [...p.offshoreDirs],
     thresholds: null, builtinId: p.id,
-    cam: p.cam || null
+    cam: p.cam || null,
+    camAlt: p.camAlt || null,
+    camLabel: p.camLabel || null
   };
 }
 function isPopularAdded(popularId) {
@@ -775,7 +792,7 @@ function dirArrow(deg, size = 12) {
 // Extract a YouTube video ID from common URL formats. Returns null if not YouTube.
 function extractYouTubeId(url) {
   if (!url) return null;
-  const m = String(url).match(/(?:youtube\.com\/(?:watch\?v=|embed\/|v\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  const m = String(url).match(/(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|live\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
   return m ? m[1] : null;
 }
 
@@ -914,6 +931,15 @@ let editingSpots = false;
 function toggleEditingSpots() {
   editingSpots = !editingSpots;
   switchView('spots');
+}
+function deleteSpotFromList(spotId) {
+  const spot = state.spots.find(s => s.id === spotId);
+  if (!spot) return;
+  if (!confirm(`Delete ${spot.name}?`)) return;
+  state.spots = state.spots.filter(s => s.id !== spotId);
+  saveState();
+  toast('Deleted');
+  renderSpots();
 }
 function moveSpotUp(spotId) {
   const i = state.spots.findIndex(s => s.id === spotId);
@@ -1455,7 +1481,9 @@ async function renderSpots() {
       <div class="row between">
         ${reorderControls}
         <h3 style="margin:0; flex:1;">${escapeHtml(spot.name)}</h3>
-        <div id="now-${spot.id}"><span class="chip rNA">…</span></div>
+        ${editingSpots
+          ? `<button class="btn small danger" onclick="event.stopPropagation(); deleteSpotFromList('${spot.id}');">Delete</button>`
+          : `<div id="now-${spot.id}"><span class="chip rNA">…</span></div>`}
       </div>
       <div class="live-line" id="live-${spot.id}" style="display:none;"></div>
       <div class="day-strip" id="strip-${spot.id}">
@@ -1588,7 +1616,7 @@ async function fetchWaveTimeseries(stid, hoursBack = 24) {
     const z = (n) => String(n).padStart(2, '0');
     return d.getUTCFullYear().toString() + z(d.getUTCMonth() + 1) + z(d.getUTCDate()) + z(d.getUTCHours()) + z(d.getUTCMinutes());
   };
-  const url = `${MESOWEST_BASE}/timeseries?stid=${encodeURIComponent(stid)}&start=${fmt(start)}&end=${fmt(end)}&vars=wave_height,wave_period,dominant_wave_period,mean_wave_direction&units=temp|F,speed|mph,height|ft&token=${MESOWEST_TOKEN}`;
+  const url = `${MESOWEST_BASE}/timeseries?stid=${encodeURIComponent(stid)}&start=${fmt(start)}&end=${fmt(end)}&vars=wave_height,wave_period,dominant_wave_period,mean_wave_direction,wind_speed,wind_direction,wind_gust&varoperator=or&units=temp|F,speed|mph,height|ft&token=${MESOWEST_TOKEN}`;
   try {
     const r = await fetch(url);
     if (!r.ok) return null;
@@ -1599,12 +1627,15 @@ async function fetchWaveTimeseries(stid, hoursBack = 24) {
     const times = (obs.date_time || []).map(t => new Date(t));
     const wh = obs.wave_height_set_1 || [];
     const wp = obs.dominant_wave_period_set_1 || obs.wave_period_set_1 || [];
-    return { times, waveHeight: wh, wavePeriod: wp, station: st };
+    const wd = obs.mean_wave_direction_set_1 || [];
+    const ws = obs.wind_speed_set_1 || [];
+    const wdir = obs.wind_direction_set_1 || [];
+    return { times, waveHeight: wh, wavePeriod: wp, waveDirection: wd, windSpeed: ws, windDirection: wdir, station: st };
   } catch (e) { return null; }
 }
 
 function makeLineChart(opts) {
-  const { title, unit, times, values, color, height = 90 } = opts;
+  const { title, unit, times, values, color, height = 90, dirs = null } = opts;
   const W = 600, H = height;
   const padding = { l: 32, r: 8, t: 14, b: 20 };
   const pts = times.map((t, i) => ({ t: t.getTime(), v: parseFloat(values[i]) }))
@@ -1659,11 +1690,33 @@ function makeLineChart(opts) {
   const last = valid[valid.length - 1];
   const dot = `<circle cx="${xToPx(last.t).toFixed(1)}" cy="${yToPx(last.v).toFixed(1)}" r="2.5" fill="${color}"/>`;
 
+  // Optional direction row: one arrow every 2h (nearest reading within 1h),
+  // positioned by % so it lines up with the SVG's x-axis.
+  let dirRow = '';
+  if (Array.isArray(dirs) && dirs.length) {
+    const dpts = times.map((t, i) => ({ t: t.getTime(), d: parseFloat(dirs[i]) }))
+                      .filter(p => !isNaN(p.d) && p.t >= start - oneHour && p.t <= now);
+    let arrows = '';
+    for (let t = Math.ceil(start / oneHour) * oneHour; t <= now; t += oneHour) {
+      if (new Date(t).getHours() % 2 !== 0) continue;
+      let best = null, bestDt = Infinity;
+      for (const p of dpts) {
+        const dt = Math.abs(p.t - t);
+        if (dt < bestDt) { bestDt = dt; best = p; }
+      }
+      if (!best || bestDt > oneHour) continue;
+      const pct = (xToPx(t) / W * 100).toFixed(2);
+      arrows += `<span style="position:absolute; left:${pct}%; top:0; transform:translateX(-50%); color:#a3b5c7;">${dirArrow(best.d, 11)}</span>`;
+    }
+    if (arrows) dirRow = `<div style="position:relative; height:14px; line-height:14px;">${arrows}</div>`;
+  }
+
   return `<div style="margin-bottom:14px;">
     <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">
       ${title} <span style="text-transform:none; letter-spacing:0;">(${unit})</span>
       &middot; <span style="text-transform:none; font-weight:400;">last 24h</span>
     </div>
+    ${dirRow}
     <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%; height:${H}px;">
       ${hGrid}
       ${yLabels}
@@ -1697,9 +1750,28 @@ async function renderLiveCharts(spot, live) {
   const sourceLine = sourceStation
     ? `<div class="muted" style="font-size:11px; margin-top:6px;">From ${sourceName}${distLabel ? ' · ' + distLabel : ''}</div>`
     : '';
+  // Wind: use the wave buoy's wind if it reports any; otherwise pull the
+  // timeseries from the nearest wind station.
+  const hasVals = (arr) => Array.isArray(arr) && arr.some(v => v != null && !isNaN(parseFloat(v)));
+  let windTs = ts, windNote = '';
+  if (!hasVals(ts.windSpeed)) {
+    const windStid = live && live.station && live.station.STID;
+    windTs = null;
+    if (windStid && windStid !== stid) {
+      const wts = await fetchWaveTimeseries(windStid, 24);
+      if (wts && hasVals(wts.windSpeed)) {
+        windTs = wts;
+        windNote = `<div class="muted" style="font-size:11px; margin-top:-8px; margin-bottom:10px;">Wind from ${escapeHtml(live.station.NAME || windStid)}</div>`;
+      }
+    }
+  }
+  const windChart = windTs
+    ? makeLineChart({title: 'Wind speed', unit: 'mph', times: windTs.times, values: windTs.windSpeed, dirs: windTs.windDirection, color: '#4ec3ff'}) + windNote
+    : `<div class="muted" style="font-size:12px; padding:10px;">No recent wind speed data.</div>`;
   host.innerHTML = `<div class="card chart-card">
-    ${makeLineChart({title: 'Wave height', unit: 'ft', times: ts.times, values: ts.waveHeight, color: '#4ec3ff'})}
+    ${makeLineChart({title: 'Wave height', unit: 'ft', times: ts.times, values: ts.waveHeight, dirs: ts.waveDirection, color: '#4ec3ff'})}
     ${makeLineChart({title: 'Wave period', unit: 's',  times: ts.times, values: ts.wavePeriod, color: '#4ec3ff'})}
+    ${windChart}
     ${sourceLine}
   </div>`;
 }
@@ -1815,13 +1887,14 @@ async function renderWaterQualityCard(spot) {
 
   const links = `
     <div style="margin-top:10px; display:flex; flex-direction:column; gap:6px;">
-      <a href="https://geohub.mwrd.org/pages/cso" target="_blank" style="color:var(--accent); font-size:12px;">View MWRD combined sewer overflow map ↗</a>
-      <a href="https://www.chicagoparkdistrict.com/parks-facilities/beaches" target="_blank" style="color:var(--accent); font-size:12px;">Chicago Park District beach status ↗</a>
+      <a href="https://geohub.mwrd.org/pages/cso" target="_blank" rel="noopener" style="color:var(--accent); font-size:12px;">View MWRD combined sewer overflow map ↗</a>
+      <a href="https://www.chicagoparkdistrict.com/parks-facilities/beaches" target="_blank" rel="noopener" style="color:var(--accent); font-size:12px;">Chicago Park District beach status ↗</a>
     </div>`;
 
   host.innerHTML = `
     <div class="card" style="padding:10px 14px;">
       <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">💧 Water quality</div>
+      <div class="muted" style="font-size:11px; margin-top:2px;">Chicago Park District beaches only</div>
       <div id="wq-body" style="margin-top:8px;"><div class="muted" style="font-size:12px;">Loading…</div>${links}</div>
     </div>
   `;
@@ -1837,18 +1910,22 @@ async function renderWaterQualityCard(spot) {
       const ageDays = Math.round((Date.now() - sampleDate.getTime()) / 86400000);
       const dateLabel = sampleDate.toLocaleDateString();
       const dist = r.distMiles < 1 ? '<1 mi' : `${r.distMiles.toFixed(1)} mi`;
+      const ageHours = (Date.now() - sampleDate.getTime()) / 3600000;
+      const graded = ageHours <= 24;
       const stale = ageDays > 7;
+      const gradeLine = graded
+        ? `${status.emoji} <strong style="color:${status.color};">${status.label}</strong>`
+        : `⚪ <strong class="muted">NOT GRADED</strong> <span class="muted" style="font-size:12px;">— last reading is ${ageDays} day${ageDays === 1 ? '' : 's'} old</span>`;
       live = `
         <div style="font-size:14px;">
-          ${status.emoji} <strong style="color:${status.color};">${status.label}</strong>
-          <span class="muted" style="font-size:12px;">${stale ? ' (last reading)' : ''}</span>
+          ${gradeLine}
         </div>
         <div class="muted" style="font-size:12px; margin-top:4px;">
           ${reading} cfu/100mL · ${escapeHtml(r.beach || 'beach')} · ${dist} · ${escapeHtml(dateLabel)}${stale ? ' · ' + ageDays + ' days ago' : ''}
         </div>
         ${stale ? '<div class="muted" style="font-size:11px; margin-top:4px;">Beach testing is in season Memorial Day–Labor Day.</div>' : ''}`;
     } else {
-      live = `<div class="muted" style="font-size:12px;">No nearby beach water testing data yet. Chicago tests Memorial Day–Labor Day.</div>`;
+      live = `<div class="muted" style="font-size:12px;">No beach water testing data within 6 miles. Only Chicago Park District beaches are tested (Memorial Day–Labor Day).</div>`;
     }
   } catch (e) {
     live = `<div class="muted" style="font-size:12px;">Couldn't load beach water data.</div>`;
@@ -1874,6 +1951,10 @@ function renderCamSection(spot) {
     return;
   }
   const ytId = extractYouTubeId(spot.cam);
+  const camLabelLine = spot.camLabel
+    ? `<div class="muted" style="margin-top:6px; font-size:11px;">${escapeHtml(spot.camLabel)}</div>` : '';
+  const camAltLink = spot.camAlt
+    ? ` &middot; <a href="${escapeHtml(spot.camAlt)}" target="_blank" rel="noopener" style="color:var(--accent);">Backup cam ↗</a>` : '';
   if (ytId && !CAM_NO_EMBED.has(ytId)) {
     const embedUrl = `https://www.youtube.com/embed/${ytId}`;
     host.innerHTML = `
@@ -1882,14 +1963,16 @@ function renderCamSection(spot) {
         <div style="position:relative; padding-bottom:56.25%; height:0; margin-top:10px; background:#000; border-radius:8px; overflow:hidden;">
           <iframe src="${escapeHtml(embedUrl)}" frameborder="0" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture" style="position:absolute; top:0; left:0; width:100%; height:100%;"></iframe>
         </div>
-        <div style="margin-top:6px; font-size:11px;"><a href="${escapeHtml(spot.cam)}" target="_blank" style="color:var(--accent);">Open in new tab ↗</a></div>
+        ${camLabelLine}
+        <div style="margin-top:6px; font-size:11px;"><a href="${escapeHtml(spot.cam)}" target="_blank" rel="noopener" style="color:var(--accent);">Open in new tab ↗</a>${camAltLink}</div>
       </div>
     `;
   } else {
     host.innerHTML = `
       <div class="card" style="padding:10px 14px;">
         <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">📹 Live cam</div>
-        <div style="margin-top:8px;"><a href="${escapeHtml(spot.cam)}" target="_blank" class="btn small" style="display:inline-block; text-decoration:none;">Open cam in new tab ↗</a></div>
+        ${camLabelLine}
+        <div style="margin-top:8px; font-size:11px;"><a href="${escapeHtml(spot.cam)}" target="_blank" rel="noopener" class="btn small" style="display:inline-block; text-decoration:none;">Open cam in new tab ↗</a>${camAltLink}</div>
         <div class="muted" style="margin-top:6px; font-size:11px;">${escapeHtml(spot.cam)}</div>
       </div>
     `;
