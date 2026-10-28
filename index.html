@@ -214,8 +214,22 @@
   /* Edit mode: subtle accent tint on cards */
   .loc-card.editing { background: rgba(78, 195, 255, 0.08); border-color: rgba(78, 195, 255, 0.4); }
 
-  /* NWS Map (iframe) */
-  #weather-iframe { height: calc(100vh - 130px - var(--safe-top) - var(--safe-bot)); min-height: 360px; display: block; }
+  /* NWS Map (NDFD heat map) */
+  #view-nwsmap.active { display: flex; flex-direction: column; height: calc(100vh - 170px - var(--safe-top) - var(--safe-bot)); }
+  #nws-map-wrap { position: relative; flex: 1 1 auto; min-height: 240px; }
+  #nws-map { width: 100%; height: 100%; min-height: 240px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #0b1622; }
+  #nws-map-loading { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 500; background: rgba(4,36,58,0.85); color: var(--fg); font-size: 11px; padding: 4px 10px; border-radius: 999px; display: none; pointer-events: none; }
+  #nws-map-controls { margin-top: 10px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+  #nws-layer-row { display: flex; gap: 6px; margin-bottom: 8px; }
+  #nws-layer-row button { flex: 1; background: var(--bg-3); color: var(--fg); border: 1px solid var(--border); padding: 6px 4px; border-radius: 8px; font-size: 12px; cursor: pointer; font-family: inherit; }
+  #nws-layer-row button.on { background: var(--accent); color: #04243a; border-color: var(--accent); font-weight: 700; }
+  #nws-time-label { color: var(--fg); font-size: 13px; font-weight: 600; text-align: center; margin-bottom: 8px; }
+  #nws-time-label .sub { color: var(--fg-dim); font-weight: normal; font-size: 11px; margin-left: 6px; }
+  #nws-time-row { display: flex; gap: 6px; align-items: center; }
+  #nws-time-row button { background: var(--bg-3); color: var(--fg); border: 1px solid var(--border); padding: 6px 10px; border-radius: 8px; font-size: 14px; cursor: pointer; font-family: inherit; }
+  #nws-time-row button.play { background: var(--accent); color: #04243a; border-color: var(--accent); font-weight: 700; }
+  #nws-time-slider { flex: 1; margin: 0 4px; }
+  #nws-legend { display: block; max-width: 100%; height: 30px; width: auto; margin: 8px auto 0; border-radius: 4px; }
 
   /* Spot Map (custom Leaflet) */
   #view-spotmap.active { display: flex; flex-direction: column; height: calc(100vh - 170px - var(--safe-top) - var(--safe-bot)); }
@@ -459,9 +473,26 @@
   </section>
 
   <section id="view-nwsmap" class="view">
-    <p class="muted" style="margin:0 0 8px;">Live NOAA Great Lakes marine forecast (loaded from weather.gov).</p>
-    <iframe id="weather-iframe" src="https://www.weather.gov/greatlakes/" style="width:100%; border:1px solid var(--border); border-radius:12px; background:#fff;"></iframe>
-    <div style="margin-top:8px;"><a href="https://www.weather.gov/greatlakes/" target="_blank" rel="noopener" style="color:var(--accent); font-size:12px;">Open weather.gov in new tab ↗</a></div>
+    <div id="nws-map-wrap">
+      <div id="nws-map"></div>
+      <div id="nws-map-loading">Loading forecast…</div>
+    </div>
+    <div id="nws-map-controls">
+      <div id="nws-layer-row">
+        <button id="nws-layer-waveheight" class="on" onclick="nwsMapSetLayer('waveheight')">Wave height</button>
+        <button id="nws-layer-windspd" onclick="nwsMapSetLayer('windspd')">Wind speed</button>
+        <button id="nws-layer-windgust" onclick="nwsMapSetLayer('windgust')">Wind gusts</button>
+      </div>
+      <div id="nws-time-label">Loading… <span class="sub" id="nws-time-sub"></span></div>
+      <div id="nws-time-row">
+        <button onclick="nwsMapBack()" aria-label="Back one step">⏮</button>
+        <button onclick="nwsMapTogglePlay()" id="nws-play-btn" class="play" aria-label="Play">▶</button>
+        <button onclick="nwsMapForward()" aria-label="Forward one step">⏭</button>
+        <input type="range" id="nws-time-slider" min="0" max="0" value="0" step="1">
+      </div>
+      <img id="nws-legend" alt="Legend" src="">
+      <div class="muted" style="font-size:11px; text-align:center; margin-top:6px;">NOAA NDFD gridded forecast via digital.weather.gov · <a href="https://www.weather.gov/greatlakes/" target="_blank" rel="noopener" style="color:var(--accent);">weather.gov/greatlakes ↗</a></div>
+    </div>
   </section>
 
   <section id="view-settings" class="view">
@@ -887,7 +918,8 @@ function switchView(name) {
 
   if (name === 'spots') renderSpots();
   if (name === 'spotmap') initSpotMapIfNeeded();
-  if (name === 'nwsmap') {/* iframe loads itself */}
+  if (name === 'nwsmap') initNwsMapIfNeeded();
+  else nwsMapPause();
   if (name === 'settings') renderSettings();
 
   document.getElementById('header-title').textContent =
@@ -899,7 +931,7 @@ function switchView(name) {
   document.getElementById('header-sub').textContent =
     name === 'spots' ? 'Great Lakes wave forecast'
     : name === 'spotmap' ? 'Lake Michigan · play through 7 days'
-    : name === 'nwsmap' ? 'Loaded from weather.gov/greatlakes'
+    : name === 'nwsmap' ? 'NOAA NDFD · wave & wind heat map'
     : name === 'settings' ? 'Defaults, units, backup' : '';
 
   const action = document.getElementById('header-action');
@@ -2617,6 +2649,203 @@ function toggleDropPinMode() {
   }
   const mapEl = document.getElementById('spot-map');
   if (mapEl) mapEl.classList.toggle('pin-mode', dropPinMode);
+}
+
+/* ============================================================================
+   NWS Map — NOAA NDFD gridded forecast heat map (wave height / wind speed /
+   wind gusts), the same WMS layers weather.gov/greatlakes draws. One image
+   per frame (like the NWS page), re-requested when the view moves, and a
+   time slider that walks the NDFD valid-time list.
+   ============================================================================ */
+const NWS_WMS = 'https://digital.weather.gov/ndfd/wms';
+const NWS_LEGEND = 'https://digital.weather.gov/scripts/wxmap_legendImage.php';
+const NWS_TIMES_URL = 'https://www.weather.gov/source/dlh/ndfd_times.json';
+const NWS_LAYERS = {
+  waveheight: { title: 'Wave height', unit: () => 'ft' },
+  windspd:    { title: 'Wind speed',  unit: () => state.units.wind },
+  windgust:   { title: 'Wind gusts',  unit: () => state.units.wind }
+};
+const NWS_OPACITY = 0.8;
+let nwsMap = null, nwsOverlay = null, nwsTimes = [], nwsTimeIndex = 0, nwsLayer = 'waveheight';
+let nwsPlayInterval = null, nwsPrefetchToken = 0, nwsMoveTimer = null;
+const nwsImgCache = new Map(); // url -> HTMLImageElement (warms the browser cache)
+
+function nwsWindMs() {
+  return state.units.wind === 'mph' ? 'english' : state.units.wind === 'kt' ? 'nautical' : 'metric';
+}
+// Valid-time list: [["2026-10-29T06:00","2026-10-28T22:30"], ...] (valid, issuance), UTC.
+async function loadNwsTimes() {
+  try {
+    const r = await fetch(NWS_TIMES_URL, { cache: 'no-cache' });
+    if (!r.ok) throw new Error('times ' + r.status);
+    const j = await r.json();
+    const list = (j.ndfd_valid_times || []).map(([v, i]) => ({ valid: v, issuance: i, date: new Date(v + ':00Z') }));
+    if (!list.length) throw new Error('empty');
+    nwsTimes = list;
+  } catch (e) {
+    // Fallback: hourly for 48h, then 3-hourly to 7 days, no issuance pin.
+    const now = new Date(); now.setUTCMinutes(0, 0, 0);
+    const out = [];
+    for (let h = 1; h <= 168; h += (h < 48 ? 1 : 3)) {
+      const d = new Date(now.getTime() + h * 3600e3);
+      out.push({ valid: d.toISOString().slice(0, 16), issuance: null, date: d });
+    }
+    nwsTimes = out;
+  }
+  // Start at the first frame that isn't already in the past.
+  const now = Date.now();
+  nwsTimeIndex = Math.max(0, nwsTimes.findIndex(t => t.date.getTime() >= now - 1800e3));
+  const slider = document.getElementById('nws-time-slider');
+  slider.max = String(nwsTimes.length - 1);
+  slider.value = String(nwsTimeIndex);
+}
+function nwsFrameUrl(idx, bbox, w, h) {
+  const t = nwsTimes[idx];
+  const vtit = t.issuance ? `${t.valid}_${t.issuance}` : t.valid;
+  return `${NWS_WMS}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&FORMAT=image%2Fpng&TRANSPARENT=TRUE&EXCEPTIONS=INIMAGE&STYLES=&REGION=conus&CRS=EPSG%3A3857` +
+         `&LAYERS=ndfd.conus.${nwsLayer}&VTIT=${encodeURIComponent(vtit)}&BBOX=${bbox.join(',')}&WIDTH=${w}&HEIGHT=${h}`;
+}
+// Current map view as an EPSG:3857 bbox + pixel size (capped to keep frames fast).
+function nwsViewSpec() {
+  const size = nwsMap.getSize();
+  const scale = Math.min(1, 900 / Math.max(size.x, size.y));
+  const w = Math.max(64, Math.round(size.x * scale)), h = Math.max(64, Math.round(size.y * scale));
+  const b = nwsMap.getBounds();
+  const sw = L.CRS.EPSG3857.project(b.getSouthWest()), ne = L.CRS.EPSG3857.project(b.getNorthEast());
+  return { bounds: b, bbox: [sw.x.toFixed(1), sw.y.toFixed(1), ne.x.toFixed(1), ne.y.toFixed(1)], w, h };
+}
+function nwsShowFrame() {
+  if (!nwsMap || !nwsTimes.length) return;
+  const spec = nwsViewSpec();
+  const url = nwsFrameUrl(nwsTimeIndex, spec.bbox, spec.w, spec.h);
+  const loading = document.getElementById('nws-map-loading');
+  if (!nwsOverlay) {
+    nwsOverlay = L.imageOverlay(url, spec.bounds, { opacity: NWS_OPACITY, interactive: false, crossOrigin: null }).addTo(nwsMap);
+    nwsOverlay.on('load', () => { loading.style.display = 'none'; });
+    nwsOverlay.on('error', () => { loading.textContent = 'Couldn’t load NOAA layer'; });
+  } else {
+    nwsOverlay.setBounds(spec.bounds);
+    nwsOverlay.setUrl(url);
+  }
+  const cached = nwsImgCache.get(url);
+  if (!(cached && cached.complete && cached.naturalWidth)) { loading.textContent = 'Loading forecast…'; loading.style.display = 'block'; }
+  else loading.style.display = 'none';
+  nwsUpdateTimeLabel();
+}
+// Warm the browser cache for the frames around the current one so play is smooth.
+function nwsPrefetch() {
+  if (!nwsMap || !nwsTimes.length) return;
+  const token = ++nwsPrefetchToken;
+  const spec = nwsViewSpec();
+  const order = [];
+  for (let k = 0; k < nwsTimes.length; k++) order.push((nwsTimeIndex + k) % nwsTimes.length);
+  let i = 0, inFlight = 0;
+  const next = () => {
+    if (token !== nwsPrefetchToken) return;
+    while (inFlight < 3 && i < order.length) {
+      const url = nwsFrameUrl(order[i++], spec.bbox, spec.w, spec.h);
+      if (nwsImgCache.has(url)) continue;
+      const img = new Image();
+      inFlight++;
+      img.onload = img.onerror = () => { inFlight--; next(); };
+      img.src = url;
+      nwsImgCache.set(url, img);
+      if (nwsImgCache.size > 400) nwsImgCache.delete(nwsImgCache.keys().next().value);
+    }
+  };
+  next();
+}
+function nwsUpdateLegend() {
+  if (!nwsMap) return;
+  const b = nwsViewSpec();
+  const t = nwsTimes[nwsTimeIndex];
+  const vt = t ? t.valid : '';
+  document.getElementById('nws-legend').src =
+    `${NWS_LEGEND}?dataset=ndfd&element=${nwsLayer}&region=conus&opacity=${NWS_OPACITY}&vt=${encodeURIComponent(vt)}` +
+    `&left=${b.bbox[0]}&bottom=${b.bbox[1]}&right=${b.bbox[2]}&top=${b.bbox[3]}&width=360&ms=${nwsWindMs()}`;
+}
+function nwsUpdateTimeLabel() {
+  const t = nwsTimes[nwsTimeIndex];
+  const label = document.getElementById('nws-time-label');
+  const sub = document.getElementById('nws-time-sub');
+  if (!t) { label.firstChild.textContent = 'No forecast times '; sub.textContent = ''; return; }
+  const d = t.date;
+  const dow = d.toLocaleDateString(undefined, { weekday: 'short' });
+  const time = d.toLocaleTimeString([], { hour: 'numeric' });
+  const hoursOut = Math.round((d.getTime() - Date.now()) / 3600e3);
+  label.firstChild.textContent = `${dow} ${(d.getMonth() + 1)}/${d.getDate()} ${time} `;
+  const u = NWS_LAYERS[nwsLayer];
+  sub.textContent = `${u.title} (${u.unit()})` + (hoursOut > 0 ? ` · +${hoursOut}h` : ' · now');
+}
+async function initNwsMapIfNeeded() {
+  if (!nwsMap) {
+    nwsMap = L.map('nws-map', { zoomControl: true, minZoom: 5, maxZoom: 11 });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18, attribution: '© OpenStreetMap · NOAA NDFD'
+    }).addTo(nwsMap);
+    nwsMap.fitBounds([[41.5, -88.0], [46.1, -84.7]]); // Lake Michigan, same as Spot Map
+    // Re-request the frame for the new view (debounced), then warm the cache.
+    nwsMap.on('moveend zoomend', () => {
+      clearTimeout(nwsMoveTimer);
+      nwsMoveTimer = setTimeout(() => { nwsShowFrame(); nwsUpdateLegend(); nwsPrefetch(); }, 150);
+    });
+    // Saved spots as small markers for orientation.
+    for (const sp of state.spots) {
+      L.circleMarker([sp.lat, sp.lon], { radius: 4, color: '#fff', weight: 1, fillColor: '#4ec3ff', fillOpacity: 1 })
+        .bindTooltip(sp.name, { direction: 'top', offset: [0, -4] }).addTo(nwsMap);
+    }
+    const slider = document.getElementById('nws-time-slider');
+    slider.addEventListener('input', e => {
+      nwsMapPause();
+      nwsTimeIndex = parseInt(e.target.value, 10);
+      nwsShowFrame();
+    });
+    await loadNwsTimes();
+  }
+  setTimeout(() => {
+    nwsMap.invalidateSize();
+    nwsShowFrame();
+    nwsUpdateLegend();
+    nwsPrefetch();
+  }, 100);
+}
+function nwsMapSetLayer(layer) {
+  if (!NWS_LAYERS[layer]) return;
+  nwsLayer = layer;
+  for (const k of Object.keys(NWS_LAYERS)) {
+    const b = document.getElementById('nws-layer-' + k);
+    if (b) b.classList.toggle('on', k === layer);
+  }
+  nwsShowFrame();
+  nwsUpdateLegend();
+  nwsPrefetch();
+}
+function nwsMapTogglePlay() {
+  if (nwsPlayInterval) { nwsMapPause(); return; }
+  if (!nwsTimes.length) return;
+  document.getElementById('nws-play-btn').textContent = '⏸';
+  nwsPlayInterval = setInterval(() => {
+    nwsTimeIndex = (nwsTimeIndex + 1) % nwsTimes.length;
+    document.getElementById('nws-time-slider').value = String(nwsTimeIndex);
+    nwsShowFrame();
+  }, 700);
+}
+function nwsMapPause() {
+  if (nwsPlayInterval) { clearInterval(nwsPlayInterval); nwsPlayInterval = null; }
+  const btn = document.getElementById('nws-play-btn');
+  if (btn) btn.textContent = '▶';
+}
+function nwsMapBack() {
+  nwsMapPause();
+  nwsTimeIndex = Math.max(0, nwsTimeIndex - 1);
+  document.getElementById('nws-time-slider').value = String(nwsTimeIndex);
+  nwsShowFrame();
+}
+function nwsMapForward() {
+  nwsMapPause();
+  nwsTimeIndex = Math.min(nwsTimes.length - 1, nwsTimeIndex + 1);
+  document.getElementById('nws-time-slider').value = String(nwsTimeIndex);
+  nwsShowFrame();
 }
 
 async function initSpotMapIfNeeded() {
