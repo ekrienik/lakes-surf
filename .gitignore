@@ -19,3 +19,6 @@ TODO.local.md
 
 # Sandbox test artifacts
 test-big.txt
+
+# GitHub login key (never upload)
+github-login.txt
