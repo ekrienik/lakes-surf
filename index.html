@@ -379,6 +379,18 @@
       <span><i class="sw" style="background:var(--r-2)"></i>Fair</span>
       <span><i class="sw" style="background:var(--r-1)"></i>Poor</span>
     </div>
+    <!-- First-run tips; hidden for good once dismissed (state.seenTips) -->
+    <div id="first-run-tips" class="card" style="display:none; border-color:var(--accent);">
+      <h3 style="margin:0 0 8px;">Getting started</h3>
+      <ul style="margin:0; padding-left:18px; font-size:13px; line-height:1.6;">
+        <li>Tap <b>🔍</b> (top right) to add popular beaches.</li>
+        <li>Tap <b>+</b> to add your own spot, or drop a pin on the <b>Map</b> tab.</li>
+        <li>Tap a spot card for live conditions, the hourly forecast, cams and water quality.</li>
+        <li>Each day's color is its best rating, from <b>Epic</b> to <b>Poor</b>. Tap <b>✎</b> to reorder or delete spots.</li>
+        <li>Change units in <b>Settings</b>.</li>
+      </ul>
+      <button class="btn small" style="margin-top:12px;" onclick="dismissFirstRunTips()">Got it</button>
+    </div>
     <div id="spots-list"></div>
     <div id="spots-empty" class="empty" style="display:none;">
       <h2>No saved spots yet</h2>
@@ -1508,7 +1520,15 @@ function rateDay(hours, thresholds) {
    Spots view
    ============================================================================ */
 
+function dismissFirstRunTips() {
+  state.seenTips = true;
+  saveState();
+  document.getElementById('first-run-tips').style.display = 'none';
+}
+
 async function renderSpots() {
+  const tips = document.getElementById('first-run-tips');
+  if (tips) tips.style.display = state.seenTips ? 'none' : 'block';
   const list = document.getElementById('spots-list');
   const empty = document.getElementById('spots-empty');
   const header = document.getElementById('spots-day-header');
