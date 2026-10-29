@@ -401,6 +401,7 @@
   /* Stat cells (Live / next hour) on an even grid instead of wrapping rows */
   .stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; margin-top: 8px; }
   .stat-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat-grid.one { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .stat-grid.four { grid-template-columns: 1.15fr 1.25fr 0.8fr 0.8fr; gap: 10px 8px; }
   .stat-grid .gust { color: var(--fg-dim); font-weight: 500; }
   .stat-unit { font-size: 10px; opacity: 0.85; }
@@ -2385,37 +2386,22 @@ function renderForecast() {
   const now = currentForecast.hours[0];
   const nowR = rateHour(now, T);
   const summary = document.getElementById('forecast-summary');
-  // Build forecast stat cells in the same format as the Right Now (LIVE) card:
-  // "VALUE <small>UNIT</small> DIR↗".
-  const fStat = (label, val) => `<div><div class="muted" style="font-size:11px;">${label}</div><div style="font-size:16px; font-weight:600;">${val == null ? '<span class="muted" style="font-weight:400;">n/a</span>' : val}</div></div>`;
-  const fU = (unit) => `<span class="muted" style="font-size:11px; margin-left:2px;">${unit}</span>`;
-  let fWave = null, fPer = null, fWind = null, fGust = null;
+  // Same compact cells as the Live card: "1.0↖ 3s" and "14 (21)↑", units in the labels
+  const fStat = (label, unit, val) => `<div><div class="muted" style="font-size:11px;">${label} <span class="stat-unit">${unit}</span></div><div style="font-size:16px; font-weight:600; white-space:nowrap;">${val == null ? '<span class="muted" style="font-weight:400;">n/a</span>' : val}</div></div>`;
+  let fWave = null, fWind = null;
   if (now.waveHeight != null && !isNaN(now.waveHeight)) {
-    const ht = waveParts(now.waveHeight);
-    const dirDeg = now.swellDir;
-    const dir = (dirDeg != null && !isNaN(dirDeg)) ? ' ' + degToCompass(dirDeg) + dirArrow(dirDeg) : '';
-    fWave = `${ht.v}${fU(ht.u)}${dir}`;
-  }
-  if (now.wavePeriod != null && !isNaN(now.wavePeriod)) {
-    fPer = `${Math.round(now.wavePeriod)}${fU('s')}`;
+    const per = (now.wavePeriod != null && !isNaN(now.wavePeriod)) ? ` ${Math.round(now.wavePeriod)}s` : '';
+    fWave = `${waveParts(now.waveHeight).v}${dirArrow(now.swellDir)}${per}`;
   }
   if (now.windSpeed != null && !isNaN(now.windSpeed)) {
-    const sp = windParts(now.windSpeed);
-    const dirDeg = now.windDir;
-    const dir = (dirDeg != null && !isNaN(dirDeg)) ? ' ' + degToCompass(dirDeg) + dirArrow(dirDeg) : '';
-    fWind = `${sp.v}${fU(sp.u)}${dir}`;
-  }
-  if (now.windGust != null && !isNaN(now.windGust)) {
-    const g = windParts(now.windGust);
-    fGust = `${g.v}${fU(g.u)}`;
+    const gust = (now.windGust != null && !isNaN(now.windGust)) ? ` <span class="gust">(${windParts(now.windGust).v})</span>` : '';
+    fWind = `${windParts(now.windSpeed).v}${gust}${dirArrow(now.windDir)}`;
   }
   summary.innerHTML = `
     <div class="section-label">Forecast · next hour</div>
-    <div class="stat-grid two">
-      ${fStat('Wave', fWave)}
-      ${fStat('Per', fPer)}
-      ${fStat('Wind', fWind)}
-      ${fStat('Gust', fGust)}
+    <div class="stat-grid one">
+      ${fStat('Wave', waveParts(0).u, fWave)}
+      ${fStat('Wind', windParts(0).u, fWind)}
     </div>
   `;
   const headerRating = document.getElementById('header-rating');
