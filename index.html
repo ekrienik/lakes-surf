@@ -406,11 +406,9 @@
   .stat-grid .gust { color: var(--fg-dim); font-weight: 500; }
   .stat-unit { font-size: 10px; opacity: 0.85; }
   .chart-card svg { width: 100%; display: block; }
-  .chart-title { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
-  .chart-key { display: inline-flex; align-items: center; gap: 5px; }
-  .chart-key i { display: inline-block; width: 14px; }
-  /* Tap readout gets its own line so it never crowds the title */
-  .chart-readout { min-height: 16px; font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+  /* Chart title on the left, highlighted reading on the right, one line */
+  .chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+  .chart-readout { font-size: 12px; font-weight: 600; white-space: nowrap; }
   .empty-note { text-align: center; padding: 20px; color: var(--fg-dim); font-size: 13px; }
 
   /* Forecast + map cards side-by-side on the spot page */
@@ -1855,7 +1853,9 @@ function makeLineChart(opts) {
     return `<div class="muted" style="font-size:12px; padding:10px;">No recent ${title.toLowerCase()} data.</div>`;
   }
   const hasRight = series.some(s => s.axis === 'right');
-  const padding = { l: 32, r: hasRight ? 30 : 8, t: 14, b: 20 };
+  // Same side margins on every chart (room for an axis on both sides) so
+  // stacked charts share an identical x axis
+  const padding = { l: 24, r: 22, t: 14, b: 20 };
   const maxOf = (axis) => Math.max(0, ...series.filter(s => (s.axis || 'left') === axis).flatMap(s => s.pts.map(p => p.v)));
   const leftSeries = series.filter(s => (s.axis || 'left') === 'left');
   // Left scale; at most ~4 gridlines so the real-size labels don't collide
@@ -1941,14 +1941,12 @@ function makeLineChart(opts) {
     })),
     W, H, padT: padding.t, padB: padding.b
   };
-  // Color key in the title doubles as the axis legend
-  const key = series.map(s => `<span class="chart-key"><i style="border-top:2px ${s.dashed ? 'dashed' : 'solid'} ${s.color};"></i>${s.name} <span class="unit">${s.unit}</span></span>`).join('');
-
+  // Title on the left, the highlighted reading on the right (colored per line)
   return `<div style="margin-bottom:16px;">
-    <div class="section-label chart-title" style="margin-bottom:4px;">
-      ${key}<span class="unit">· last 24h</span>
+    <div class="chart-head">
+      <span class="section-label">${title}</span>
+      <span class="chart-readout" id="${chartId}-readout"></span>
     </div>
-    <div class="chart-readout" id="${chartId}-readout"></div>
     ${dirRow}
     <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="line-chart" data-chart-id="${chartId}" style="width:100%; height:${H}px; touch-action:pan-y; cursor:crosshair;">
       ${hGrid}
@@ -1965,6 +1963,44 @@ function makeLineChart(opts) {
 let lineChartSeq = 0;
 let chartWidth = Math.min(600, window.innerWidth - 60);
 const lineChartData = {};
+// Highlight the readings nearest chart-x `x` (in viewBox units; Infinity = the
+// latest reading) and show their values in the chart's title row.
+function chartShowAt(svg, x) {
+  const d = lineChartData[svg.dataset.chartId];
+  if (!d || !d.series.length) return;
+  const nearest = (pts) => pts.reduce((b, p) => Math.abs(p.x - x) < Math.abs(b.x - x) ? p : b, pts[0]);
+  // The cursor snaps to the first series' reading; others show their value at that time
+  const lead = x === Infinity ? d.series[0].pts[d.series[0].pts.length - 1] : nearest(d.series[0].pts);
+  const picks = d.series.map((s, i) => i === 0 ? lead
+    : s.pts.reduce((b, p) => Math.abs(p.t - lead.t) < Math.abs(b.t - lead.t) ? p : b, s.pts[0]));
+  const g = svg.querySelector('.chart-cursor');
+  if (g) {
+    g.style.display = '';
+    const line = g.querySelector('line');
+    line.setAttribute('x1', lead.x.toFixed(1)); line.setAttribute('x2', lead.x.toFixed(1));
+    g.querySelectorAll('circle').forEach((c, i) => {
+      const p = picks[i];
+      const near = p && Math.abs(p.t - lead.t) <= 3600e3;
+      c.style.display = near ? '' : 'none';
+      if (near) { c.setAttribute('cx', p.x.toFixed(1)); c.setAttribute('cy', p.y.toFixed(1)); }
+    });
+  }
+  const out = document.getElementById(svg.dataset.chartId + '-readout');
+  if (out) {
+    const when = new Date(lead.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const fmt = (v) => Number.isInteger(v) ? v : v.toFixed(1);
+    const near = (i) => picks[i] && Math.abs(picks[i].t - lead.t) <= 3600e3;
+    const col = (i, txt) => `<span style="color:${d.series[i].color};">${txt}</span>`;
+    let vals;
+    if (d.series.length === 2 && d.series[0].unit === d.series[1].unit) {
+      // Same unit (wind + gust): "20 (22) mph", like the hourly table
+      vals = col(0, fmt(lead.v)) + (near(1) ? ' ' + col(1, `(${fmt(picks[1].v)})`) : '') + ` ${d.series[0].unit}`;
+    } else {
+      vals = d.series.map((s, i) => near(i) ? col(i, `${fmt(picks[i].v)} ${s.unit}`) : null).filter(Boolean).join(' · ');
+    }
+    out.innerHTML = `${vals} <span class="muted">· ${when}</span>`;
+  }
+}
 // Tap / drag / hover on a chart to read the nearest value. Attached once per
 // host container; charts re-rendered into it keep working because the
 // handler looks the chart up by its data-chart-id.
@@ -1973,37 +2009,9 @@ function attachChartReadouts(host) {
   host.dataset.readouts = '1';
   const show = (svg, clientX) => {
     const d = lineChartData[svg.dataset.chartId];
-    if (!d || !d.series.length) return;
+    if (!d) return;
     const rect = svg.getBoundingClientRect();
-    const x = (clientX - rect.left) / rect.width * d.W;
-    const nearest = (pts) => pts.reduce((b, p) => Math.abs(p.x - x) < Math.abs(b.x - x) ? p : b, pts[0]);
-    // The cursor snaps to the first series' reading; others show their value at that time
-    const lead = nearest(d.series[0].pts);
-    const picks = d.series.map((s, i) => i === 0 ? lead
-      : s.pts.reduce((b, p) => Math.abs(p.t - lead.t) < Math.abs(b.t - lead.t) ? p : b, s.pts[0]));
-    const g = svg.querySelector('.chart-cursor');
-    if (g) {
-      g.style.display = '';
-      const line = g.querySelector('line');
-      line.setAttribute('x1', lead.x.toFixed(1)); line.setAttribute('x2', lead.x.toFixed(1));
-      g.querySelectorAll('circle').forEach((c, i) => {
-        const p = picks[i];
-        const near = p && Math.abs(p.t - lead.t) <= 3600e3;
-        c.style.display = near ? '' : 'none';
-        if (near) { c.setAttribute('cx', p.x.toFixed(1)); c.setAttribute('cy', p.y.toFixed(1)); }
-      });
-    }
-    const out = document.getElementById(svg.dataset.chartId + '-readout');
-    if (out) {
-      const when = new Date(lead.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-      const fmt = (v) => Number.isInteger(v) ? v : v.toFixed(1);
-      const vals = d.series.map((s, i) => {
-        const p = picks[i];
-        if (!p || Math.abs(p.t - lead.t) > 3600e3) return null;
-        return `<span style="color:${s.color};">${s.name} ${fmt(p.v)} ${s.unit}</span>`;
-      }).filter(Boolean);
-      out.innerHTML = `${vals.join(' · ')} <span class="muted">· ${when}</span>`;
-    }
+    chartShowAt(svg, (clientX - rect.left) / rect.width * d.W);
   };
   const chartFor = (el) => {
     // SVG children don't always have .closest on older mobile browsers
@@ -2115,6 +2123,8 @@ async function renderLiveCharts(spot, live) {
     ${sourceLine}
   </div>`;
   attachChartReadouts(host);
+  // Start each chart on its most recent reading
+  host.querySelectorAll('svg.line-chart').forEach(svg => chartShowAt(svg, Infinity));
 }
 
 async function openForecast(spotId) {
