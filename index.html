@@ -342,10 +342,14 @@
   .next-window b { font-weight: 600; }
   .next-window .nw-right { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); flex-shrink: 0; }
   .next-window.none { cursor: default; }
+  /* Live card shares the day card's layout; extra column of temperatures */
   .live-card .stale { color: #f0b030; }
-  .live-card .live-note { margin-top: 8px; font-size: 11.5px; line-height: 1.4; padding: 6px 8px; border-radius: 8px; background: #3b3415; color: #d9c233; }
-  .live-card .day-body { margin-top: 12px; }
-  .live-card .live-src-lines { font-size: 11px; color: var(--fg-dim); line-height: 1.5; }
+  .live-card .day-body { gap: 10px; }
+  .live-card .live-temps { flex: 0 0 auto; align-self: flex-start; }
+  .live-card .live-src-lines { font-size: 11.5px; color: var(--fg-dim); line-height: 1.5; }
+  .src-tag { font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  .src-tag.live { color: #97c459; }
+  .src-tag.fc { color: #d9c233; }
   .chart-src { font-size: 11px; color: var(--fg-dim); margin: -8px 0 12px; }
   .dir-row-label { font-size: 10px; color: var(--fg-dim); margin-bottom: 1px; }
   /* Selected hourly row — accent top/bottom rule, keeps rating bar + sticky cols readable */
@@ -397,7 +401,7 @@
   .day-body { display: flex; gap: 12px; align-items: center; margin-top: 10px; }
   .day-stats { flex: 1; min-width: 0; display: grid; gap: 9px; justify-items: start; }
   .day-card .day-stat .lbl { font-size: 11px; color: var(--fg-dim); display: flex; align-items: center; gap: 5px; }
-  .day-card .day-stat .lbl i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
+  .day-card .day-stat .lbl i { width: 12px; height: 3px; border-radius: 2px; display: inline-block; margin-left: 1px; }
   .day-card .day-stat .val { font-size: 16px; font-weight: 600; white-space: nowrap; }
   .day-card .dim { color: var(--fg-dim); font-weight: 500; }
   /* Beach maps on the Forecast day card and the Live card */
@@ -479,17 +483,19 @@
       <div class="subtab-content" data-subtab="live">
         <div id="next-window-host"></div>
         <!-- Live readings, falling back to the next-hour forecast per value (renderLiveCard) -->
-        <div class="card live-card" id="live-card" hidden>
+        <!-- Same layout as the Forecast day card: title + rating, subtitle,
+             stats beside the beach map, footer line -->
+        <div class="card day-card live-card" id="live-card" hidden>
           <div id="live-card-top"></div>
-          <div id="live-card-note"></div>
-          <div class="stat-grid four" id="live-card-stats"></div>
           <div class="day-body">
-            <div class="day-stats" id="live-card-side"></div>
+            <div class="day-stats" id="live-card-stats"></div>
+            <div class="day-stats live-temps" id="live-card-temps"></div>
             <div class="day-map">
               <div id="live-map"></div>
               <svg id="live-map-arrows" viewBox="0 0 100 100" aria-hidden="true"></svg>
             </div>
           </div>
+          <div id="live-card-foot"></div>
         </div>
         <div id="live-charts-host"></div>
       </div>
@@ -2404,53 +2410,59 @@ function renderLiveCard(spot, live) {
   if (v.wave == null && v.wind == null) { card.hidden = true; return; }
   card.hidden = false;
 
-  // Title: live when the waves are live, otherwise the next-hour forecast
+  // Same layout as the Forecast day card. Title + rating; the subtitle says
+  // where the waves came from: a buoy (with its age), or the forecast
   const waveLive = src.wave && src.wave !== 'fc';
   const ageMin = waveLive ? (Date.now() - new Date(src.wave.time).getTime()) / 60000 : null;
   const rating = rateHour({ ...(fc || {}), waveHeight: num(v.wave), wavePeriod: num(v.per), windSpeed: num(v.wind),
                             windGust: num(v.gust), windDir: num(v.windDir), swellDir: num(v.swellDir) }, T).rating;
+  const dist = (d) => d == null ? '' : ` · ${d < 1 ? '&lt;1' : d.toFixed(0)} mi`;
   const ago = waveLive ? timeAgoStr(src.wave.time) : '';
-  document.getElementById('live-card-top').innerHTML = `<div class="row between">
-      <span class="section-label">${waveLive ? `Live${ago ? ` · <span class="${ageMin > LIVE_STALE_MIN ? 'stale' : ''}">${ago}</span>` : ''}` : 'Forecast · next hour'}</span>
+  const sub = waveLive
+    ? `<span class="muted">Live · ${escapeHtml(src.wave.name)}${dist(src.wave.dist)}${ago ? ` · <span class="${ageMin > LIVE_STALE_MIN ? 'stale' : ''}">${ago}</span>` : ''}</span>`
+    : `<span class="muted">Forecast · next hour</span> <span class="stale">· buoy out for the season</span>`;
+  document.getElementById('live-card-top').innerHTML = `
+    <div class="row between">
+      <span class="day-title">Right now</span>
       <span class="chip r${rating}">${ratingLabel(rating)}</span>
-    </div>`;
-  document.getElementById('live-card-note').innerHTML = waveLive ? ''
-    : `<div class="live-note">No buoy reporting waves near here (likely out for the season). Showing NOAA's forecast for waves.</div>`;
+    </div>
+    <div class="day-sub">${sub}</div>`;
 
-  // Four compact cells; units in the labels, direction on the map
-  const cell = (label, unit, html) => `<div><div class="muted" style="font-size:11px;">${label} <span class="stat-unit">${unit}</span></div>` +
-    `<div style="font-size:16px; font-weight:600; white-space:nowrap;">${html == null ? '<span class="muted" style="font-weight:400;">n/a</span>' : html}</div></div>`;
+  // Two stacked columns beside the map: waves/wind (+ offshore label), then
+  // water/air. Without a wave buoy each value is tagged live or forecast.
+  const tag = (s) => waveLive || !s ? '' : (s === 'fc' ? ' <span class="src-tag fc">forecast</span>' : ' <span class="src-tag live">live</span>');
+  const stat = (label, unit, color, html, s) => `<div class="day-stat">
+      <div class="lbl">${label} <span class="stat-unit">${unit}</span>${color ? `<i style="background:${color};"></i>` : ''}${tag(s)}</div>
+      <div class="val">${html == null ? '<span class="muted">n/a</span>' : html}</div></div>`;
   // Buoy heights keep a decimal (they move in small steps); forecast heights read
   // like the Forecast tab (whole feet, or "flat")
-  const htTxt = waveLive ? waveParts(v.wave).v : waveShort(v.wave);
-  const waveHtml = v.wave == null ? null : `${htTxt}${v.per != null && htTxt !== 'flat' ? ` <span class="gust">${Math.round(v.per)}s</span>` : ''}`;
-  const windHtml = v.wind == null ? null : `${windParts(v.wind).v}${v.gust != null ? ` <span class="gust">· ${windParts(v.gust).v}</span>` : ''}`;
-  document.getElementById('live-card-stats').innerHTML =
-    cell('Wave', waveParts(0).u, waveHtml) + cell('Wind', windParts(0).u, windHtml) +
-    cell('Water', tempParts(0).u, v.water == null ? null : `${tempParts(v.water).v}°`) +
-    cell('Air', tempParts(0).u, v.air == null ? null : `${tempParts(v.air).v}°`);
-
-  // Offshore/onshore + where the numbers came from: one short line when a
-  // single station supplied everything, otherwise one line per source
+  const htTxt = v.wave == null ? null : (waveLive ? waveParts(v.wave).v : waveShort(v.wave));
+  const waveHtml = htTxt == null ? null : `${htTxt}${v.per != null && htTxt !== 'flat' ? ` <span class="dim">· ${Math.round(v.per)} s</span>` : ''}`;
+  const windHtml = v.wind == null ? null : `${windParts(v.wind).v}${v.gust != null ? ` <span class="dim">· ${windParts(v.gust).v}</span>` : ''}`;
   const rel = shoreRelation(v.windDir, T.offshoreDirs);
-  const dist = (d) => d == null ? '' : ` · ${d < 1 ? '&lt;1' : d.toFixed(0)} mi`;
+  document.getElementById('live-card-stats').innerHTML =
+    stat('Waves', waveParts(0).u, WAVE_ARROW_COLOR, waveHtml, src.wave) +
+    stat('Wind', windParts(0).u, WIND_ARROW_COLOR, windHtml, src.wind) +
+    (rel ? `<span class="rel-chip ${rel.key}">${rel.label}</span>` : '');
+  document.getElementById('live-card-temps').innerHTML =
+    stat('Water', tempParts(0).u, null, v.water == null ? null : `${tempParts(v.water).v}°`) +
+    stat('Air', tempParts(0).u, null, v.air == null ? null : `${tempParts(v.air).v}°`);
+
+  // Footer: any live station other than the one named in the subtitle
   const groups = [];
   for (const [field, label] of [['wave', 'Waves'], ['wind', 'Wind'], ['water', 'Water'], ['air', 'Air']]) {
     const s = src[field];
-    if (!s) continue;
-    const key = s === 'fc' ? 'fc' : s.name;
-    let g = groups.find(x => x.key === key);
-    if (!g) groups.push(g = { key, s, labels: [] });
+    if (!s || s === 'fc' || (waveLive && s.name === src.wave.name)) continue;
+    let g = groups.find(x => x.s.name === s.name);
+    if (!g) groups.push(g = { s, labels: [] });
     g.labels.push(label);
   }
-  const line = (g, withLabels) => {
-    const who = g.s === 'fc' ? 'NOAA forecast' : `${escapeHtml(g.s.name)}${dist(g.s.dist)}`;
-    const age = g.s !== 'fc' && g.s.time && !(withLabels === false) ? timeAgoStr(g.s.time) : '';
-    return `${withLabels ? `${g.labels.join(', ')}: ` : ''}${who}${age && withLabels ? ` · ${age}` : ''}`;
-  };
-  const srcHtml = groups.length === 1 ? line(groups[0], false) : groups.map(g => line(g, true)).join('<br>');
-  document.getElementById('live-card-side').innerHTML =
-    `${rel ? `<span class="rel-chip ${rel.key}">${rel.label}</span>` : ''}<div class="live-src-lines">${srcHtml}</div>`;
+  const lines = groups.map(g => {
+    const a = g.s.time ? timeAgoStr(g.s.time) : '';
+    return `${g.labels.join(', ')} from ${escapeHtml(g.s.name)}${dist(g.s.dist)}${a ? ` · ${a}` : ''}`;
+  });
+  document.getElementById('live-card-foot').innerHTML = lines.length ? `<div class="day-note live-src-lines">${lines.join('<br>')}</div>` : '';
+
 
   ensureSpotMap('live-map', spot);
   document.getElementById('live-map-arrows').innerHTML = dayMapArrowsSvg(v.swellDir, v.windDir);
@@ -2862,7 +2874,7 @@ function renderDayCard() {
   const dateLbl = `${dow} ${day.date.getMonth() + 1}/${day.date.getDate()}`;
   const waveUnit = waveParts(0).u, windUnit = windParts(0).u;
   const stat = (label, unit, color, val) => `<div class="day-stat">
-      <div class="lbl"><i style="background:${color};"></i>${label} <span class="stat-unit">${unit}</span></div>
+      <div class="lbl">${label} <span class="stat-unit">${unit}</span><i style="background:${color};"></i></div>
       <div class="val">${val || '<span class="muted">n/a</span>'}</div></div>`;
   const chip = (rel) => rel ? `<span class="rel-chip ${rel.key}">${rel.label}</span>` : '';
   const hour = selectedHourIndex != null ? currentForecast.hours[selectedHourIndex] : null;
