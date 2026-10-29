@@ -233,7 +233,14 @@
   #nws-time-row button.play { background: var(--accent); color: #04243a; border-color: var(--accent); font-weight: 700; }
   #nws-time-slider { flex: 1; margin: 0 4px; }
   #nws-legend { display: block; max-width: 100%; height: 30px; width: auto; margin: 8px auto 0; border-radius: 4px; }
-  .wind-arrow-icon { display: block; pointer-events: none; }
+  /* Wind layers: muted basemap under a Windfinder-style color field + streaks */
+  #nws-map.wind-mode .leaflet-tile-pane { filter: grayscale(1) brightness(0.6) contrast(1.15); }
+  .wind-field-wrap { position: absolute; top: 0; left: 0; pointer-events: none; }
+  .wind-field-wrap canvas { position: absolute; top: 0; left: 0; }
+  #wind-legend { margin: 8px auto 0; max-width: 360px; }
+  #wind-legend .bar { height: 10px; border-radius: 5px; }
+  #wind-legend .ticks { position: relative; height: 14px; font-size: 10px; color: var(--fg-dim); margin-top: 2px; }
+  #wind-legend .ticks span { position: absolute; transform: translateX(-50%); }
 
   .spot-map-icon { display: block; }
   .leaflet-popup-content { color: #04243a; font-size: 13px; margin: 10px 12px; line-height: 1.35; }
@@ -468,6 +475,7 @@
         <input type="range" id="nws-time-slider" min="0" max="0" value="0" step="1">
       </div>
       <img id="nws-legend" alt="Legend" src="">
+      <div id="wind-legend" style="display:none;"><div class="bar"></div><div class="ticks"></div></div>
       <div class="legend" style="justify-content:center; margin-top:8px;">
         <span><i class="sw" style="background:var(--r-5)"></i>Epic</span>
         <span><i class="sw" style="background:var(--r-4)"></i>Good</span>
@@ -941,7 +949,7 @@ function switchView(name) {
 
   document.getElementById('header-sub').textContent =
     name === 'spots' ? 'Great Lakes wave forecast'
-    : name === 'map' ? 'NOAA heat map · spots · 7 days'
+    : name === 'map' ? 'Waves & wind · spots · 7 days'
     : name === 'settings' ? 'Defaults, units, backup' : '';
 
   const action = document.getElementById('header-action');
@@ -2858,6 +2866,17 @@ function nwsViewSpec() {
 }
 function nwsShowFrame() {
   if (!nwsMap) return;
+  if (isWindLayer()) {
+    // Wind layers are drawn locally (see windRedraw); drop the NOAA image
+    if (nwsOverlay) { nwsOverlay.remove(); nwsOverlay = null; }
+    const loading = document.getElementById('nws-map-loading');
+    if (!windGrid) { loading.textContent = 'Loading wind…'; loading.style.display = 'block'; }
+    else loading.style.display = 'none';
+    nwsUpdateTimeLabel();
+    updateSpotMapMarkers();
+    updateWindArrows();
+    return;
+  }
   if (!nwsTimes.length) {
     document.getElementById('nws-map-loading').style.display = 'none';
     nwsUpdateTimeLabel();
@@ -2884,7 +2903,7 @@ function nwsShowFrame() {
 }
 // Warm the browser cache for the frames around the current one so play is smooth.
 function nwsPrefetch() {
-  if (!nwsMap || !nwsTimes.length) return;
+  if (!nwsMap || !nwsTimes.length || isWindLayer()) return;
   const token = ++nwsPrefetchToken;
   const spec = nwsViewSpec();
   const order = [];
@@ -2907,6 +2926,9 @@ function nwsPrefetch() {
 }
 function nwsUpdateLegend() {
   if (!nwsMap) return;
+  document.getElementById('nws-legend').style.display = isWindLayer() ? 'none' : '';
+  document.getElementById('wind-legend').style.display = isWindLayer() ? '' : 'none';
+  if (isWindLayer()) { windUpdateLegend(); return; }
   const b = nwsViewSpec();
   const t = nwsTimes[nwsTimeIndex];
   const vt = t ? t.valid : '';
@@ -2927,93 +2949,238 @@ function nwsUpdateTimeLabel() {
   const u = NWS_LAYERS[nwsLayer];
   sub.textContent = `${u.title} (${u.unit().replace('kmh', 'km/h')})` +(hoursOut > 0 ? ` · +${hoursOut}h` : ' · now');
 }
-// ── Wind direction arrows for the wind layers ─────────────────────────────
-// NDFD's WMS only draws colors, so arrows come from Open-Meteo's hourly
-// 10 m wind forecast at a fixed set of on-water points (the ones the NWS
-// Great Lakes page samples, plus extra Lake Michigan points). One request
-// for all points, cached for an hour.
-const WIND_ARROW_POINTS = [
-  // Lake Michigan
-  [41.98,-87.466],[41.98,-86.784],[41.8,-87.1],[42.3,-87.1],[42.3,-86.5],[42.605,-87.586],[42.589,-86.632],
-  [42.9,-87.3],[43.0,-86.6],[43.24,-86.697],[43.378,-87.596],[43.6,-87.0],[43.7,-86.7],[44.048,-86.767],
-  [44.135,-87.474],[44.4,-86.9],[44.5,-86.5],[44.831,-87.133],[44.935,-86.353],[45.1,-86.3],[45.399,-87.255],
-  [45.655,-86.353],[45.519,-85.572],[44.6,-87.9],[45.0,-87.6],
-  // Lake Superior
-  [46.808,-91.964],[47.207,-91.184],[47.207,-90.555],[47.611,-90.501],[46.793,-90.404],[47.237,-89.58],[47.858,-89.493],
-  [48.054,-88.323],[47.537,-88.626],[47.829,-87.531],[47.442,-87.456],[47.089,-88.062],[47.486,-86.729],[47.045,-87.011],
-  [47.237,-86.112],[46.652,-87.054],[46.815,-86.144],[46.89,-85.418],[46.585,-84.833],
-  // Lake Huron
-  [45.843,-84.231],[45.468,-83.451],[43.837,-83.711],[45.273,-82.752],[44.687,-83.126],[44.386,-82.573],[43.708,-82.491],
-  // Lake Erie / St. Clair
-  [42.509,-82.833],[41.847,-83.256],[41.531,-82.508],[41.859,-81.597],[42.197,-80.638],[42.425,-79.858],[42.713,-79.191],
-  // Lake Ontario
-  [43.39,-79.029],[43.52,-78.395],[43.449,-77.679],[43.52,-76.85],[44.024,-76.395],[43.673,-76.379]
-];
-let windArrowLayer = null, windArrowData = null, windArrowFetchedAt = 0, windArrowInflight = null;
-const WIND_ARROW_CACHE_MS = 60 * 60 * 1000;
-async function loadWindArrowData() {
-  if (windArrowData && (Date.now() - windArrowFetchedAt) < WIND_ARROW_CACHE_MS) return windArrowData;
-  if (windArrowInflight) return windArrowInflight;
-  const lat = WIND_ARROW_POINTS.map(p => p[0]).join(','), lon = WIND_ARROW_POINTS.map(p => p[1]).join(',');
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&forecast_days=7&wind_speed_unit=mph&timezone=UTC&timeformat=unixtime`;
-  windArrowInflight = fetch(url).then(r => { if (!r.ok) throw new Error('open-meteo ' + r.status); return r.json(); }).then(j => {
-    const arr = Array.isArray(j) ? j : [j];
-    windArrowData = arr.map((pt, i) => ({
-      lat: WIND_ARROW_POINTS[i][0], lon: WIND_ARROW_POINTS[i][1],
-      times: pt.hourly.time, dir: pt.hourly.wind_direction_10m, spd: pt.hourly.wind_speed_10m, gust: pt.hourly.wind_gusts_10m
-    }));
-    windArrowFetchedAt = Date.now();
-    windArrowInflight = null;
-    return windArrowData;
-  }).catch(e => { console.warn('wind arrows', e); windArrowInflight = null; return null; });
-  return windArrowInflight;
+// ── Wind layers: Windfinder-style color field + animated streaks ─────────
+// NDFD's WMS images can't be restyled, so the wind layers are drawn here
+// from Open-Meteo's hourly 10 m wind on a 0.5° grid over all five lakes
+// (a few requests, cached for an hour). Wave height stays on NDFD.
+const WIND_GRID = { lat0: 40.5, lon0: -93.0, step: 0.5, nLat: 19, nLon: 36 }; // 40.5–49.5 N, 93–75.5 W
+const isWindLayer = () => nwsLayer === 'windspd' || nwsLayer === 'windgust';
+let windGrid = null, windGridFetchedAt = 0, windGridInflight = null;
+async function loadWindGrid() {
+  if (windGrid && (Date.now() - windGridFetchedAt) < 60 * 60 * 1000) return windGrid;
+  if (windGridInflight) return windGridInflight;
+  const { lat0, lon0, step, nLat, nLon } = WIND_GRID;
+  const pts = [];
+  for (let i = 0; i < nLat; i++) for (let j = 0; j < nLon; j++) pts.push([(lat0 + i * step).toFixed(2), (lon0 + j * step).toFixed(2)]);
+  const CHUNK = 240; // keeps each URL a sane length
+  const chunks = [];
+  for (let k = 0; k < pts.length; k += CHUNK) chunks.push(pts.slice(k, k + CHUNK));
+  windGridInflight = Promise.all(chunks.map(c =>
+    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c.map(p => p[0]).join(',')}&longitude=${c.map(p => p[1]).join(',')}` +
+          `&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&forecast_days=7&wind_speed_unit=mph&timezone=UTC&timeformat=unixtime`)
+      .then(r => { if (!r.ok) throw new Error('open-meteo ' + r.status); return r.json(); })
+      .then(j => Array.isArray(j) ? j : [j])
+  )).then(parts => {
+    const all = parts.flat();
+    const times = all[0].hourly.time;
+    const n = all.length, H = times.length;
+    // Per hour: mean speed, gust, and u/v (mph, the direction the wind blows TOWARD)
+    const spd = [], gust = [], u = [], v = [];
+    for (let h = 0; h < H; h++) {
+      const s = new Float32Array(n), g = new Float32Array(n), uu = new Float32Array(n), vv = new Float32Array(n);
+      for (let p = 0; p < n; p++) {
+        const hr = all[p].hourly;
+        const sp = hr.wind_speed_10m[h], dir = hr.wind_direction_10m[h];
+        s[p] = sp == null ? NaN : sp;
+        g[p] = hr.wind_gusts_10m[h] == null ? NaN : hr.wind_gusts_10m[h];
+        const rad = (dir || 0) * Math.PI / 180; // FROM direction
+        uu[p] = -s[p] * Math.sin(rad); vv[p] = -s[p] * Math.cos(rad);
+      }
+      spd.push(s); gust.push(g); u.push(uu); v.push(vv);
+    }
+    windGrid = { times, spd, gust, u, v };
+    windGridFetchedAt = Date.now();
+    windGridInflight = null;
+    return windGrid;
+  }).catch(e => { console.warn('wind grid', e); windGridInflight = null; return null; });
+  return windGridInflight;
 }
-function makeWindArrowIcon(dirDeg, spd) {
-  const rot = (dirDeg + 180) % 360; // point where the wind is going
-  const len = Math.max(12, Math.min(24, 10 + (spd || 0) * 0.5));
-  const tip = (-len / 2).toFixed(1), tail = (len / 2).toFixed(1);
-  const html = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-14 -14 28 28" width="28" height="28" class="wind-arrow-icon">
-    <g transform="rotate(${rot})" stroke="#000" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round">
-      <line x1="0" y1="${tail}" x2="0" y2="${tip}"/>
-      <polyline points="-3.2,${(-len / 2 + 4.5).toFixed(1)} 0,${tip} 3.2,${(-len / 2 + 4.5).toFixed(1)}"/>
-    </g></svg>`;
-  return L.divIcon({ html, className: '', iconSize: [28, 28], iconAnchor: [14, 14] });
+function windHourIndex() {
+  if (!windGrid || !nwsTimes[nwsTimeIndex]) return -1;
+  const t = nwsTimes[nwsTimeIndex].date.getTime() / 1000;
+  const h = Math.round((t - windGrid.times[0]) / 3600);
+  return (h >= 0 && h < windGrid.times.length) ? h : -1;
+}
+// Bilinear sample of the grid → { s: speed or gust (mph), u, v } or null off-grid.
+function windSample(h, lat, lon) {
+  const { lat0, lon0, step, nLat, nLon } = WIND_GRID;
+  const fi = (lat - lat0) / step, fj = (lon - lon0) / step;
+  if (fi < 0 || fj < 0 || fi > nLat - 1 || fj > nLon - 1) return null;
+  const i = Math.min(nLat - 2, Math.floor(fi)), j = Math.min(nLon - 2, Math.floor(fj));
+  const di = fi - i, dj = fj - j;
+  const k00 = i * nLon + j, k01 = k00 + 1, k10 = k00 + nLon, k11 = k10 + 1;
+  const mix = (a) => (a[k00] * (1 - dj) + a[k01] * dj) * (1 - di) + (a[k10] * (1 - dj) + a[k11] * dj) * di;
+  const s = mix(nwsLayer === 'windgust' ? windGrid.gust[h] : windGrid.spd[h]);
+  return isNaN(s) ? null : { s, u: mix(windGrid.u[h]), v: mix(windGrid.v[h]) };
+}
+// Windfinder-like scale, defined in knots (purple calm → teal → green → yellow → red → magenta)
+const WIND_STOPS_KT = [
+  [0, [109, 90, 168]], [4, [91, 111, 200]], [8, [63, 143, 208]], [12, [47, 176, 192]], [16, [47, 194, 154]],
+  [20, [70, 201, 106]], [24, [143, 209, 74]], [28, [214, 208, 58]], [32, [240, 176, 48]], [36, [240, 138, 42]],
+  [40, [232, 87, 42]], [45, [212, 42, 58]], [50, [176, 32, 94]], [60, [122, 26, 110]]
+];
+function windColor(mph) {
+  const kt = mph * KMH_TO_KT / KMH_TO_MPH;
+  if (kt <= 0) return WIND_STOPS_KT[0][1];
+  for (let k = 1; k < WIND_STOPS_KT.length; k++) {
+    const [b, cb] = WIND_STOPS_KT[k];
+    if (kt <= b) {
+      const [a, ca] = WIND_STOPS_KT[k - 1], f = (kt - a) / (b - a);
+      return [ca[0] + (cb[0] - ca[0]) * f, ca[1] + (cb[1] - ca[1]) * f, ca[2] + (cb[2] - ca[2]) * f];
+    }
+  }
+  return WIND_STOPS_KT[WIND_STOPS_KT.length - 1][1];
+}
+function windUpdateLegend() {
+  const el = document.getElementById('wind-legend');
+  const maxMph = 60 * KMH_TO_MPH / KMH_TO_KT;
+  el.querySelector('.bar').style.background = 'linear-gradient(to right,' +
+    WIND_STOPS_KT.map(([kt, c]) => `rgb(${c.join(',')}) ${(kt / 60 * 100).toFixed(1)}%`).join(',') + ')';
+  // Ticks in the user's wind unit
+  const unit = windParts(0).u;
+  const perMph = state.units.wind === 'kt' ? KMH_TO_KT / KMH_TO_MPH : state.units.wind === 'kmh' ? 1 / KMH_TO_MPH : 1;
+  const stepU = unit === 'km/h' ? 20 : 10;
+  let ticks = '';
+  // Stop one step short of the end so the last number doesn't collide with the unit label
+  for (let x = 0; x < (maxMph * perMph) - stepU / 2; x += stepU) {
+    ticks += `<span style="left:${(x / perMph / maxMph * 100).toFixed(1)}%">${x}</span>`;
+  }
+  el.querySelector('.ticks').innerHTML = ticks + `<span style="left:100%; transform:translateX(-100%);">${unit}</span>`;
+}
+
+// Screen-space field rebuilt after each move/zoom/time change; the streak
+// animation reads from it instead of projecting every particle every frame.
+const WIND_CELL = 4; // px per field cell
+let windWrap = null, windFieldCanvas = null, windParticleCanvas = null;
+let windField = null, windParticles = [], windAnim = null;
+function windEnsureCanvases() {
+  if (windWrap) return;
+  nwsMap.createPane('windPane');
+  nwsMap.getPane('windPane').style.zIndex = 350; // above tiles, below spot pins
+  windWrap = L.DomUtil.create('div', 'wind-field-wrap', nwsMap.getPane('windPane'));
+  windFieldCanvas = L.DomUtil.create('canvas', '', windWrap);
+  windParticleCanvas = L.DomUtil.create('canvas', '', windWrap);
+  nwsMap.on('zoomstart', () => { windWrap.style.display = 'none'; });
+}
+function windRedraw() {
+  if (!nwsMap) return;
+  const show = isWindLayer() && windGrid && windHourIndex() >= 0;
+  document.getElementById('nws-map').classList.toggle('wind-mode', isWindLayer());
+  if (!show) { if (windWrap) windWrap.style.display = 'none'; windStopAnim(); return; }
+  windEnsureCanvases();
+  const size = nwsMap.getSize();
+  L.DomUtil.setPosition(windWrap, nwsMap.containerPointToLayerPoint([0, 0]));
+  windWrap.style.display = '';
+  const h = windHourIndex();
+  const fw = Math.ceil(size.x / WIND_CELL) + 1, fh = Math.ceil(size.y / WIND_CELL) + 1;
+  const s = new Float32Array(fw * fh).fill(NaN), u = new Float32Array(fw * fh), v = new Float32Array(fw * fh);
+  windFieldCanvas.width = fw; windFieldCanvas.height = fh;
+  windFieldCanvas.style.width = (fw * WIND_CELL) + 'px'; windFieldCanvas.style.height = (fh * WIND_CELL) + 'px';
+  const ctx = windFieldCanvas.getContext('2d');
+  const img = ctx.createImageData(fw, fh);
+  for (let y = 0; y < fh; y++) {
+    for (let x = 0; x < fw; x++) {
+      const ll = nwsMap.containerPointToLatLng([x * WIND_CELL, y * WIND_CELL]);
+      const w = windSample(h, ll.lat, ll.lng);
+      if (!w) continue;
+      const k = y * fw + x;
+      s[k] = w.s; u[k] = w.u; v[k] = w.v;
+      const c = windColor(w.s);
+      img.data[k * 4] = c[0]; img.data[k * 4 + 1] = c[1]; img.data[k * 4 + 2] = c[2]; img.data[k * 4 + 3] = 200;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  windField = { fw, fh, s, u, v, w: size.x, h: size.y };
+  // Only reset the streaks when the canvas size changes, so stepping through
+  // time (or playing) keeps them flowing instead of restarting every frame.
+  const dpr = window.devicePixelRatio || 1;
+  if (windParticleCanvas.width !== Math.round(size.x * dpr) || windParticleCanvas.height !== Math.round(size.y * dpr)) {
+    windParticleCanvas.width = Math.round(size.x * dpr); windParticleCanvas.height = Math.round(size.y * dpr);
+    windParticleCanvas.style.width = size.x + 'px'; windParticleCanvas.style.height = size.y + 'px';
+    windParticleCanvas.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+    windParticles = [];
+  }
+  const count = Math.min(1500, Math.round(size.x * size.y / 400));
+  if (windParticles.length !== count) windParticles = Array.from({ length: count }, () => windSpawn({}));
+  windStartAnim();
+}
+function windAt(x, y) {
+  const f = windField;
+  const k = Math.round(y / WIND_CELL) * f.fw + Math.round(x / WIND_CELL);
+  return (k >= 0 && k < f.s.length && !isNaN(f.s[k])) ? k : -1;
+}
+function windSpawn(p) {
+  p.x = Math.random() * windField.w; p.y = Math.random() * windField.h;
+  p.age = Math.floor(Math.random() * 60); p.max = 50 + Math.floor(Math.random() * 40);
+  return p;
+}
+function windStep() {
+  const ctx = windParticleCanvas.getContext('2d');
+  const { w, h } = windField;
+  // Fade the previous frame so moving particles leave short trails
+  ctx.globalCompositeOperation = 'destination-in';
+  ctx.fillStyle = 'rgba(0,0,0,0.9)';
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  const K = 0.05; // px per frame per mph
+  for (const p of windParticles) {
+    const k = windAt(p.x, p.y);
+    if (k < 0 || ++p.age > p.max) { windSpawn(p); p.age = 0; continue; }
+    const nx = p.x + windField.u[k] * K, ny = p.y - windField.v[k] * K;
+    ctx.moveTo(p.x, p.y); ctx.lineTo(nx, ny);
+    p.x = nx; p.y = ny;
+    if (nx < 0 || ny < 0 || nx > w || ny > h) p.age = p.max;
+  }
+  ctx.stroke();
+}
+function windStartAnim() {
+  if (windAnim) return;
+  const loop = () => {
+    const mapActive = document.getElementById('view-map').classList.contains('active');
+    if (!mapActive || !isWindLayer() || document.hidden || !windField) { windAnim = null; return; }
+    windStep();
+    windAnim = requestAnimationFrame(loop);
+  };
+  windAnim = requestAnimationFrame(loop);
+}
+function windStopAnim() {
+  if (windAnim) cancelAnimationFrame(windAnim);
+  windAnim = null;
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && windField && isWindLayer()) windStartAnim();
+});
+// Tap the map on a wind layer to read the wind there.
+function windTapReadout(latlng) {
+  const h = windHourIndex();
+  const w = h >= 0 ? windSample(h, latlng.lat, latlng.lng) : null;
+  if (!w) return;
+  const dir = (Math.atan2(-w.u, -w.v) * 180 / Math.PI + 360) % 360; // back to FROM direction
+  L.popup({ closeButton: false, maxWidth: 200 }).setLatLng(latlng)
+    .setContent(`<b>${fmtWind(w.s / KMH_TO_MPH)}</b> ${nwsLayer === 'windgust' ? 'gusts' : 'wind'} from ${degToCompass(dir)} (${Math.round(dir)}°)`)
+    .openOn(nwsMap);
 }
 function updateWindArrows() {
-  if (!nwsMap || !windArrowLayer) return;
-  windArrowLayer.clearLayers();
   const srcLine = document.getElementById('nws-source-line');
-  const isWind = nwsLayer === 'windspd' || nwsLayer === 'windgust';
-  if (srcLine) srcLine.firstChild.textContent = isWind && windArrowData
-    ? 'Heat map: NOAA NDFD · arrows: Open-Meteo 10 m wind · '
+  if (srcLine) srcLine.firstChild.textContent = isWindLayer()
+    ? 'Wind: Open-Meteo forecast (tap the map for a reading) · '
     : 'Heat map: NOAA NDFD via digital.weather.gov · ';
-  if (!isWind || !windArrowData || !nwsTimes.length) return;
-  const t = Math.round(nwsTimes[nwsTimeIndex].date.getTime() / 1000);
-  const bounds = nwsMap.getBounds().pad(0.1);
-  for (const pt of windArrowData) {
-    if (!bounds.contains([pt.lat, pt.lon])) continue;
-    // Nearest hour (Open-Meteo is hourly on the hour)
-    let idx = Math.round((t - pt.times[0]) / 3600);
-    if (idx < 0 || idx >= pt.times.length) continue;
-    const dir = pt.dir[idx], spd = nwsLayer === 'windgust' ? pt.gust[idx] : pt.spd[idx];
-    if (dir == null || isNaN(dir)) continue;
-    const spdLabel = spd != null ? `${fmtWind(spd / KMH_TO_MPH)}` : '';
-    L.marker([pt.lat, pt.lon], { icon: makeWindArrowIcon(dir, spd), interactive: true, keyboard: false, zIndexOffset: 500 })
-      .bindTooltip(`${degToCompass(dir)} ${Math.round(dir)}°${spdLabel ? ' · ' + spdLabel : ''}`, { direction: 'top', offset: [0, -10] })
-      .addTo(windArrowLayer);
-  }
+  windRedraw();
 }
 
 async function initNwsMapIfNeeded() {
   if (!nwsMap) {
     nwsMap = L.map('nws-map', { zoomControl: true, minZoom: 5, maxZoom: 11 });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 18, attribution: '© OpenStreetMap · NOAA NDFD'
+      maxZoom: 18, attribution: '© OpenStreetMap · NOAA NDFD · Open-Meteo'
     }).addTo(nwsMap);
     nwsMap.fitBounds([[41.5, -88.0], [46.1, -84.7]]); // Lake Michigan, same as Spot Map
     // Tap-to-drop after pressing "+ Drop pin"; long-press / right-click also works.
     nwsMap.on('click', e => {
-      if (!nwsDropPinMode) return;
+      if (!nwsDropPinMode) { if (isWindLayer()) windTapReadout(e.latlng); return; }
       toggleNwsDropPinMode();
       nwsMapPause();
       showAddSpotModal({ lat: e.latlng.lat.toFixed(4), lon: e.latlng.lng.toFixed(4), name: '' });
@@ -3027,7 +3194,6 @@ async function initNwsMapIfNeeded() {
       clearTimeout(nwsMoveTimer);
       nwsMoveTimer = setTimeout(() => { nwsShowFrame(); nwsUpdateLegend(); nwsPrefetch(); }, 150);
     });
-    windArrowLayer = L.layerGroup().addTo(nwsMap);
     const slider = document.getElementById('nws-time-slider');
     slider.addEventListener('input', e => {
       nwsMapPause();
@@ -3045,7 +3211,7 @@ async function initNwsMapIfNeeded() {
   }, 100);
   // Spot markers (saved + popular) and wind arrows load in the background.
   loadAllSpotMapForecasts().then(() => updateSpotMapMarkers());
-  loadWindArrowData().then(() => updateWindArrows());
+  loadWindGrid().then(() => { if (isWindLayer()) nwsShowFrame(); });
 }
 function toggleNwsDropPinMode() {
   nwsDropPinMode = !nwsDropPinMode;
