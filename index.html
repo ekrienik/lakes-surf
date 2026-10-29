@@ -91,7 +91,7 @@
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
     cursor: pointer; font-family: inherit;
   }
-  nav.tabbar button .icn { font-size: 18px; line-height: 1; }
+  nav.tabbar button .icn { width: 23px; height: 23px; }
   nav.tabbar button.active { color: var(--accent); }
 
   .view { display: none; }
@@ -121,7 +121,10 @@
     display: inline-flex; align-items: center; justify-content: center;
     font-size: 20px; line-height: 1; border-radius: 10px;
   }
+  header .btn.icon-btn.small-icon { width: 34px; height: 34px; border-radius: 9px; }
   button.btn.icon { padding: 8px 10px; font-size: 14px; }
+  /* Icons inside running text (Getting started tips) */
+  .inline-icn { display: inline-flex; vertical-align: -3px; color: var(--accent); }
 
   .loc-card { cursor: pointer; transition: transform 0.05s; }
   .loc-card:active { transform: scale(0.99); }
@@ -204,12 +207,19 @@
   table.hourly th {
     color: var(--fg-dim); font-weight: 500; font-size: 10px;
     text-transform: uppercase; letter-spacing: 0.5px;
-    position: sticky;
-    /* Below main header (72) + sub-tabs (~48) + day-tabs (~67) = 188 */
-    top: calc(var(--safe-top, 0px) + 188px);
-    z-index: 30;
-    background: var(--bg);
+    background: var(--bg-2);
   }
+  /* The table scrolls sideways inside its card with the rating bar + TIME
+     pinned (sticky left). A horizontal scroll box can't also pin the header
+     row to the page, so the column names scroll with the rows. */
+  .hourly-card { position: relative; overflow: hidden; }
+  .hourly-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+  /* Fade on the right edge while there are more columns to see */
+  .hourly-card::after {
+    content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 28px; pointer-events: none;
+    background: linear-gradient(to right, rgba(18, 35, 54, 0), var(--bg-2)); transition: opacity 0.2s;
+  }
+  .hourly-card.at-end::after { opacity: 0; }
   table.hourly td.time { text-align: left; padding-left: 10px; }
   table.hourly td.rating { width: 6px; padding: 0; background-color: #2c4258; }
   table.hourly tr.r1 td.rating { background-color: var(--r-1); }
@@ -224,8 +234,9 @@
   table.hourly th:nth-child(2), table.hourly td.time {
     position: sticky; left: 6px; z-index: 2; background: var(--bg-2);
   }
-  table.hourly thead th { z-index: 30; }
-  table.hourly thead th:first-child, table.hourly thead th:nth-child(2) { z-index: 31; }
+  table.hourly thead th:first-child, table.hourly thead th:nth-child(2) { z-index: 4; }
+  /* Hairline on the pinned column's edge so rows visibly slide under it */
+  table.hourly th:nth-child(2), table.hourly td.time { box-shadow: inset -1px 0 0 var(--border); }
 
   /* Edit mode: subtle accent tint on cards */
   .loc-card.editing { background: rgba(78, 195, 255, 0.08); border-color: rgba(78, 195, 255, 0.4); }
@@ -421,10 +432,10 @@
     <div id="first-run-tips" class="card" style="display:none; border-color:var(--accent);">
       <h3 style="margin:0 0 8px;">Getting started</h3>
       <ul style="margin:0; padding-left:18px; font-size:13px; line-height:1.6;">
-        <li>Tap <b>🔍</b> (top right) to add popular beaches.</li>
-        <li>Tap <b>+</b> to add your own spot, or drop a pin on the <b>Map</b> tab.</li>
+        <li>Tap <span class="inline-icn" data-icon="search"></span> (top right) to add popular beaches.</li>
+        <li>Tap <span class="inline-icn" data-icon="plus"></span> to add your own spot, or drop a pin on the <b>Map</b> tab.</li>
         <li>Tap a spot card for live conditions, the hourly forecast, cams and water quality.</li>
-        <li>Each day's color is its best rating, from <b>Epic</b> to <b>Poor</b>. Tap <b>✎</b> to reorder or delete spots.</li>
+        <li>Each day's color is its best rating, from <b>Epic</b> to <b>Poor</b>. Tap <span class="inline-icn" data-icon="pencil"></span> to reorder or delete spots.</li>
         <li>Change units and ratings in <b>Settings</b>.</li>
       </ul>
       <button class="btn small" style="margin-top:12px;" onclick="dismissFirstRunTips()">Got it</button>
@@ -463,7 +474,9 @@
         </div>
         <div class="day-tabs" id="day-tabs"></div>
         <div class="card hourly-card" style="padding:0;">
-          <table class="hourly" id="hourly-table"></table>
+          <div class="hourly-scroll" id="hourly-scroll" onscroll="updateHourlyFade()">
+            <table class="hourly" id="hourly-table"></table>
+          </div>
         </div>
         <div class="card" style="margin-bottom: 80px;">
           <div class="row between">
@@ -588,13 +601,13 @@
 
 <nav class="tabbar">
   <button data-view="spots" class="active" onclick="switchView('spots')">
-    <span class="icn">🏄</span><span>Spots</span>
+    <svg class="icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7c3 -2 6 -2 9 0s6 2 9 0"/><path d="M3 17c3 -2 6 -2 9 0s6 2 9 0"/><path d="M3 12c3 -2 6 -2 9 0s6 2 9 0"/></svg><span>Spots</span>
   </button>
   <button data-view="map" onclick="switchView('map')">
-    <span class="icn">🌊</span><span>Map</span>
+    <svg class="icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 18.5l-3 -1.5l-6 3v-13l6 -3l6 3l6 -3v7.5"/><path d="M9 4v13"/><path d="M15 7v5.5"/><path d="M21.121 20.121a3 3 0 1 0 -4.242 0c.418 .419 1.125 1.045 2.121 1.879c1.051 -.89 1.759 -1.516 2.121 -1.879z"/><path d="M19 18v.01"/></svg><span>Map</span>
   </button>
   <button data-view="settings" onclick="switchView('settings')">
-    <span class="icn">⚙️</span><span>Settings</span>
+    <svg class="icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/></svg><span>Settings</span>
   </button>
 </nav>
 
@@ -678,6 +691,17 @@ const OMR_STATIONS = {
     { name: 'South Mid Lake Buoy',   lat: 42.500, lon: -86.900 }
   ]
 };
+// Outline icons (Tabler Icons, MIT), drawn in currentColor so they take the button's color.
+const ICONS = {
+  search: '<circle cx="10" cy="10" r="7"/><path d="M21 21l-6 -6"/>',
+  plus: '<path d="M12 5l0 14"/><path d="M5 12l14 0"/>',
+  pencil: '<path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"/><path d="M13.5 6.5l4 4"/>'
+};
+function icon(name, size = 20) {
+  return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
+}
+// Fill <span data-icon="..."> placeholders in the static markup
+document.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = icon(el.dataset.icon, 16); });
 const STORAGE_KEY = 'lakesurf-v1';
 const DIRS_8 = ['N','NE','E','SE','S','SW','W','NW'];
 
@@ -992,15 +1016,15 @@ function switchView(name) {
   if (name === 'spots') {
     if (!editingSpots) {
       const popBtn = document.createElement('button');
-      popBtn.className = 'btn ghost icon-btn'; popBtn.textContent = '🔍'; popBtn.title = 'Browse popular spots'; popBtn.setAttribute('aria-label', 'Browse popular spots'); popBtn.style.marginRight = '6px';
+      popBtn.className = 'btn ghost icon-btn'; popBtn.innerHTML = icon('search'); popBtn.title = 'Browse popular spots'; popBtn.setAttribute('aria-label', 'Browse popular spots'); popBtn.style.marginRight = '6px';
       popBtn.onclick = () => openPopularSpotsModal();
       action.appendChild(popBtn);
       const addBtn = document.createElement('button');
-      addBtn.className = 'btn ghost icon-btn'; addBtn.textContent = '+'; addBtn.title = 'Add spot'; addBtn.setAttribute('aria-label', 'Add spot'); addBtn.style.marginRight = '6px';
+      addBtn.className = 'btn ghost icon-btn'; addBtn.innerHTML = icon('plus'); addBtn.title = 'Add spot'; addBtn.setAttribute('aria-label', 'Add spot'); addBtn.style.marginRight = '6px';
       addBtn.onclick = () => showAddSpotModal();
       action.appendChild(addBtn);
       const editBtn = document.createElement('button');
-      editBtn.className = 'btn ghost icon-btn'; editBtn.textContent = '✎'; editBtn.title = 'Edit spots'; editBtn.setAttribute('aria-label', 'Edit spots');
+      editBtn.className = 'btn ghost icon-btn'; editBtn.innerHTML = icon('pencil'); editBtn.title = 'Edit spots'; editBtn.setAttribute('aria-label', 'Edit spots');
       editBtn.onclick = toggleEditingSpots;
       action.appendChild(editBtn);
     } else {
@@ -1723,6 +1747,7 @@ function selectSubtab(name) {
   // Map needs invalidateSize AND a re-fit if it was initialized while its
   // container was display:none — Leaflet would have computed bounds against
   // a 0×0 container and gotten the wrong zoom.
+  if (name === 'forecast') requestAnimationFrame(updateHourlyFade);
   if (name === 'forecast' && spotMiniMap && currentSpotId) {
     const spot = state.spots.find(s => s.id === currentSpotId);
     setTimeout(() => {
@@ -2024,7 +2049,7 @@ async function openForecast(spotId) {
   document.getElementById('header-title').textContent = spot.name;
   document.getElementById('header-sub').textContent = '';
   const action = document.getElementById('header-action');
-  action.innerHTML = '<span id="header-rating" style="margin-right:8px;"></span><button class="btn small ghost" onclick="editCurrentSpot()" title="Edit spot" aria-label="Edit spot">✎</button>';
+  action.innerHTML = '<span id="header-rating" style="margin-right:8px;"></span><button class="btn ghost icon-btn small-icon" onclick="editCurrentSpot()" title="Edit spot" aria-label="Edit spot">' + icon('pencil', 17) + '</button>';
 
   document.getElementById('forecast-loading').style.display = 'block';
   document.getElementById('forecast-error').style.display = 'none';
@@ -2421,6 +2446,8 @@ function renderForecast() {
     </tbody>
   `;
 
+  requestAnimationFrame(updateHourlyFade);
+
   const statusEl = document.getElementById('threshold-status');
   statusEl.innerHTML = spot.thresholds
     ? '<span style="color:var(--accent);">Custom for this spot</span>'
@@ -2428,6 +2455,13 @@ function renderForecast() {
 }
 
 function selectDay(i) { currentDayIndex = i; selectedHourIndex = null; renderForecast(); }
+
+// Hide the right-edge fade once the hourly table is scrolled to its last column
+function updateHourlyFade() {
+  const s = document.getElementById('hourly-scroll');
+  if (!s || !s.clientWidth) return; // hidden sub-tab: measure again when shown
+  s.parentElement.classList.toggle('at-end', s.scrollLeft + s.clientWidth >= s.scrollWidth - 2);
+}
 
 function dayPartSegments(lat, lon, day, T) {
   const ss = sunriseSunset(lat, lon, day.date);
