@@ -333,23 +333,21 @@
   .legend span { display: inline-flex; align-items: center; gap: 4px; color: var(--fg-dim); }
   .legend .sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
 
-  /* Full-width LIVE conditions map on the Live tab */
-  .live-map-wrap {
-    width: 100%; height: 260px;
-    border-radius: 10px; overflow: hidden; position: relative;
-    border: 1px solid var(--border); background: var(--bg-3);
-    /* Contain Leaflet's z-index 200-700 panes so they don't render above the
-       sticky page banner */
-    isolation: isolate;
-    z-index: 0;
+  /* Live tab: "Next good window" bar and the Live card */
+  .next-window {
+    width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: var(--bg-2); border: 1px solid var(--border); border-radius: 12px; padding: 9px 12px;
+    margin-bottom: 12px; color: var(--fg); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
   }
-  .live-map-wrap .spot-live-map { position: absolute; inset: 0; width: 100%; height: 100%; }
-  .live-map-wrap .live-arrows {
-    position: absolute; inset: 0; width: 100%; height: 100%;
-    pointer-events: none; z-index: 500; overflow: visible;
-  }
-  /* Dim the bright OpenStreetMap tiles to sit with the dark theme (water stays blue) */
-  .spot-live-map .leaflet-tile-pane { filter: saturate(0.6) brightness(0.62) contrast(1.1); }
+  .next-window b { font-weight: 600; }
+  .next-window .nw-right { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); flex-shrink: 0; }
+  .next-window.none { cursor: default; }
+  .live-card .stale { color: #f0b030; }
+  .live-card .live-note { margin-top: 8px; font-size: 11.5px; line-height: 1.4; padding: 6px 8px; border-radius: 8px; background: #3b3415; color: #d9c233; }
+  .live-card .day-body { margin-top: 12px; }
+  .live-card .live-src-lines { font-size: 11px; color: var(--fg-dim); line-height: 1.5; }
+  .chart-src { font-size: 11px; color: var(--fg-dim); margin: -8px 0 12px; }
+  .dir-row-label { font-size: 10px; color: var(--fg-dim); margin-bottom: 1px; }
   /* Selected hourly row — accent top/bottom rule, keeps rating bar + sticky cols readable */
   table.hourly tbody tr { cursor: pointer; }
   table.hourly tbody tr.selected td {
@@ -396,20 +394,22 @@
   .day-card .day-title { font-size: 15px; font-weight: 600; }
   .day-card .day-sub { font-size: 12px; margin-top: 3px; }
   .day-card .day-sub b { font-weight: 600; }
-  .day-card .day-body { display: flex; gap: 12px; align-items: center; margin-top: 10px; }
-  .day-card .day-stats { flex: 1; min-width: 0; display: grid; gap: 9px; justify-items: start; }
+  .day-body { display: flex; gap: 12px; align-items: center; margin-top: 10px; }
+  .day-stats { flex: 1; min-width: 0; display: grid; gap: 9px; justify-items: start; }
   .day-card .day-stat .lbl { font-size: 11px; color: var(--fg-dim); display: flex; align-items: center; gap: 5px; }
   .day-card .day-stat .lbl i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
   .day-card .day-stat .val { font-size: 16px; font-weight: 600; white-space: nowrap; }
   .day-card .dim { color: var(--fg-dim); font-weight: 500; }
-  .day-card .day-map {
+  /* Beach maps on the Forecast day card and the Live card */
+  .day-map {
     width: 128px; height: 128px; flex: 0 0 128px; position: relative;
     border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: var(--bg-3);
     isolation: isolate; z-index: 0; /* keep Leaflet's panes under the sticky bars */
   }
-  .day-card #day-map { position: absolute; inset: 0; }
-  .day-card #day-map .leaflet-tile-pane { filter: saturate(0.6) brightness(0.62) contrast(1.1); }
-  .day-card #day-map-arrows { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 500; pointer-events: none; }
+  .day-map > div { position: absolute; inset: 0; }
+  /* Dim the bright OpenStreetMap tiles to sit with the dark theme (water stays blue) */
+  .day-map .leaflet-tile-pane { filter: saturate(0.6) brightness(0.62) contrast(1.1); }
+  .day-map > svg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 500; pointer-events: none; }
   .day-card .day-note { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 12.5px; line-height: 1.4; }
   .rel-chip { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; }
   .rel-chip.off { background: #1d3b2a; color: #97c459; }
@@ -477,10 +477,21 @@
       </nav>
 
       <div class="subtab-content" data-subtab="live">
-        <div id="commentary-host"></div>
-        <div id="live-card-host"></div>
+        <div id="next-window-host"></div>
+        <!-- Live readings, falling back to the next-hour forecast per value (renderLiveCard) -->
+        <div class="card live-card" id="live-card" hidden>
+          <div id="live-card-top"></div>
+          <div id="live-card-note"></div>
+          <div class="stat-grid four" id="live-card-stats"></div>
+          <div class="day-body">
+            <div class="day-stats" id="live-card-side"></div>
+            <div class="day-map">
+              <div id="live-map"></div>
+              <svg id="live-map-arrows" viewBox="0 0 100 100" aria-hidden="true"></svg>
+            </div>
+          </div>
+        </div>
         <div id="live-charts-host"></div>
-        <div id="live-map-host"></div>
       </div>
 
       <div class="subtab-content" data-subtab="forecast" hidden>
@@ -729,7 +740,8 @@ function todaysTagline() {
 const ICONS = {
   search: '<circle cx="10" cy="10" r="7"/><path d="M21 21l-6 -6"/>',
   plus: '<path d="M12 5l0 14"/><path d="M5 12l14 0"/>',
-  pencil: '<path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"/><path d="M13.5 6.5l4 4"/>'
+  pencil: '<path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"/><path d="M13.5 6.5l4 4"/>',
+  chevronRight: '<path d="M9 6l6 6l-6 6"/>'
 };
 function icon(name, size = 20) {
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
@@ -1777,9 +1789,6 @@ let currentForecast = null;
 let currentDayIndex = 0;
 let currentLive = null;
 let selectedHourIndex = null;     // global index in currentForecast.hours; null = "right now"
-let spotLiveMap = null;
-let spotLiveMapSpotId = null;
-
 // Current sub-tab on the spot page. Always resets to "live" when a new spot
 // is opened (default to Live tab).
 let currentSubtab = 'live';
@@ -1792,19 +1801,10 @@ function selectSubtab(name) {
   document.querySelectorAll('.subtab-content').forEach(el => {
     el.hidden = (el.dataset.subtab !== name);
   });
-  if (name === 'forecast') { requestAnimationFrame(layoutHourly); refreshDayMap(); }
-  // The Live map needs invalidateSize AND a re-fit if it was initialized while
-  // its container was display:none — Leaflet would have computed bounds against
-  // a 0×0 container and gotten the wrong zoom.
-  if (name === 'live' && spotLiveMap && currentSpotId) {
-    const spot = state.spots.find(s => s.id === currentSpotId);
-    setTimeout(() => {
-      try {
-        spotLiveMap.invalidateSize();
-        if (spot) spotLiveMap.fitBounds(L.latLng(spot.lat, spot.lon).toBounds(1600), { animate: false });
-      } catch (e) {}
-    }, 30);
-  }
+  // Beach maps need invalidateSize AND a re-fit if they were created while
+  // hidden — Leaflet would have sized them as 0×0
+  if (name === 'forecast') { requestAnimationFrame(layoutHourly); refreshSpotMap('day-map'); }
+  if (name === 'live') refreshSpotMap('live-map');
 }
 
 // ── Charts: 24h wave height + dominant wave period from the buoy ──────────
@@ -1846,11 +1846,25 @@ function makeLineChart(opts) {
   const W = Math.max(240, Math.round(opts.width || 600)), H = height;
   const now = Date.now();
   const start = now - 24 * 3600 * 1000;
-  const series = seriesIn.map(s => ({
-    ...s,
-    pts: times.map((t, i) => ({ t: t.getTime(), v: parseFloat(s.values[i]) }))
-              .filter(p => !isNaN(p.v) && p.t >= start && p.t <= now)
-  })).filter(s => s.pts.length);
+  // step series (whole-number readings like period) are reduced to hourly
+  // medians: buoys flip between 2 s and 3 s every 10 minutes, which reads as noise
+  const hourlyMedian = (pts) => {
+    const byHour = new Map();
+    for (const p of pts) {
+      const h = Math.floor(p.t / 3600e3);
+      if (!byHour.has(h)) byHour.set(h, []);
+      byHour.get(h).push(p);
+    }
+    return [...byHour.values()].map(g => {
+      const vs = g.map(p => p.v).sort((a, b) => a - b);
+      return { t: g[g.length - 1].t, v: vs[Math.floor(vs.length / 2)] };
+    });
+  };
+  const series = seriesIn.map(s => {
+    const pts = times.map((t, i) => ({ t: t.getTime(), v: parseFloat(s.values[i]) }))
+                     .filter(p => !isNaN(p.v) && p.t >= start && p.t <= now);
+    return { ...s, pts: s.step ? hourlyMedian(pts) : pts };
+  }).filter(s => s.pts.length);
   if (!series.length) {
     return `<div class="muted" style="font-size:12px; padding:10px;">No recent ${title.toLowerCase()} data.</div>`;
   }
@@ -1906,7 +1920,11 @@ function makeLineChart(opts) {
   // One path + latest-value dot per series (drawn back to front: first series on top)
   let lines = '';
   for (const s of [...series].reverse()) {
-    const d = s.pts.map((p, i) => (i === 0 ? 'M' : 'L') + xToPx(p.t).toFixed(1) + ',' + yToPx(p.v, s.axis).toFixed(1)).join(' ');
+    // step: hold each (hourly median) value flat until the next
+    const d = s.pts.map((p, i) => {
+      const x = xToPx(p.t).toFixed(1), y = yToPx(p.v, s.axis).toFixed(1);
+      return i === 0 ? `M${x},${y}` : (s.step ? `H${x}V${y}` : `L${x},${y}`);
+    }).join(' ');
     const last = s.pts[s.pts.length - 1];
     lines += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.8"${s.dashed ? ' stroke-dasharray="4 3"' : ''}/>` +
              `<circle cx="${xToPx(last.t).toFixed(1)}" cy="${yToPx(last.v, s.axis).toFixed(1)}" r="2.5" fill="${s.color}"/>`;
@@ -1930,7 +1948,7 @@ function makeLineChart(opts) {
       const pct = (xToPx(t) / W * 100).toFixed(2);
       arrows += `<span style="position:absolute; left:${pct}%; top:0; transform:translateX(-50%); color:#a3b5c7;">${dirArrow(best.d, 11)}</span>`;
     }
-    if (arrows) dirRow = `<div style="position:relative; height:14px; line-height:14px;">${arrows}</div>`;
+    if (arrows) dirRow = `<div class="dir-row-label">${opts.dirsLabel || 'Direction'}</div><div style="position:relative; height:14px; line-height:14px;">${arrows}</div>`;
   }
 
   // Touch / hover readout: stash the plotted points so a tap on the chart can
@@ -2062,43 +2080,30 @@ function attachChartReadouts(host) {
 async function renderLiveCharts(spot, live) {
   const host = document.getElementById('live-charts-host');
   if (!host) return;
-  // Pick the wave-reporting station (prefer the wave-buoy fallback if used)
-  const stid = (live && live.waveStation && live.waveStation.STID) ||
-               (live && live.station && live.station.OBSERVATIONS && live.station.OBSERVATIONS.wave_height_value_1 && live.station.STID);
-  if (!stid) {
-    host.innerHTML = `<div class="card chart-card"><div class="empty-note">No nearby wave-reporting buoy for 24h charts.</div></div>`;
+  const hasVals = (arr) => Array.isArray(arr) && arr.some(v => v != null && !isNaN(parseFloat(v)));
+  // Wave history from the wave-reporting station (the wave-buoy fallback if used).
+  // In winter the buoys are out of the water: then there's no wave chart, but
+  // the wind chart still comes from the nearest shore station.
+  const waveStid = (live && live.waveStation && live.waveStation.STID) ||
+                   (live && live.station && live.station.OBSERVATIONS && live.station.OBSERVATIONS.wave_height_value_1 && live.station.STID);
+  const windStid = live && live.station && live.station.STID;
+  if (!waveStid && !windStid) {
+    host.innerHTML = `<div class="card chart-card"><div class="empty-note">No station data nearby in the last 24 hours.</div></div>`;
     return;
   }
   host.innerHTML = `<div class="card chart-card"><div class="muted" style="font-size:12px;">Loading 24h charts…</div></div>`;
-  const ts = await fetchWaveTimeseries(stid, 24);
-  if (!ts || !ts.times.length) {
-    host.innerHTML = `<div class="card chart-card"><div class="empty-note">Couldn't load 24h chart data.</div></div>`;
-    return;
-  }
-  const sourceStation = (live && live.waveStation) || (live && live.station);
-  const distLabel = sourceStation && sourceStation.distMiles != null
-    ? (sourceStation.distMiles < 1 ? '<1 mi' : `${sourceStation.distMiles.toFixed(0)} mi`) : '';
-  const sourceName = sourceStation ? escapeHtml(sourceStation.NAME || sourceStation.STID || 'Buoy') : '';
-  const sourceLine = sourceStation
-    ? `<div class="muted" style="font-size:11px; margin-top:6px;">From ${sourceName}${distLabel ? ' · ' + distLabel : ''}</div>`
-    : '';
+  const ts = waveStid ? await fetchWaveTimeseries(waveStid, 24) : null;
   // Wind: chart the same station the live wind reading comes from; fall back
   // to the wave buoy's own wind if that station's history won't load.
-  const hasVals = (arr) => Array.isArray(arr) && arr.some(v => v != null && !isNaN(parseFloat(v)));
-  let windTs = hasVals(ts.windSpeed) ? ts : null, windNote = '';
-  const windStid = live && live.station && live.station.STID;
-  if (windStid && windStid !== stid) {
+  let windTs = ts && hasVals(ts.windSpeed) ? ts : null, windSt = windTs ? (live.waveStation || live.station) : null;
+  if (windStid && windStid !== waveStid) {
     const wts = await fetchWaveTimeseries(windStid, 24);
-    if (wts && hasVals(wts.windSpeed)) {
-      windTs = wts;
-      windNote = `<div class="muted" style="font-size:11px; margin-top:-8px; margin-bottom:10px;">Wind from ${escapeHtml(live.station.NAME || windStid)}</div>`;
-    }
+    if (wts && hasVals(wts.windSpeed)) { windTs = wts; windSt = live.station; }
   }
   // The user may have moved to another spot while the timeseries loaded
   if (currentSpotId !== spot.id) return;
   // Timeseries arrive in ft / mph; chart them in the user's units.
   const num = (v) => (v == null || v === '' || isNaN(parseFloat(v))) ? null : parseFloat(v);
-  const waveVals = ts.waveHeight.map(v => num(v) == null ? null : parseFloat(waveParts(obsFtToM(v)).v));
   const waveUnit = waveParts(0).u;
   const windUnit = windParts(0).u;
   for (const k of Object.keys(lineChartData)) delete lineChartData[k];
@@ -2106,28 +2111,32 @@ async function renderLiveCharts(spot, live) {
   // hidden, e.g. on a background refresh — then reuse the last width).
   if (host.clientWidth > 0) chartWidth = host.clientWidth - 30;
   const width = chartWidth;
-  // Second series in each chart is amber: period on its own right-hand axis,
-  // gusts dashed on the same axis as wind (same units)
+  const from = (st) => st ? `<div class="chart-src">From ${escapeHtml(shortName(st.NAME || st.STID || 'Station'))}${st.distMiles != null ? ` · ${st.distMiles < 1 ? '&lt;1' : st.distMiles.toFixed(0)} mi` : ''}</div>` : '';
+  // Second series in each chart is amber: period on its own right-hand axis
+  // (drawn in steps: buoys report whole seconds), gusts dashed on the wind axis
+  const waveChart = ts && hasVals(ts.waveHeight)
+    ? makeLineChart({ title: 'Waves', times: ts.times, dirs: ts.waveDirection, dirsLabel: 'Wave direction', width, series: [
+        { name: 'Height', unit: waveUnit, values: ts.waveHeight.map(v => num(v) == null ? null : parseFloat(waveParts(obsFtToM(v)).v)), color: '#4ec3ff', axis: 'left' },
+        { name: 'Period', unit: 's', values: ts.wavePeriod, color: '#f0b030', axis: 'right', step: true }
+      ] }) + from(live.waveStation || live.station)
+    : `<div class="section-label">Waves</div><div class="empty-note">No buoy wave data in the last 24 hours (buoys are pulled for the winter).</div>`;
   const windVals = (arr) => (arr || []).map(v => num(v) == null ? null : windParts(obsMphToKmh(v)).v);
   const windChart = windTs
-    ? makeLineChart({ title: 'Wind', times: windTs.times, dirs: windTs.windDirection, width, series: [
+    ? makeLineChart({ title: 'Wind', times: windTs.times, dirs: windTs.windDirection, dirsLabel: 'Wind direction', width, series: [
         { name: 'Wind', unit: windUnit, values: windVals(windTs.windSpeed), color: '#4ec3ff', axis: 'left' },
         { name: 'Gust', unit: windUnit, values: windVals(windTs.windGust), color: '#f0b030', axis: 'left', dashed: true }
-      ] }) + windNote
-    : `<div class="muted" style="font-size:12px; padding:10px;">No recent wind speed data.</div>`;
+      ] }) + from(windSt)
+    : `<div class="section-label">Wind</div><div class="empty-note">No wind data in the last 24 hours.</div>`;
   host.innerHTML = `<div class="card chart-card">
-    ${makeLineChart({ title: 'Waves', times: ts.times, dirs: ts.waveDirection, width, series: [
-      { name: 'Height', unit: waveUnit, values: waveVals, color: '#4ec3ff', axis: 'left' },
-      { name: 'Period', unit: 's', values: ts.wavePeriod, color: '#f0b030', axis: 'right' }
-    ] })}
+    ${waveChart}
     ${windChart}
     <div class="muted" style="font-size:11px; margin-top:2px;">Tap or drag on a chart to read a value.</div>
-    ${sourceLine}
   </div>`;
   attachChartReadouts(host);
   // Start each chart on its most recent reading
   host.querySelectorAll('svg.line-chart').forEach(svg => chartShowAt(svg, Infinity));
 }
+
 
 async function openForecast(spotId) {
   const spot = state.spots.find(s => s.id === spotId);
@@ -2137,18 +2146,17 @@ async function openForecast(spotId) {
   selectedHourIndex = null;
   // Always default to Live sub-tab when opening a spot.
   selectSubtab('live');
-  // Tear down the previous Live map so it rebinds to the new card's div
-  if (spotLiveMap) { try { spotLiveMap.remove(); } catch (e) {} spotLiveMap = null; spotLiveMapSpotId = null; }
   switchView('forecast');
   document.getElementById('header-title').textContent = spot.name;
   document.getElementById('header-sub').textContent = '';
   const action = document.getElementById('header-action');
-  action.innerHTML = '<span id="header-rating" style="margin-right:8px;"></span><button class="btn ghost icon-btn small-icon" onclick="editCurrentSpot()" title="Edit spot" aria-label="Edit spot">' + icon('pencil', 17) + '</button>';
+  action.innerHTML = '<button class="btn ghost icon-btn small-icon" onclick="editCurrentSpot()" title="Edit spot" aria-label="Edit spot">' + icon('pencil', 17) + '</button>';
 
   document.getElementById('forecast-loading').style.display = 'block';
   document.getElementById('forecast-error').style.display = 'none';
   document.getElementById('forecast-content').style.display = 'none';
-  document.getElementById('live-card-host').innerHTML = '';
+  document.getElementById('live-card').hidden = true;
+  document.getElementById('next-window-host').innerHTML = '';
   document.getElementById('cam-host').innerHTML = '';
   document.getElementById('water-quality-host').innerHTML = '';
 
@@ -2337,100 +2345,143 @@ function renderCamSection(spot) {
 
 async function loadLiveCardForForecast(spot) {
   const live = await getLiveForSpot(spot);
-  if (currentSpotId === spot.id) {
-    currentLive = live || null;
-    // Refresh the 24h charts whenever live data refreshes
-    renderLiveCharts(spot, live);
-    // Initialize / refresh the LIVE-tab full-width map and its arrows
-    initSpotLiveMap(spot);
-    updateSpotLiveMapArrows();
-  } else {
-    return; // user has moved on to another spot
-  }
-  const host = document.getElementById('live-card-host');
-  if (!host) return;
-  const o = (live && live.obs) || {};
-  const wo = (live && live.waveObs) || {};
-
-  // One compact row, like the hourly table: "0.7↖ 2s", "13 (20)↑", "58°", with
-  // the units in the labels ("Wave ft", "Wind mph").
-  const stat = (label, unit, val) => `<div><div class="muted" style="font-size:11px;">${label}${unit ? ` <span class="stat-unit">${unit}</span>` : ''}</div><div style="font-size:16px; font-weight:600; white-space:nowrap;">${val == null ? '<span class="muted" style="font-weight:400;">n/a</span>' : val}</div></div>`;
-
-  // Track which fields came from the primary station vs the wave buoy
-  const primaryFields = [], waveFields = [];
-  let waveVal = null, perVal = null, windVal = null, gustVal = null;
-  let waterVal = null, airVal = null, waterFromOmr = false;
-  const waveUnit = waveParts(0).u, windUnit = windParts(0).u, tempUnit = tempParts(0).u;
-
-  // Wave — primary if available, else wave-buoy fallback
-  function buildWave(src) {
-    const ht = waveParts(obsFtToM(src.waveHeight.value));
-    let dirDeg = src.waveDirection ? parseFloat(src.waveDirection.value) : null;
-    // Fallback: when the buoy doesn't report mean_wave_direction, use the
-    // current-hour forecast's swell direction so the LIVE card still shows
-    // a direction. Same convention as Forecast (next hr).
-    if ((dirDeg == null || isNaN(dirDeg)) && currentForecast && currentForecast.hours && currentForecast.hours[0]) {
-      const fd = currentForecast.hours[0].swellDir;
-      if (fd != null && !isNaN(fd)) dirDeg = fd;
-    }
-    // Buoys report in small steps (0.7, 1.3 ft), so keep the decimal here
-    return `${ht.v}${dirArrow(dirDeg)}`;
-  }
-  if (o.waveHeight) { waveVal = buildWave(o); primaryFields.push('Wave'); }
-  else if (wo.waveHeight) { waveVal = buildWave(wo); waveFields.push('Wave'); }
-
-  if (o.wavePeriod) { perVal = Math.round(parseFloat(o.wavePeriod.value)); primaryFields.push('Per'); }
-  else if (wo.wavePeriod) { perVal = Math.round(parseFloat(wo.wavePeriod.value)); waveFields.push('Per'); }
-
-  if (o.windSpeed) {
-    const dirDeg = o.windDirection ? parseFloat(o.windDirection.value) : null;
-    windVal = { v: windParts(obsMphToKmh(o.windSpeed.value)).v, arrow: dirArrow(dirDeg) };
-    primaryFields.push('Wind');
-  }
-  const tempCell = (f) => `${tempParts(obsFToC(f)).v}°`;
-  if (o.windGust) { gustVal = windParts(obsMphToKmh(o.windGust.value)).v; primaryFields.push('Gust'); }
-  if (o.waterTemp) { waterVal = tempCell(o.waterTemp.value); primaryFields.push('Water'); }
-  else if (wo.waterTemp) { waterVal = tempCell(wo.waterTemp.value); waveFields.push('Water'); }
-  else if (live && live.waterTempOmr) { waterVal = tempCell(live.waterTempOmr.temp); waterFromOmr = true; }
-  if (o.airTemp) { airVal = tempCell(o.airTemp.value); primaryFields.push('Air'); }
-
-  const waveCell = waveVal == null ? null : `${waveVal}${perVal != null && !isNaN(perVal) ? ` ${perVal}s` : ''}`;
-  const windCellVal = windVal == null ? null
-    : `${windVal.v}${gustVal != null ? ` <span class="gust">· ${gustVal}</span>` : ''}${windVal.arrow}`;
-  const stats = [
-    stat('Wave', waveUnit, waveCell),
-    stat('Wind', windUnit, windCellVal),
-    stat('Water', tempUnit, waterVal),
-    stat('Air', tempUnit, airVal)
-  ];
-
-  const footers = [];
-  if (live && live.station && primaryFields.length) {
-    const obsTime = (o.waveHeight && o.waveHeight.time) || (o.windSpeed && o.windSpeed.time) || (o.airTemp && o.airTemp.time);
-    const distLabel = live.station.distMiles < 1 ? '<1 mi' : `${live.station.distMiles.toFixed(0)} mi`;
-    const ago = timeAgoStr(obsTime);
-    const name = escapeHtml(live.station.NAME || live.station.STID || 'Buoy');
-    footers.push(`${primaryFields.join(', ')} from ${name} (Mesowest) · ${distLabel}${ago ? ' · ' + ago : ''}`);
-  }
-  if (live && live.waveStation && waveFields.length) {
-    const obsTime = (wo.waveHeight && wo.waveHeight.time) || (wo.wavePeriod && wo.wavePeriod.time);
-    const distLabel = live.waveStation.distMiles < 1 ? '<1 mi' : `${live.waveStation.distMiles.toFixed(0)} mi`;
-    const ago = timeAgoStr(obsTime);
-    const name = escapeHtml(live.waveStation.NAME || live.waveStation.STID || 'Buoy');
-    footers.push(`${waveFields.join(', ')} from ${name} (Mesowest) · ${distLabel}${ago ? ' · ' + ago : ''}`);
-  }
-  if (waterFromOmr && live && live.waterTempOmr) {
-    const distLabel = live.waterTempOmr.distMiles < 1 ? '<1 mi' : `${live.waterTempOmr.distMiles.toFixed(0)} mi`;
-    const ago = timeAgoStr(live.waterTempOmr.issuanceTime);
-    footers.push(`Water from ${escapeHtml(live.waterTempOmr.name)} (NWS OMR) · ${distLabel}${ago ? ' · ' + ago : ''}`);
-  }
-
-  host.innerHTML = `<div class="card">
-    <div class="section-label">Live · right now</div>
-    <div class="stat-grid four">${stats.join('')}</div>
-    ${footers.length ? `<div class="muted" style="margin-top:8px; font-size:11px; line-height:1.5;">${footers.join('<br>')}</div>` : ''}
-  </div>`;
+  if (currentSpotId !== spot.id) return; // user has moved on to another spot
+  currentLive = live || null;
+  // Refresh the 24h charts whenever live data refreshes
+  renderLiveCharts(spot, live);
+  renderLiveCard(spot, live);
 }
+
+// Live card: each value comes from a live station when one reports it,
+// otherwise from the forecast's current hour, and the title, a note and the
+// source lines say which. Buoys come out of the lake for the winter, so the
+// card has to keep working on forecast values alone.
+const LIVE_STALE_MIN = 90; // readings older than this are flagged
+function renderLiveCard(spot, live) {
+  const card = document.getElementById('live-card');
+  if (!card) return;
+  const T = { ...state.defaults, ...(spot.thresholds || {}), offshoreDirs: spot.offshoreDirs || [] };
+  const fc = (currentForecast && currentForecast.hours && currentForecast.hours[0]) || null;
+  const o = (live && live.obs) || {}, wo = (live && live.waveObs) || {};
+  const val = (x) => (x && x.value != null && !isNaN(parseFloat(x.value))) ? parseFloat(x.value) : null;
+  const num = (x) => (x != null && !isNaN(x)) ? x : null;
+  const v = {}; // internal units: m, s, km/h, °C, degrees
+  const src = {}; // field -> { name, dist, time } for live stations, 'fc' for forecast
+
+  const stationSrc = (st, time) => st ? { name: shortName(st.NAME || st.STID || 'Station'), dist: st.distMiles, time } : null;
+  // Waves (+ period, direction): buoy, else forecast
+  const waveObs = o.waveHeight ? o : (wo.waveHeight ? wo : null);
+  if (waveObs) {
+    v.wave = obsFtToM(waveObs.waveHeight.value);
+    v.per = val(waveObs.wavePeriod);
+    v.swellDir = val(waveObs.waveDirection);
+    if (v.swellDir == null && fc) v.swellDir = num(fc.swellDir);
+    src.wave = stationSrc(waveObs === o ? live.station : live.waveStation, waveObs.waveHeight.time);
+  } else if (fc && num(fc.waveHeight) != null) {
+    v.wave = fc.waveHeight; v.per = num(fc.wavePeriod); v.swellDir = num(fc.swellDir); src.wave = 'fc';
+  }
+  // Wind (+ gust, direction): nearest station, else forecast
+  if (o.windSpeed) {
+    v.wind = obsMphToKmh(o.windSpeed.value);
+    v.gust = o.windGust ? obsMphToKmh(o.windGust.value) : null;
+    v.windDir = val(o.windDirection);
+    if (v.windDir == null && fc) v.windDir = num(fc.windDir);
+    src.wind = stationSrc(live.station, o.windSpeed.time);
+  } else if (fc && num(fc.windSpeed) != null) {
+    v.wind = fc.windSpeed; v.gust = num(fc.windGust); v.windDir = num(fc.windDir); src.wind = 'fc';
+  }
+  // Water: station, wave buoy, or the NWS lake report (the forecast has none)
+  if (o.waterTemp) { v.water = obsFToC(o.waterTemp.value); src.water = stationSrc(live.station, o.waterTemp.time); }
+  else if (wo.waterTemp) { v.water = obsFToC(wo.waterTemp.value); src.water = stationSrc(live.waveStation, wo.waterTemp.time); }
+  else if (live && live.waterTempOmr) {
+    v.water = obsFToC(live.waterTempOmr.temp);
+    src.water = { name: `${live.waterTempOmr.name} (NWS)`, dist: live.waterTempOmr.distMiles, time: live.waterTempOmr.issuanceTime };
+  }
+  // Air: station, else forecast
+  if (o.airTemp) { v.air = obsFToC(o.airTemp.value); src.air = stationSrc(live.station, o.airTemp.time); }
+  else if (fc && num(fc.temperature) != null) { v.air = fc.temperature; src.air = 'fc'; }
+
+  if (v.wave == null && v.wind == null) { card.hidden = true; return; }
+  card.hidden = false;
+
+  // Title: live when the waves are live, otherwise the next-hour forecast
+  const waveLive = src.wave && src.wave !== 'fc';
+  const ageMin = waveLive ? (Date.now() - new Date(src.wave.time).getTime()) / 60000 : null;
+  const rating = rateHour({ ...(fc || {}), waveHeight: num(v.wave), wavePeriod: num(v.per), windSpeed: num(v.wind),
+                            windGust: num(v.gust), windDir: num(v.windDir), swellDir: num(v.swellDir) }, T).rating;
+  const ago = waveLive ? timeAgoStr(src.wave.time) : '';
+  document.getElementById('live-card-top').innerHTML = `<div class="row between">
+      <span class="section-label">${waveLive ? `Live${ago ? ` · <span class="${ageMin > LIVE_STALE_MIN ? 'stale' : ''}">${ago}</span>` : ''}` : 'Forecast · next hour'}</span>
+      <span class="chip r${rating}">${ratingLabel(rating)}</span>
+    </div>`;
+  document.getElementById('live-card-note').innerHTML = waveLive ? ''
+    : `<div class="live-note">No buoy reporting waves near here (likely out for the season). Showing NOAA's forecast for waves.</div>`;
+
+  // Four compact cells; units in the labels, direction on the map
+  const cell = (label, unit, html) => `<div><div class="muted" style="font-size:11px;">${label} <span class="stat-unit">${unit}</span></div>` +
+    `<div style="font-size:16px; font-weight:600; white-space:nowrap;">${html == null ? '<span class="muted" style="font-weight:400;">n/a</span>' : html}</div></div>`;
+  // Buoy heights keep a decimal (they move in small steps); forecast heights read
+  // like the Forecast tab (whole feet, or "flat")
+  const htTxt = waveLive ? waveParts(v.wave).v : waveShort(v.wave);
+  const waveHtml = v.wave == null ? null : `${htTxt}${v.per != null && htTxt !== 'flat' ? ` <span class="gust">${Math.round(v.per)}s</span>` : ''}`;
+  const windHtml = v.wind == null ? null : `${windParts(v.wind).v}${v.gust != null ? ` <span class="gust">· ${windParts(v.gust).v}</span>` : ''}`;
+  document.getElementById('live-card-stats').innerHTML =
+    cell('Wave', waveParts(0).u, waveHtml) + cell('Wind', windParts(0).u, windHtml) +
+    cell('Water', tempParts(0).u, v.water == null ? null : `${tempParts(v.water).v}°`) +
+    cell('Air', tempParts(0).u, v.air == null ? null : `${tempParts(v.air).v}°`);
+
+  // Offshore/onshore + where the numbers came from: one short line when a
+  // single station supplied everything, otherwise one line per source
+  const rel = shoreRelation(v.windDir, T.offshoreDirs);
+  const dist = (d) => d == null ? '' : ` · ${d < 1 ? '&lt;1' : d.toFixed(0)} mi`;
+  const groups = [];
+  for (const [field, label] of [['wave', 'Waves'], ['wind', 'Wind'], ['water', 'Water'], ['air', 'Air']]) {
+    const s = src[field];
+    if (!s) continue;
+    const key = s === 'fc' ? 'fc' : s.name;
+    let g = groups.find(x => x.key === key);
+    if (!g) groups.push(g = { key, s, labels: [] });
+    g.labels.push(label);
+  }
+  const line = (g, withLabels) => {
+    const who = g.s === 'fc' ? 'NOAA forecast' : `${escapeHtml(g.s.name)}${dist(g.s.dist)}`;
+    const age = g.s !== 'fc' && g.s.time && !(withLabels === false) ? timeAgoStr(g.s.time) : '';
+    return `${withLabels ? `${g.labels.join(', ')}: ` : ''}${who}${age && withLabels ? ` · ${age}` : ''}`;
+  };
+  const srcHtml = groups.length === 1 ? line(groups[0], false) : groups.map(g => line(g, true)).join('<br>');
+  document.getElementById('live-card-side').innerHTML =
+    `${rel ? `<span class="rel-chip ${rel.key}">${rel.label}</span>` : ''}<div class="live-src-lines">${srcHtml}</div>`;
+
+  ensureSpotMap('live-map', spot);
+  document.getElementById('live-map-arrows').innerHTML = dayMapArrowsSvg(v.swellDir, v.windDir);
+}
+
+// Live tab's top bar: the next daylight window rated OK or better (today's
+// only counts if it hasn't ended). Tapping it opens that day on the Forecast tab.
+function renderNextWindow(spot, days, T) {
+  const host = document.getElementById('next-window-host');
+  if (!host) return;
+  for (let i = 0; i < days.length; i++) {
+    if (!days[i].hours.length) continue;
+    const w = bestWindow(spot, T, days[i]);
+    if (w.top < 3 || !w.best || w.end.getTime() <= Date.now()) continue;
+    const dayLbl = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : days[i].date.toLocaleDateString(undefined, { weekday: 'short' });
+    host.innerHTML = `<button class="next-window" onclick="jumpToForecastDay(${i})">
+      <span><span class="muted">Next good window</span> <b>${dayLbl} ${hourRangeLabel(w.start, w.end)}</b></span>
+      <span class="nw-right"><span class="chip r${w.top}">${ratingLabel(w.top)}</span>${icon('chevronRight', 16)}</span>
+    </button>`;
+    return;
+  }
+  host.innerHTML = `<div class="next-window none"><span class="muted">No good window in the next 7 days</span></div>`;
+}
+function jumpToForecastDay(i) {
+  currentDayIndex = i;
+  selectedHourIndex = null;
+  renderForecast();
+  selectSubtab('forecast');
+  window.scrollTo(0, 0);
+}
+
 
 function renderForecast() {
   const spot = state.spots.find(s => s.id === currentSpotId);
@@ -2441,11 +2492,7 @@ function renderForecast() {
   document.getElementById('forecast-content').style.display = 'block';
 
   const days = groupByLocalDay(currentForecast.hours).slice(0, 7);
-  const now = currentForecast.hours[0];
-  const nowR = rateHour(now, T);
-  const headerRating = document.getElementById('header-rating');
-  if (headerRating) headerRating.innerHTML = `<span class="chip r${nowR.rating}">${ratingLabel(nowR.rating)}</span>`;
-  renderCommentaryBanner(spot, days, T);
+  renderNextWindow(spot, days, T);
   renderDayCard();
 
   const tabs = document.getElementById('day-tabs');
@@ -2646,50 +2693,7 @@ function todayNarrative(best, bestH, T, timeLabel) {
   return '';
 }
 
-function renderCommentaryBanner(spot, days, T) {
-  const host = document.getElementById('commentary-host');
-  if (!host) return;
-  const today = days[0];
-  if (!today || !today.hours.length) { host.innerHTML = ''; return; }
-  const now = new Date();
-  // After civil dusk we shift focus to tomorrow — "today" isn't actionable.
-  const todayLight = sunriseSunset(spot.lat, spot.lon, today.date);
-  const isAfterDusk = todayLight && now > todayLight.sunset;
-  const targetDay = (isAfterDusk && days[1] && days[1].hours.length) ? days[1] : today;
-  const dayLabel = (targetDay === today) ? 'Today' : 'Tomorrow';
-  const targetLight = (targetDay === today) ? todayLight : sunriseSunset(spot.lat, spot.lon, targetDay.date);
-  // Only consider hours within civil-daylight for the "best window" search —
-  // we don't want to recommend surfing at 11 PM.
-  let sampleHours = targetDay.hours;
-  if (targetLight) {
-    sampleHours = sampleHours.filter(h => h.time >= targetLight.sunrise && h.time <= targetLight.sunset);
-  }
-  if (targetDay === today) {
-    const future = sampleHours.filter(h => h.time >= now);
-    if (future.length) sampleHours = future;
-  }
-  if (!sampleHours.length) { host.innerHTML = ''; return; }
-  let best = null, bestH = null;
-  for (const h of sampleHours) {
-    const r = rateHour(h, T);
-    // Pick highest rating; on ties, pick the hour with the higher underlying
-    // score (cleaner wind, better wave/period mix) — keeps the commentary
-    // pointing at the genuinely best window rather than the first hour to
-    // cross a rating threshold.
-    if (best == null
-        || r.rating > best.rating
-        || (r.rating === best.rating && (r.score || 0) > (best.score || 0))) {
-      best = r; bestH = h;
-    }
-  }
-  const timeLabel = timeOfDayLabel(bestH.time, targetLight && targetLight.sunrise, targetLight && targetLight.sunset);
-  const narrative = todayNarrative(best, bestH, T, timeLabel);
 
-  host.innerHTML = `<div class="card" style="padding:8px 12px; font-size:13px;">
-    <span class="section-label">${dayLabel}</span>
-    <span style="margin-left:6px;">${narrative}</span>
-  </div>`;
-}
 function ratingLabel(r) { return ['–','Poor','Fair','OK','Good','Epic'][r] || '–'; }
 
 // Tap an hourly row to show that hour in the day card (tap again: back to the day).
@@ -2767,33 +2771,36 @@ function hourRangeLabel(start, endExclusive) {
   return `${a}–${b}`;
 }
 
-// Small real map of the beach (OpenStreetMap) so the actual shoreline shows;
-// created once and re-centred when the spot changes.
-let dayMap = null, dayMapSpotId = null;
-const DAY_MAP_SPAN_M = 1500; // width of the area shown, in metres
-function ensureDayMap(spot) {
-  const el = document.getElementById('day-map');
+// Small real maps of the beach (OpenStreetMap) so the actual shoreline shows,
+// one per element ('day-map' on Forecast, 'live-map' on Live); each is created
+// once and re-centred when the spot changes.
+const spotMaps = {}; // element id -> { map, spotId }
+const SPOT_MAP_SPAN_M = 1500; // width of the area shown, in metres
+function ensureSpotMap(elId, spot) {
+  const el = document.getElementById(elId);
   if (!el) return;
-  if (!dayMap) {
-    dayMap = L.map(el, {
+  let m = spotMaps[elId];
+  if (!m) {
+    const map = L.map(el, {
       zoomSnap: 0, // fit the shoreline exactly rather than snapping a whole zoom level out
       zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false,
       doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false, tap: false, inertia: false
     });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: true }).addTo(dayMap);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: true }).addTo(map);
+    m = spotMaps[elId] = { map, spotId: null };
   }
-  if (dayMapSpotId !== spot.id) {
-    // ~1 mi across: the beach's shoreline around the spot
-    dayMap.fitBounds(L.latLng(spot.lat, spot.lon).toBounds(DAY_MAP_SPAN_M), { animate: false });
-    dayMapSpotId = spot.id;
+  if (m.spotId !== spot.id) {
+    m.map.fitBounds(L.latLng(spot.lat, spot.lon).toBounds(SPOT_MAP_SPAN_M), { animate: false });
+    m.spotId = spot.id;
   }
 }
-// Called when the Forecast sub-tab is shown: Leaflet can't size itself while hidden
-function refreshDayMap() {
+// Called when a sub-tab is shown: Leaflet can't size itself while hidden
+function refreshSpotMap(elId) {
   const spot = state.spots.find(s => s.id === currentSpotId);
-  if (!dayMap || !spot) return;
+  const m = spotMaps[elId];
+  if (!m || !spot) return;
   setTimeout(() => {
-    try { dayMap.invalidateSize(); dayMap.fitBounds(L.latLng(spot.lat, spot.lon).toBounds(DAY_MAP_SPAN_M), { animate: false }); } catch (e) {}
+    try { m.map.invalidateSize(); m.map.fitBounds(L.latLng(spot.lat, spot.lon).toBounds(SPOT_MAP_SPAN_M), { animate: false }); } catch (e) {}
   }, 30);
 }
 // Wave (blue, longer) and wind (orange) arrows both start at the spot and
@@ -2811,6 +2818,35 @@ function dayMapArrowsSvg(swellDir, windDir) {
   return `<text x="8" y="12" font-size="9" font-weight="700" fill="#fff" stroke="rgba(0,0,0,0.7)" stroke-width="0.6" paint-order="stroke" text-anchor="middle">N</text>` +
     arrow(swellDir, 40, WAVE_ARROW_COLOR) + arrow(windDir, 30, WIND_ARROW_COLOR) +
     `<circle cx="${cx}" cy="${cy}" r="3" fill="#fff" stroke="rgba(0,0,0,0.6)" stroke-width="0.8"/>`;
+}
+
+// A day's best window: the longest run of consecutive daylight hours (from now
+// on, for today) at the day's top rating; ties go to the higher total score.
+// win is that run, or every daylight hour when nothing beats Poor.
+function bestWindow(spot, T, day) {
+  const light = sunriseSunset(spot.lat, spot.lon, day.date);
+  let pool = light ? day.hours.filter(h => h.time >= light.sunrise && h.time <= light.sunset) : day.hours;
+  const isToday = day.date.toDateString() === new Date().toDateString();
+  if (isToday) { const fut = pool.filter(h => h.time.getTime() >= Date.now() - 3600e3); if (fut.length) pool = fut; }
+  if (!pool.length) pool = day.hours;
+  const rated = pool.map(h => ({ h, r: rateHour(h, T) }));
+  const top = Math.max(...rated.map(x => x.r.rating));
+  let best = null, run = [];
+  const flush = () => {
+    if (!run.length) return;
+    const score = run.reduce((s, x) => s + (x.r.score || 0), 0);
+    if (!best || run.length > best.length || (run.length === best.length && score > best.score)) best = { length: run.length, score, run: run.slice() };
+    run = [];
+  };
+  rated.forEach((x, i) => {
+    const contiguous = i > 0 && x.h.time - rated[i - 1].h.time <= 3600e3 + 1;
+    if (x.r.rating !== top || (run.length && !contiguous)) flush();
+    if (x.r.rating === top) run.push(x);
+  });
+  flush();
+  const win = best ? best.run : rated;
+  const end = new Date(win[win.length - 1].h.time.getTime() + 3600e3);
+  return { light, isToday, rated, top, best, win, start: win[0].h.time, end };
 }
 
 function renderDayCard() {
@@ -2847,28 +2883,7 @@ function renderDayCard() {
     // Whole day: find the best window over daylight hours (from now on, for
     // today); the rating and all stats describe that window only
     title = dateLbl;
-    const light = sunriseSunset(spot.lat, spot.lon, day.date);
-    let pool = light ? day.hours.filter(h => h.time >= light.sunrise && h.time <= light.sunset) : day.hours;
-    const isToday = day.date.toDateString() === new Date().toDateString();
-    if (isToday) { const fut = pool.filter(h => h.time.getTime() >= Date.now() - 3600e3); if (fut.length) pool = fut; }
-    if (!pool.length) pool = day.hours;
-    const rated = pool.map(h => ({ h, r: rateHour(h, T) }));
-    const top = Math.max(...rated.map(x => x.r.rating));
-    // Longest run of consecutive hours at the top rating (ties: higher total score)
-    let best = null, run = [];
-    const flush = () => {
-      if (!run.length) return;
-      const score = run.reduce((s, x) => s + (x.r.score || 0), 0);
-      if (!best || run.length > best.length || (run.length === best.length && score > best.score)) best = { length: run.length, score, run: run.slice() };
-      run = [];
-    };
-    rated.forEach((x, i) => {
-      const contiguous = i > 0 && x.h.time - rated[i - 1].h.time <= 3600e3 + 1;
-      if (x.r.rating !== top || (run.length && !contiguous)) flush();
-      if (x.r.rating === top) run.push(x);
-    });
-    flush();
-    const win = best ? best.run : rated;
+    const { light, isToday, top, best, win } = bestWindow(spot, T, day);
     rating = top;
     if (top > 1 && best) {
       const end = new Date(win[win.length - 1].h.time.getTime() + 3600e3);
@@ -2906,147 +2921,11 @@ function renderDayCard() {
     ${stat('Wind', windUnit, WIND_ARROW_COLOR, windVal)}
     ${chip(rel)}`;
   document.getElementById('day-note').innerHTML = note;
-  ensureDayMap(spot);
+  ensureSpotMap('day-map', spot);
   document.getElementById('day-map-arrows').innerHTML = dayMapArrowsSvg(swellDir, windDir);
 }
 
 
-// Compact wind label, respecting user's unit preference
-function fmtWindCompact(kmh) {
-  if (kmh == null || isNaN(kmh)) return null;
-  const u = state.units.wind;
-  if (u === 'kmh') return Math.round(kmh) + 'km/h';
-  if (u === 'kt') return Math.round(kmh / 1.852) + 'kt';
-  return Math.round(kmh / 1.609344) + 'mph';
-}
-
-// Initialize / refresh the LIVE-tab full-width conditions map.
-function initSpotLiveMap(spot) {
-  const host = document.getElementById('live-map-host');
-  if (!host || !spot) return;
-  // First time? Inject the structure.
-  if (!host.querySelector('.live-map-wrap')) {
-    host.innerHTML = `<div class="card" style="padding:6px; margin-bottom:80px;">
-      <div class="live-map-wrap">
-        <div id="spot-live-map" class="spot-live-map"></div>
-        <svg id="spot-live-arrows" class="live-arrows" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet"></svg>
-      </div>
-    </div>`;
-  }
-  const el = document.getElementById('spot-live-map');
-  if (!el) return;
-  if (spotLiveMap && (spotLiveMapSpotId !== spot.id || !document.body.contains(spotLiveMap.getContainer()))) {
-    try { spotLiveMap.remove(); } catch (e) {}
-    spotLiveMap = null;
-  }
-  if (!spotLiveMap) {
-    spotLiveMap = L.map(el, {
-      zoomControl: false, attributionControl: false,
-      dragging: false, scrollWheelZoom: false, doubleClickZoom: false,
-      boxZoom: false, keyboard: false, touchZoom: false, tap: false,
-      inertia: false
-    });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, crossOrigin: true
-    }).addTo(spotLiveMap);
-    spotLiveMapSpotId = spot.id;
-  }
-  spotLiveMap.fitBounds(L.latLng(spot.lat, spot.lon).toBounds(1600), { animate: false });
-  setTimeout(() => { try { spotLiveMap.invalidateSize(); } catch (e) {} }, 50);
-  spotLiveMapSpotId = spot.id;
-}
-
-// Re-render the LIVE map's arrows using buoy data (falling back to forecast
-// when the buoy doesn't report direction).
-function updateSpotLiveMapArrows() {
-  const svg = document.getElementById('spot-live-arrows');
-  if (!svg) return;
-  const o = (currentLive && currentLive.obs) || {};
-  const wo = (currentLive && currentLive.waveObs) || {};
-
-  // Wind from the primary station
-  let windDeg = (o.windDirection && !isNaN(parseFloat(o.windDirection.value))) ? parseFloat(o.windDirection.value) : null;
-  let windSpdMph = (o.windSpeed && !isNaN(parseFloat(o.windSpeed.value))) ? parseFloat(o.windSpeed.value) : null;
-
-  // Wave from the wave-buoy station (or primary if it has waves)
-  const waveSrc = o.waveHeight ? o : (wo.waveHeight ? wo : null);
-  let waveHt = null, wavePer = null, waveDeg = null;
-  if (waveSrc) {
-    const p = waveParts(obsFtToM(waveSrc.waveHeight.value));
-    waveHt = p.v + p.u;
-    if (waveSrc.wavePeriod && !isNaN(parseFloat(waveSrc.wavePeriod.value))) {
-      wavePer = Math.round(parseFloat(waveSrc.wavePeriod.value));
-    }
-    if (waveSrc.waveDirection && !isNaN(parseFloat(waveSrc.waveDirection.value))) {
-      waveDeg = parseFloat(waveSrc.waveDirection.value);
-    }
-  }
-  // Fallback to forecast swell direction when buoy doesn't report one
-  if ((waveDeg == null || isNaN(waveDeg)) && currentForecast && currentForecast.hours && currentForecast.hours[0]) {
-    const fd = currentForecast.hours[0].swellDir;
-    if (fd != null && !isNaN(fd)) waveDeg = fd;
-  }
-
-  const windLabel = windSpdMph != null ? fmtWindCompact(obsMphToKmh(windSpdMph)) : null;
-  const waveLabel = waveHt;
-  const periodLabel = wavePer != null ? `${wavePer}s` : null;
-
-  svg.innerHTML = makeMiniArrowsSvg(windDeg, windLabel, waveDeg, waveLabel, periodLabel);
-}
-
-function makeMiniArrowsSvg(windDeg, windLabel, swellDeg, waveLabel, periodLabel) {
-  // viewBox 0 0 100 100; both arrows radiate from (50,50).
-  // We rotate by (deg + 180) so the arrow points where wind/swell is GOING.
-  // Swell arrow is longer than wind arrow so they're always distinguishable.
-  const cx = 50, cy = 50;
-  const swellColor = '#4ec3ff';
-  const windColor  = '#e07a26';
-  const swellLen = 30;
-  const windLen  = 18;
-  const out = [];
-
-  // Compass tick (small N indicator at top)
-  // (top-left corner, so a north-pointing arrow's badge can't cover it)
-  out.push(`<text x="7" y="11" text-anchor="middle" font-family="-apple-system,system-ui,sans-serif" font-size="8" font-weight="700" fill="#fff" stroke="rgba(0,0,0,0.7)" stroke-width="0.6" paint-order="stroke">N</text>`);
-  out.push(`<polygon points="7,1.5 5,5 9,5" fill="#fff" stroke="rgba(0,0,0,0.6)" stroke-width="0.4"/>`);
-
-  // Build a single arrow + optional badge label at the tip. Text is counter-rotated so it stays upright.
-  function arrow(deg, color, len, badgeLines, badgeWidth) {
-    if (deg == null || isNaN(deg)) return '';
-    const rot = (deg + 180) % 360;
-    const tipY = cy - len;
-    const halfW = badgeWidth / 2;
-    const lines = (badgeLines || []).filter(Boolean);
-    const lineHeight = 7.2;
-    const badgeHeight = lines.length ? (lines.length * lineHeight + 2) : 0;
-    const badgeY = tipY - 4 - badgeHeight / 2;
-    const labelStr = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const badgeSvg = lines.length ? `<g transform="translate(${cx} ${badgeY}) rotate(${-rot})">
-      <rect x="${-halfW}" y="${-badgeHeight / 2}" width="${badgeWidth}" height="${badgeHeight}" rx="2.5"
-            fill="${color}" stroke="rgba(0,0,0,0.55)" stroke-width="0.5"/>
-      ${lines.map((line, i) => {
-        const ly = -badgeHeight / 2 + lineHeight * (i + 0.7) + 0.5;
-        return `<text x="0" y="${ly}" text-anchor="middle" font-family="-apple-system,system-ui,sans-serif" font-size="6.4" font-weight="700" fill="#fff">${labelStr(line)}</text>`;
-      }).join('')}
-    </g>` : '';
-    return `<g transform="rotate(${rot} ${cx} ${cy})" style="filter: drop-shadow(0 0 1.5px rgba(0,0,0,0.7));">
-      <line x1="${cx}" y1="${cy}" x2="${cx}" y2="${tipY}" stroke="${color}" stroke-width="3.2" stroke-linecap="round"/>
-      <polygon points="${cx},${tipY - 5} ${cx - 4},${tipY + 1} ${cx + 4},${tipY + 1}" fill="${color}"/>
-      ${badgeSvg}
-    </g>`;
-  }
-
-  // Swell first (longer, on bottom), wind on top (shorter) so both visible when overlapping.
-  const swellLines = [];
-  if (waveLabel) swellLines.push(waveLabel);
-  if (periodLabel) swellLines.push(periodLabel);
-  out.push(arrow(swellDeg, swellColor, swellLen, swellLines, 22));
-  out.push(arrow(windDeg, windColor, windLen, windLabel ? [windLabel] : [], 22));
-
-  // Center dot for orientation
-  out.push(`<circle cx="${cx}" cy="${cy}" r="2.4" fill="#fff" stroke="rgba(0,0,0,0.6)" stroke-width="0.6"/>`);
-  return out.join('');
-}
 
 /* ============================================================================
    NWS Map — NOAA NDFD gridded forecast heat map (wave height / wind speed /
@@ -4268,7 +4147,7 @@ window.addEventListener('pageshow', () => {
 // Manual click-to-refresh on the live card. Lets the user force-update if the
 // data ever looks stale.
 document.addEventListener('click', (e) => {
-  const liveCard = e.target.closest('#live-card-host .card');
+  const liveCard = e.target.closest('#live-card');
   if (liveCard) {
     refreshLiveData();
     // Brief visual feedback
