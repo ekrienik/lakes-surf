@@ -135,6 +135,7 @@
   .loc-card .coords { font-size: 11px; color: var(--fg-dim); }
   .live-line { font-size: 11px; color: var(--fg-dim); margin: 6px 0 0; line-height: 1.35; }
   .live-line strong { color: var(--fg); font-weight: 600; }
+  .live-line .live-src { font-size: 10.5px; opacity: 0.8; margin-top: 2px; }
 
   .chip {
     display: inline-flex; align-items: center; justify-content: center;
@@ -400,6 +401,9 @@
   /* Stat cells (Live / next hour) on an even grid instead of wrapping rows */
   .stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; margin-top: 8px; }
   .stat-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat-grid.four { grid-template-columns: 1.15fr 1.25fr 0.8fr 0.8fr; gap: 10px 8px; }
+  .stat-grid .gust { color: var(--fg-dim); font-weight: 500; }
+  .stat-unit { font-size: 10px; opacity: 0.85; }
   .chart-card svg { width: 100%; display: block; }
   .empty-note { text-align: center; padding: 20px; color: var(--fg-dim); font-size: 13px; }
 
@@ -1435,7 +1439,8 @@ function formatLiveCompact(live) {
     const distLabel = live.waterTempOmr.distMiles < 1 ? '&lt;1 mi' : `${live.waterTempOmr.distMiles.toFixed(0)} mi`;
     footers.push(`${distLabel} ${escapeHtml(live.waterTempOmr.name)} (NWS OMR)${ago ? ' · ' + ago : ''}`);
   }
-  return [...parts, ...footers].join(' · ');
+  // Readings and their sources go on separate lines of the spot card
+  return { readings: parts.join(' · '), sources: footers.join(' · ') };
 }
 
 // Shorten a station name at a word boundary ("Chicago, Chicago Midway Airport" → "Chicago, Chicago Midway…").
@@ -1728,7 +1733,8 @@ async function loadLiveForSpotCard(spot) {
   if (!el) return;
   if (compact) {
     // formatLiveCompact returns trusted HTML (it escapes external station names internally)
-    el.innerHTML = `<strong>Live</strong> · ${compact}`;
+    el.innerHTML = `<div><strong>Live</strong> · ${compact.readings}</div>` +
+      (compact.sources ? `<div class="live-src">${compact.sources}</div>` : '');
     el.style.display = 'block';
   } else {
     el.style.display = 'none';
@@ -2287,15 +2293,15 @@ async function loadLiveCardForForecast(spot) {
   const o = (live && live.obs) || {};
   const wo = (live && live.waveObs) || {};
 
-  // Value format inside each stat cell: "VALUE <small>UNIT</small> DIR↗".
-  // Unit is muted small text between the value and the optional direction.
-  const stat = (label, val) => `<div><div class="muted" style="font-size:11px;">${label}</div><div style="font-size:16px; font-weight:600;">${val == null ? '<span class="muted" style="font-weight:400;">n/a</span>' : val}</div></div>`;
-  const u = (unit) => `<span class="muted" style="font-size:11px; margin-left:2px;">${unit}</span>`;
+  // One compact row, like the hourly table: "0.7↖ 2s", "13 (20)↑", "58°", with
+  // the units in the labels ("Wave ft", "Wind mph").
+  const stat = (label, unit, val) => `<div><div class="muted" style="font-size:11px;">${label}${unit ? ` <span class="stat-unit">${unit}</span>` : ''}</div><div style="font-size:16px; font-weight:600; white-space:nowrap;">${val == null ? '<span class="muted" style="font-weight:400;">n/a</span>' : val}</div></div>`;
 
   // Track which fields came from the primary station vs the wave buoy
   const primaryFields = [], waveFields = [];
   let waveVal = null, perVal = null, windVal = null, gustVal = null;
   let waterVal = null, airVal = null, waterFromOmr = false;
+  const waveUnit = waveParts(0).u, windUnit = windParts(0).u, tempUnit = tempParts(0).u;
 
   // Wave — primary if available, else wave-buoy fallback
   function buildWave(src) {
@@ -2308,37 +2314,35 @@ async function loadLiveCardForForecast(spot) {
       const fd = currentForecast.hours[0].swellDir;
       if (fd != null && !isNaN(fd)) dirDeg = fd;
     }
-    const dir = (dirDeg != null && !isNaN(dirDeg)) ? ' ' + degToCompass(dirDeg) + dirArrow(dirDeg) : '';
-    return `${ht.v}${u(ht.u)}${dir}`;
+    // Buoys report in small steps (0.7, 1.3 ft), so keep the decimal here
+    return `${ht.v}${dirArrow(dirDeg)}`;
   }
   if (o.waveHeight) { waveVal = buildWave(o); primaryFields.push('Wave'); }
   else if (wo.waveHeight) { waveVal = buildWave(wo); waveFields.push('Wave'); }
 
-  if (o.wavePeriod) { perVal = `${Math.round(parseFloat(o.wavePeriod.value))}${u('s')}`; primaryFields.push('Per'); }
-  else if (wo.wavePeriod) { perVal = `${Math.round(parseFloat(wo.wavePeriod.value))}${u('s')}`; waveFields.push('Per'); }
+  if (o.wavePeriod) { perVal = Math.round(parseFloat(o.wavePeriod.value)); primaryFields.push('Per'); }
+  else if (wo.wavePeriod) { perVal = Math.round(parseFloat(wo.wavePeriod.value)); waveFields.push('Per'); }
 
   if (o.windSpeed) {
-    const sp = windParts(obsMphToKmh(o.windSpeed.value));
     const dirDeg = o.windDirection ? parseFloat(o.windDirection.value) : null;
-    const dir = (dirDeg != null && !isNaN(dirDeg)) ? ' ' + degToCompass(dirDeg) + dirArrow(dirDeg) : '';
-    windVal = `${sp.v}${u(sp.u)}${dir}`;
+    windVal = { v: windParts(obsMphToKmh(o.windSpeed.value)).v, arrow: dirArrow(dirDeg) };
     primaryFields.push('Wind');
   }
-  const windCell = (mph) => { const p = windParts(obsMphToKmh(mph)); return `${p.v}${u(p.u)}`; };
-  const tempCell = (f) => { const p = tempParts(obsFToC(f)); return `${p.v}${u(p.u)}`; };
-  if (o.windGust) { gustVal = windCell(o.windGust.value); primaryFields.push('Gust'); }
+  const tempCell = (f) => `${tempParts(obsFToC(f)).v}°`;
+  if (o.windGust) { gustVal = windParts(obsMphToKmh(o.windGust.value)).v; primaryFields.push('Gust'); }
   if (o.waterTemp) { waterVal = tempCell(o.waterTemp.value); primaryFields.push('Water'); }
   else if (wo.waterTemp) { waterVal = tempCell(wo.waterTemp.value); waveFields.push('Water'); }
   else if (live && live.waterTempOmr) { waterVal = tempCell(live.waterTempOmr.temp); waterFromOmr = true; }
   if (o.airTemp) { airVal = tempCell(o.airTemp.value); primaryFields.push('Air'); }
 
+  const waveCell = waveVal == null ? null : `${waveVal}${perVal != null && !isNaN(perVal) ? ` ${perVal}s` : ''}`;
+  const windCellVal = windVal == null ? null
+    : `${windVal.v}${gustVal != null ? ` <span class="gust">(${gustVal})</span>` : ''}${windVal.arrow}`;
   const stats = [
-    stat('Wave', waveVal),
-    stat('Per', perVal),
-    stat('Wind', windVal),
-    stat('Gust', gustVal),
-    stat('Water', waterVal),
-    stat('Air', airVal)
+    stat('Wave', waveUnit, waveCell),
+    stat('Wind', windUnit, windCellVal),
+    stat('Water', tempUnit, waterVal),
+    stat('Air', tempUnit, airVal)
   ];
 
   const footers = [];
@@ -2364,7 +2368,7 @@ async function loadLiveCardForForecast(spot) {
 
   host.innerHTML = `<div class="card">
     <div class="section-label">Live · right now</div>
-    <div class="stat-grid">${stats.join('')}</div>
+    <div class="stat-grid four">${stats.join('')}</div>
     ${footers.length ? `<div class="muted" style="margin-top:8px; font-size:11px; line-height:1.5;">${footers.join('<br>')}</div>` : ''}
   </div>`;
 }
