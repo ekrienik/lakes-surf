@@ -204,7 +204,9 @@
 
   /* Fixed layout + the same <colgroup> in the header and body tables keeps
      their columns aligned (see hourlyColgroup()). */
-  table.hourly { width: 100%; min-width: 504px; table-layout: fixed; border-collapse: collapse; font-size: 12px; }
+  table.hourly { width: 100%; min-width: 340px; table-layout: fixed; border-collapse: collapse; font-size: 12px; }
+  table.hourly .gust { color: var(--fg-dim); }
+  table.hourly th .th-unit { text-transform: none; letter-spacing: 0; font-weight: 400; }
   table.hourly th, table.hourly td { padding: 8px 6px; text-align: center; border-bottom: 1px solid var(--border); white-space: nowrap; }
   table.hourly th {
     color: var(--fg-dim); font-weight: 500; font-size: 10px;
@@ -2440,10 +2442,26 @@ function renderForecast() {
 
   const day = days[currentDayIndex];
   const table = document.getElementById('hourly-table');
+  const windUnitLbl = windParts(0).u;
   document.getElementById('hourly-head-table').innerHTML = `${hourlyColgroup()}
     <thead><tr>
-      <th></th><th>Time</th><th>Wave</th><th>Per</th><th>Wind</th><th>Gust</th><th>Dir</th><th>Power</th><th>Air</th><th>Rain</th><th>Wx</th>
+      <th></th><th>Time</th><th>Wave</th><th>Wind <span class="th-unit">${windUnitLbl}</span></th><th>Power</th><th>Air</th><th>Rain</th><th>Wx</th>
     </tr></thead>`;
+  // Compact cells: "1ft↗ 4s" and "10 (12)↗" (gust dimmed, unit in the header)
+  const waveCell = (h) => {
+    const per = (h.wavePeriod != null && !isNaN(h.wavePeriod)) ? ` ${Math.round(h.wavePeriod)}s` : '';
+    if (h.waveHeight == null || isNaN(h.waveHeight)) return '–';
+    const ft = h.waveHeight * M_TO_FT;
+    const ht = state.units.wave === 'ft'
+      ? (ft < 1 ? 'flat' : `${Math.round(ft)}ft`)
+      : (h.waveHeight < 0.3 ? 'flat' : `${h.waveHeight.toFixed(1)}m`);
+    return `${ht}${dirArrow(h.swellDir)}${ht === 'flat' ? '' : per}`;
+  };
+  const windCell = (h) => {
+    if (h.windSpeed == null || isNaN(h.windSpeed)) return '–';
+    const gust = (h.windGust != null && !isNaN(h.windGust)) ? ` <span class="gust">(${windParts(h.windGust).v})</span>` : '';
+    return `${windParts(h.windSpeed).v}${gust}${dirArrow(h.windDir)}`;
+  };
   table.innerHTML = `${hourlyColgroup()}
     <tbody>
       ${day.hours.map(h => {
@@ -2455,15 +2473,12 @@ function renderForecast() {
         return `<tr class="r${r.rating}${isSel ? ' selected' : ''}" data-idx="${idx}" onclick="selectHour(${idx})">
           <td class="rating"></td>
           <td class="time">${tm}</td>
-          <td>${fmtWave(h.waveHeight)}${dirArrow(h.swellDir)}</td>
-          <td>${h.wavePeriod != null ? h.wavePeriod.toFixed(1)+'s' : '–'}</td>
-          <td>${fmtWind(h.windSpeed)}</td>
-          <td>${fmtWind(h.windGust)}</td>
-          <td>${degToCompass(h.windDir)}${dirArrow(h.windDir)}</td>
+          <td>${waveCell(h)}</td>
+          <td>${windCell(h)}</td>
           <td>${r.wavePower != null ? r.wavePower.toFixed(1) : '–'}</td>
           <td>${fmtTemp(h.temperature)}</td>
           <td>${h.precipPct != null ? Math.round(h.precipPct)+'%' : '–'}</td>
-          <td style="font-size:18px; line-height:1;" title="${escapeHtml(h.shortForecast || '')}">${wx}</td>
+          <td style="font-size:17px; line-height:1; padding-left:0; padding-right:2px;" title="${escapeHtml(h.shortForecast || '')}">${wx}</td>
         </tr>`;
       }).join('')}
     </tbody>
@@ -2480,9 +2495,9 @@ function renderForecast() {
 function selectDay(i) { currentDayIndex = i; selectedHourIndex = null; renderForecast(); }
 
 // Column widths shared by the hourly header and body tables (rating bar, Time,
-// Wave, Per, Wind, Gust, Dir, Power, Air, Rain, Wx) — sums to table.hourly's min-width.
+// Wave, Wind, Power, Air, Rain, Wx) — sums to table.hourly's min-width.
 function hourlyColgroup() {
-  return '<colgroup>' + [6, 58, 62, 42, 62, 62, 50, 52, 40, 40, 30].map(w => `<col style="width:${w}px">`).join('') + '</colgroup>';
+  return '<colgroup>' + [6, 52, 64, 72, 42, 36, 38, 30].map(w => `<col style="width:${w}px">`).join('') + '</colgroup>';
 }
 // Keep the sticky column-name strip scrolled sideways with the rows
 function syncHourlyScroll() {
