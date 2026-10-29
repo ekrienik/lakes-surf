@@ -406,6 +406,11 @@
   .stat-grid .gust { color: var(--fg-dim); font-weight: 500; }
   .stat-unit { font-size: 10px; opacity: 0.85; }
   .chart-card svg { width: 100%; display: block; }
+  .chart-title { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+  .chart-key { display: inline-flex; align-items: center; gap: 5px; }
+  .chart-key i { display: inline-block; width: 14px; }
+  /* Tap readout gets its own line so it never crowds the title */
+  .chart-readout { min-height: 16px; font-size: 12px; font-weight: 600; margin-bottom: 2px; }
   .empty-note { text-align: center; padding: 20px; color: var(--fg-dim); font-size: 13px; }
 
   /* Forecast + map cards side-by-side on the spot page */
@@ -1825,51 +1830,65 @@ async function fetchWaveTimeseries(stid, hoursBack = 24) {
     const wd = obs.mean_wave_direction_set_1 || [];
     const ws = obs.wind_speed_set_1 || [];
     const wdir = obs.wind_direction_set_1 || [];
-    return { times, waveHeight: wh, wavePeriod: wp, waveDirection: wd, windSpeed: ws, windDirection: wdir, station: st };
+    const wg = obs.wind_gust_set_1 || [];
+    return { times, waveHeight: wh, wavePeriod: wp, waveDirection: wd, windSpeed: ws, windGust: wg, windDirection: wdir, station: st };
   } catch (e) { return null; }
 }
 
+// 24h line chart with one or two series. Each series: { name, unit, values,
+// color, axis: 'left' | 'right', dashed }. Series on the left share one scale;
+// a right-axis series gets its own scale, with labels on the same gridlines.
 function makeLineChart(opts) {
-  const { title, unit, times, values, color, height = 90, dirs = null } = opts;
+  const { title, times, height = 150, dirs = null } = opts;
+  const seriesIn = opts.series || [{ name: title, unit: opts.unit, values: opts.values, color: opts.color, axis: 'left' }];
   // W is the chart's real pixel width, so the stretched SVG keeps its text and
   // dots in proportion (a fixed 600 squeezed labels to half width on phones).
   const W = Math.max(240, Math.round(opts.width || 600)), H = height;
-  const padding = { l: 32, r: 8, t: 14, b: 20 };
-  const pts = times.map((t, i) => ({ t: t.getTime(), v: parseFloat(values[i]) }))
-                   .filter(p => !isNaN(p.v) && p.v !== null);
   const now = Date.now();
   const start = now - 24 * 3600 * 1000;
-  const valid = pts.filter(p => p.t >= start && p.t <= now);
-  if (!valid.length) {
+  const series = seriesIn.map(s => ({
+    ...s,
+    pts: times.map((t, i) => ({ t: t.getTime(), v: parseFloat(s.values[i]) }))
+              .filter(p => !isNaN(p.v) && p.t >= start && p.t <= now)
+  })).filter(s => s.pts.length);
+  if (!series.length) {
     return `<div class="muted" style="font-size:12px; padding:10px;">No recent ${title.toLowerCase()} data.</div>`;
   }
-  const vs = valid.map(p => p.v);
-  const dataMax = Math.max(...vs);
-  const yMin = 0;
-  let yMax = Math.max(1, Math.ceil(dataMax + 0.5));
-  // At most ~4 gridlines so the real-size labels don't collide
+  const hasRight = series.some(s => s.axis === 'right');
+  const padding = { l: 32, r: hasRight ? 30 : 8, t: 14, b: 20 };
+  const maxOf = (axis) => Math.max(0, ...series.filter(s => (s.axis || 'left') === axis).flatMap(s => s.pts.map(p => p.v)));
+  const leftSeries = series.filter(s => (s.axis || 'left') === 'left');
+  // Left scale; at most ~4 gridlines so the real-size labels don't collide
+  let yMax = Math.max(1, Math.ceil((leftSeries.length ? maxOf('left') : maxOf('right')) + 0.5));
   const step = [1, 2, 5, 10, 20, 25, 50, 100].find(s => yMax / s <= 4) || 100;
   yMax = Math.ceil(yMax / step) * step;
+  const nSteps = yMax / step;
+  // Right scale uses the same gridlines: pick a round step that fits its data
+  const rMax = maxOf('right');
+  const rStep = [1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 25, 50].find(s => s * nSteps >= rMax + 0.5) || 50;
+  const rTop = rStep * nSteps;
   const ticks = [];
-  for (let y = 0; y <= yMax; y += step) ticks.push(y);
+  for (let k = 0; k <= nSteps; k++) ticks.push(k);
   const plotW = W - padding.l - padding.r;
   const plotH = H - padding.t - padding.b;
   const xToPx = (t) => padding.l + ((t - start) / (now - start)) * plotW;
-  const yToPx = (v) => padding.t + (1 - (v - yMin) / (yMax - yMin)) * plotH;
+  const yFrac = (f) => padding.t + (1 - f) * plotH;
+  const yToPx = (v, axis) => yFrac(axis === 'right' ? v / rTop : v / yMax);
 
-  const path = valid.map((p, i) => (i === 0 ? 'M' : 'L') + xToPx(p.t).toFixed(1) + ',' + yToPx(p.v).toFixed(1)).join(' ');
-
-  // Faint horizontal gridlines at each integer tick; no vertical gridlines
+  // Faint horizontal gridlines; no vertical gridlines
   let hGrid = '';
-  for (const y of ticks) {
-    const py = yToPx(y).toFixed(1);
+  for (const k of ticks) {
+    const py = yFrac(k / nSteps).toFixed(1);
     hGrid += `<line x1="${padding.l}" y1="${py}" x2="${(padding.l + plotW).toFixed(0)}" y2="${py}" stroke="#1f3850" stroke-width="0.5"/>`;
   }
-  // Y-axis labels — one per tick
+  // Axis labels, tinted to their series when there are two axes
+  const leftColor = hasRight && leftSeries.length ? leftSeries[0].color : '#a3b5c7';
+  const rightColor = hasRight ? series.find(s => s.axis === 'right').color : '#a3b5c7';
   let yLabels = '';
-  for (const y of ticks) {
-    const py = yToPx(y).toFixed(1);
-    yLabels += `<text x="${(padding.l - 4).toFixed(0)}" y="${py}" text-anchor="end" font-size="10" fill="#a3b5c7" dominant-baseline="central">${y}</text>`;
+  for (const k of ticks) {
+    const py = yFrac(k / nSteps).toFixed(1);
+    if (leftSeries.length) yLabels += `<text x="${(padding.l - 4).toFixed(0)}" y="${py}" text-anchor="end" font-size="10" fill="${leftColor}" dominant-baseline="central">${k * step}</text>`;
+    if (hasRight) yLabels += `<text x="${(W - padding.r + 4).toFixed(0)}" y="${py}" text-anchor="start" font-size="10" fill="${rightColor}" dominant-baseline="central">${k * rStep}</text>`;
   }
   // X-axis labels every 3h (no vertical gridlines)
   let xLabels = '';
@@ -1882,9 +1901,14 @@ function makeLineChart(opts) {
       xLabels += `<text x="${x}" y="${(H - 5).toFixed(0)}" text-anchor="middle" font-size="10" fill="#a3b5c7">${lbl}</text>`;
     }
   }
-  // Latest-value dot
-  const last = valid[valid.length - 1];
-  const dot = `<circle cx="${xToPx(last.t).toFixed(1)}" cy="${yToPx(last.v).toFixed(1)}" r="2.5" fill="${color}"/>`;
+  // One path + latest-value dot per series (drawn back to front: first series on top)
+  let lines = '';
+  for (const s of [...series].reverse()) {
+    const d = s.pts.map((p, i) => (i === 0 ? 'M' : 'L') + xToPx(p.t).toFixed(1) + ',' + yToPx(p.v, s.axis).toFixed(1)).join(' ');
+    const last = s.pts[s.pts.length - 1];
+    lines += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.8"${s.dashed ? ' stroke-dasharray="4 3"' : ''}/>` +
+             `<circle cx="${xToPx(last.t).toFixed(1)}" cy="${yToPx(last.v, s.axis).toFixed(1)}" r="2.5" fill="${s.color}"/>`;
+  }
 
   // Optional direction row: one arrow every 2h (nearest reading within 1h),
   // positioned by % so it lines up with the SVG's x-axis.
@@ -1911,25 +1935,29 @@ function makeLineChart(opts) {
   // show the nearest reading (see attachChartReadouts()).
   const chartId = 'lc_' + (++lineChartSeq);
   lineChartData[chartId] = {
-    pts: valid.map(p => ({ t: p.t, v: p.v, x: xToPx(p.t), y: yToPx(p.v) })),
-    unit, W, H, padT: padding.t, padB: padding.b, color
+    series: series.map(s => ({
+      unit: s.unit, name: s.name, color: s.color,
+      pts: s.pts.map(p => ({ t: p.t, v: p.v, x: xToPx(p.t), y: yToPx(p.v, s.axis) }))
+    })),
+    W, H, padT: padding.t, padB: padding.b
   };
+  // Color key in the title doubles as the axis legend
+  const key = series.map(s => `<span class="chart-key"><i style="border-top:2px ${s.dashed ? 'dashed' : 'solid'} ${s.color};"></i>${s.name} <span class="unit">${s.unit}</span></span>`).join('');
 
-  return `<div style="margin-bottom:14px;">
-    <div class="section-label" style="margin-bottom:4px;">
-      ${title} <span class="unit">(${unit}) · last 24h</span>
-      <span class="chart-readout" id="${chartId}-readout" style="text-transform:none; letter-spacing:0; float:right; color:var(--fg); font-weight:600;"></span>
+  return `<div style="margin-bottom:16px;">
+    <div class="section-label chart-title" style="margin-bottom:4px;">
+      ${key}<span class="unit">· last 24h</span>
     </div>
+    <div class="chart-readout" id="${chartId}-readout"></div>
     ${dirRow}
     <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="line-chart" data-chart-id="${chartId}" style="width:100%; height:${H}px; touch-action:pan-y; cursor:crosshair;">
       ${hGrid}
       ${yLabels}
       ${xLabels}
-      <path d="${path}" fill="none" stroke="${color}" stroke-width="1.6"/>
-      ${dot}
+      ${lines}
       <g class="chart-cursor" style="display:none;">
         <line x1="0" y1="${padding.t}" x2="0" y2="${(H - padding.b).toFixed(0)}" stroke="#ffffff" stroke-width="0.8" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>
-        <circle cx="0" cy="0" r="3.5" fill="${color}" stroke="#ffffff" stroke-width="1.2"/>
+        ${series.map(s => `<circle cx="0" cy="0" r="3.5" fill="${s.color}" stroke="#ffffff" stroke-width="1.2"/>`).join('')}
       </g>
     </svg>
   </div>`;
@@ -1945,23 +1973,36 @@ function attachChartReadouts(host) {
   host.dataset.readouts = '1';
   const show = (svg, clientX) => {
     const d = lineChartData[svg.dataset.chartId];
-    if (!d || !d.pts.length) return;
+    if (!d || !d.series.length) return;
     const rect = svg.getBoundingClientRect();
     const x = (clientX - rect.left) / rect.width * d.W;
-    let best = d.pts[0];
-    for (const p of d.pts) if (Math.abs(p.x - x) < Math.abs(best.x - x)) best = p;
+    const nearest = (pts) => pts.reduce((b, p) => Math.abs(p.x - x) < Math.abs(b.x - x) ? p : b, pts[0]);
+    // The cursor snaps to the first series' reading; others show their value at that time
+    const lead = nearest(d.series[0].pts);
+    const picks = d.series.map((s, i) => i === 0 ? lead
+      : s.pts.reduce((b, p) => Math.abs(p.t - lead.t) < Math.abs(b.t - lead.t) ? p : b, s.pts[0]));
     const g = svg.querySelector('.chart-cursor');
     if (g) {
       g.style.display = '';
-      const line = g.querySelector('line'), dot = g.querySelector('circle');
-      line.setAttribute('x1', best.x.toFixed(1)); line.setAttribute('x2', best.x.toFixed(1));
-      dot.setAttribute('cx', best.x.toFixed(1)); dot.setAttribute('cy', best.y.toFixed(1));
+      const line = g.querySelector('line');
+      line.setAttribute('x1', lead.x.toFixed(1)); line.setAttribute('x2', lead.x.toFixed(1));
+      g.querySelectorAll('circle').forEach((c, i) => {
+        const p = picks[i];
+        const near = p && Math.abs(p.t - lead.t) <= 3600e3;
+        c.style.display = near ? '' : 'none';
+        if (near) { c.setAttribute('cx', p.x.toFixed(1)); c.setAttribute('cy', p.y.toFixed(1)); }
+      });
     }
     const out = document.getElementById(svg.dataset.chartId + '-readout');
     if (out) {
-      const when = new Date(best.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-      const val = Number.isInteger(best.v) ? best.v : best.v.toFixed(1);
-      out.textContent = `${val} ${d.unit} · ${when}`;
+      const when = new Date(lead.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      const fmt = (v) => Number.isInteger(v) ? v : v.toFixed(1);
+      const vals = d.series.map((s, i) => {
+        const p = picks[i];
+        if (!p || Math.abs(p.t - lead.t) > 3600e3) return null;
+        return `<span style="color:${s.color};">${s.name} ${fmt(p.v)} ${s.unit}</span>`;
+      }).filter(Boolean);
+      out.innerHTML = `${vals.join(' · ')} <span class="muted">· ${when}</span>`;
     }
   };
   const chartFor = (el) => {
@@ -2055,12 +2096,20 @@ async function renderLiveCharts(spot, live) {
   // hidden, e.g. on a background refresh — then reuse the last width).
   if (host.clientWidth > 0) chartWidth = host.clientWidth - 30;
   const width = chartWidth;
+  // Second series in each chart is amber: period on its own right-hand axis,
+  // gusts dashed on the same axis as wind (same units)
+  const windVals = (arr) => (arr || []).map(v => num(v) == null ? null : windParts(obsMphToKmh(v)).v);
   const windChart = windTs
-    ? makeLineChart({title: 'Wind speed', unit: windUnit, times: windTs.times, values: windTs.windSpeed.map(v => num(v) == null ? null : windParts(obsMphToKmh(v)).v), dirs: windTs.windDirection, color: '#4ec3ff', width}) + windNote
+    ? makeLineChart({ title: 'Wind', times: windTs.times, dirs: windTs.windDirection, width, series: [
+        { name: 'Wind', unit: windUnit, values: windVals(windTs.windSpeed), color: '#4ec3ff', axis: 'left' },
+        { name: 'Gust', unit: windUnit, values: windVals(windTs.windGust), color: '#f0b030', axis: 'left', dashed: true }
+      ] }) + windNote
     : `<div class="muted" style="font-size:12px; padding:10px;">No recent wind speed data.</div>`;
   host.innerHTML = `<div class="card chart-card">
-    ${makeLineChart({title: 'Wave height', unit: waveUnit, times: ts.times, values: waveVals, dirs: ts.waveDirection, color: '#4ec3ff', width})}
-    ${makeLineChart({title: 'Wave period', unit: 's',  times: ts.times, values: ts.wavePeriod, color: '#4ec3ff', width})}
+    ${makeLineChart({ title: 'Waves', times: ts.times, dirs: ts.waveDirection, width, series: [
+      { name: 'Height', unit: waveUnit, values: waveVals, color: '#4ec3ff', axis: 'left' },
+      { name: 'Period', unit: 's', values: ts.wavePeriod, color: '#f0b030', axis: 'right' }
+    ] })}
     ${windChart}
     <div class="muted" style="font-size:11px; margin-top:2px;">Tap or drag on a chart to read a value.</div>
     ${sourceLine}
