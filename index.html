@@ -647,7 +647,7 @@ const POPULAR_SPOTS = [
   { id: 'pop_grandhaven', name: 'Grand Haven State Park',         lat: 43.0530, lon: -86.2543, lake: 'Michigan', offshoreDirs: ['E','NE','SE'], cam: 'https://surfshopgh.com/pages/swim-flag-cam' },
   { id: 'pop_michcity',   name: 'Washington Park (Michigan City)',lat: 41.726, lon: -86.913, lake: 'Michigan', offshoreDirs: ['S','SW','SE'], cam: 'https://www.youtube.com/watch?v=Y2VkN45kj_0' },
   { id: 'pop_newbuffalo', name: 'New Buffalo Beach',              lat: 41.799, lon: -86.760, lake: 'Michigan', offshoreDirs: ['S','SE','E'], cam: null },
-  { id: 'pop_whihala',    name: 'Whihala Beach (Whiting)',        lat: 41.688, lon: -87.492, lake: 'Michigan', offshoreDirs: ['S','SW','SE'], cam: 'https://www.youtube.com/live/xrqe-P1uT_I', camAlt: 'https://www.webcamtaxi.com/en/usa/illinois/evanston-beach-cam.html', camLabel: 'Nearest cam: Evanston (Dempster St)' }
+  { id: 'pop_whihala',    name: 'Whihala Beach (Whiting)',        lat: 41.688, lon: -87.492, lake: 'Michigan', offshoreDirs: ['S','SW','SE'], cam: 'https://www.ipcamlive.com/whihalaboatlaunch', camLabel: 'Whihala boat launch (can’t be embedded, opens in a new tab)' }
 ];
 const FIRST_RUN_SEED = ['pop_montrose'];
 const DEFAULT_UNITS = { wave: 'ft', wind: 'mph', temp: 'F' };
@@ -674,6 +674,13 @@ function loadState() {
     for (const sp of s.spots) {
       if (sp.cam && extractYouTubeId(sp.cam) === OLD_EVANSTON_CAM_ID) {
         sp.cam = 'https://www.youtube.com/live/xrqe-P1uT_I';
+      }
+    }
+    // Migration (v5.12.1): Whihala got the Evanston cam in v5.12.0; it now has its own.
+    for (const sp of s.spots) {
+      if (sp.builtinId === 'pop_whihala' && sp.cam && extractYouTubeId(sp.cam) === 'xrqe-P1uT_I') {
+        sp.cam = 'https://www.ipcamlive.com/whihalaboatlaunch';
+        sp.camAlt = null; sp.camLabel = null; // refilled from POPULAR_SPOTS below
       }
     }
     // Backfill camAlt / camLabel for built-in spots still on the stock cam.
