@@ -4,7 +4,7 @@
    Cross-origin requests (api.weather.gov, weather.gov iframe, etc.) are NOT
    intercepted at all — they go straight to the browser's network stack.
 */
-const CACHE = 'lakes-surf-v5_15_1';
+const CACHE = 'lakes-surf-v5_16_0';
 const SHELL = [
   './',
   './index.html',
@@ -28,7 +28,8 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE && k !== CACHE + '-tiles').map((k) => caches.delete(k)))
+      // 'lakes-surf-data' holds the page's hourly forecast grids; keep it across versions
+      Promise.all(keys.filter((k) => k !== CACHE && k !== CACHE + '-tiles' && k !== 'lakes-surf-data').map((k) => caches.delete(k)))
     )
   );
   self.clients.claim();
