@@ -175,7 +175,7 @@
     /* Sticky below the main app header + sub-tab bar so days stay visible
        while scrolling the hourly table */
     position: sticky;
-    top: calc(var(--safe-top, 0px) + 120px);
+    top: calc(var(--safe-top, 0px) + var(--hdr-h, 72px) + 48px);
     z-index: 40;
     background: var(--bg);
     padding: 8px 0 10px;
@@ -202,18 +202,31 @@
   .day-tabs button .rating-bar .seg.past { opacity: 0.3; }
   .day-tabs button.active { border-color: var(--accent); background: var(--bg-3); }
 
-  table.hourly { width: 100%; border-collapse: collapse; font-size: 12px; }
+  /* Fixed layout + the same <colgroup> in the header and body tables keeps
+     their columns aligned (see hourlyColgroup()). */
+  table.hourly { width: 100%; min-width: 504px; table-layout: fixed; border-collapse: collapse; font-size: 12px; }
   table.hourly th, table.hourly td { padding: 8px 6px; text-align: center; border-bottom: 1px solid var(--border); white-space: nowrap; }
   table.hourly th {
     color: var(--fg-dim); font-weight: 500; font-size: 10px;
     text-transform: uppercase; letter-spacing: 0.5px;
     background: var(--bg-2);
   }
-  /* The table scrolls sideways inside its card with the rating bar + TIME
-     pinned (sticky left). A horizontal scroll box can't also pin the header
-     row to the page, so the column names scroll with the rows. */
-  .hourly-card { position: relative; overflow: hidden; }
-  .hourly-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+  /* The rows scroll sideways inside the card with the rating bar + TIME pinned
+     (sticky left). A sideways-scrolling box can't also pin its header row to
+     the page, so the column names live in their own table above it: that
+     strip sticks below the day tabs and is scrolled in step by
+     syncHourlyScroll(). Its `top` is set from the day tabs' height in
+     layoutHourly(). */
+  .hourly-card { position: relative; }
+  /* Page-colored backing so rows sliding under the strip don't show through its rounded corners */
+  .hourly-head {
+    position: sticky; z-index: 35; background: var(--bg);
+    /* header + sub-tab bar (48) + day tabs (measured into --daytabs-h) */
+    top: calc(var(--safe-top, 0px) + var(--hdr-h, 72px) + 48px + var(--daytabs-h, 67px));
+    margin: -1px -1px 0; /* sit over the card's top border and redraw it below */
+  }
+  .hourly-head-scroll { overflow: hidden; border: 1px solid var(--border); border-bottom: 0; border-radius: 14px 14px 0 0; background: var(--bg-2); }
+  .hourly-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; border-radius: 0 0 14px 14px; }
   /* Fade on the right edge while there are more columns to see */
   .hourly-card::after {
     content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 28px; pointer-events: none;
@@ -359,7 +372,9 @@
   .subtab-bar {
     display: flex; gap: 4px;
     position: sticky;
-    top: calc(var(--safe-top, 0px) + 72px);
+    /* --hdr-h is the header's measured height (it's shorter on spot pages,
+       which have no subtitle); set by a ResizeObserver on <header> */
+    top: calc(var(--safe-top, 0px) + var(--hdr-h, 72px));
     z-index: 45;
     background: var(--bg);
     padding: 8px 0 10px;
@@ -474,7 +489,10 @@
         </div>
         <div class="day-tabs" id="day-tabs"></div>
         <div class="card hourly-card" style="padding:0;">
-          <div class="hourly-scroll" id="hourly-scroll" onscroll="updateHourlyFade()">
+          <div class="hourly-head" id="hourly-head">
+            <div class="hourly-head-scroll" id="hourly-head-scroll"><table class="hourly" id="hourly-head-table"></table></div>
+          </div>
+          <div class="hourly-scroll" id="hourly-scroll" onscroll="syncHourlyScroll()">
             <table class="hourly" id="hourly-table"></table>
           </div>
         </div>
@@ -700,6 +718,10 @@ const ICONS = {
 function icon(name, size = 20) {
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
 }
+// Track the header's height so the sticky bars below it sit flush (--hdr-h)
+new ResizeObserver(([e]) => {
+  document.documentElement.style.setProperty('--hdr-h', e.target.offsetHeight + 'px');
+}).observe(document.querySelector('header'));
 // Fill <span data-icon="..."> placeholders in the static markup
 document.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = icon(el.dataset.icon, 16); });
 const STORAGE_KEY = 'lakesurf-v1';
@@ -1747,7 +1769,7 @@ function selectSubtab(name) {
   // Map needs invalidateSize AND a re-fit if it was initialized while its
   // container was display:none — Leaflet would have computed bounds against
   // a 0×0 container and gotten the wrong zoom.
-  if (name === 'forecast') requestAnimationFrame(updateHourlyFade);
+  if (name === 'forecast') requestAnimationFrame(layoutHourly);
   if (name === 'forecast' && spotMiniMap && currentSpotId) {
     const spot = state.spots.find(s => s.id === currentSpotId);
     setTimeout(() => {
@@ -2418,10 +2440,11 @@ function renderForecast() {
 
   const day = days[currentDayIndex];
   const table = document.getElementById('hourly-table');
-  table.innerHTML = `
+  document.getElementById('hourly-head-table').innerHTML = `${hourlyColgroup()}
     <thead><tr>
       <th></th><th>Time</th><th>Wave</th><th>Per</th><th>Wind</th><th>Gust</th><th>Dir</th><th>Power</th><th>Air</th><th>Rain</th><th>Wx</th>
-    </tr></thead>
+    </tr></thead>`;
+  table.innerHTML = `${hourlyColgroup()}
     <tbody>
       ${day.hours.map(h => {
         const r = rateHour(h, T);
@@ -2446,7 +2469,7 @@ function renderForecast() {
     </tbody>
   `;
 
-  requestAnimationFrame(updateHourlyFade);
+  requestAnimationFrame(layoutHourly);
 
   const statusEl = document.getElementById('threshold-status');
   statusEl.innerHTML = spot.thresholds
@@ -2456,6 +2479,23 @@ function renderForecast() {
 
 function selectDay(i) { currentDayIndex = i; selectedHourIndex = null; renderForecast(); }
 
+// Column widths shared by the hourly header and body tables (rating bar, Time,
+// Wave, Per, Wind, Gust, Dir, Power, Air, Rain, Wx) — sums to table.hourly's min-width.
+function hourlyColgroup() {
+  return '<colgroup>' + [6, 58, 62, 42, 62, 62, 50, 52, 40, 40, 30].map(w => `<col style="width:${w}px">`).join('') + '</colgroup>';
+}
+// Keep the sticky column-name strip scrolled sideways with the rows
+function syncHourlyScroll() {
+  const s = document.getElementById('hourly-scroll'), h = document.getElementById('hourly-head-scroll');
+  if (s && h) h.scrollLeft = s.scrollLeft;
+  updateHourlyFade();
+}
+// Pin the column names just below the sticky day tabs (their height varies a little)
+function layoutHourly() {
+  const tabs = document.getElementById('day-tabs');
+  if (tabs && tabs.offsetHeight) document.documentElement.style.setProperty('--daytabs-h', tabs.offsetHeight + 'px');
+  syncHourlyScroll();
+}
 // Hide the right-edge fade once the hourly table is scrolled to its last column
 function updateHourlyFade() {
   const s = document.getElementById('hourly-scroll');
