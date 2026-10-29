@@ -2844,9 +2844,8 @@ function renderDayCard() {
     swellDir = hour.swellDir; windDir = hour.windDir;
     rel = shoreRelation(windDir, T.offshoreDirs);
   } else {
-    // Whole day: rating as on the day tab; best window over daylight hours
-    // (from now on, for today)
-    rating = rateDay(day.hours, T).rating;
+    // Whole day: find the best window over daylight hours (from now on, for
+    // today); the rating and all stats describe that window only
     title = dateLbl;
     const light = sunriseSunset(spot.lat, spot.lon, day.date);
     let pool = light ? day.hours.filter(h => h.time >= light.sunrise && h.time <= light.sunset) : day.hours;
@@ -2870,16 +2869,18 @@ function renderDayCard() {
     });
     flush();
     const win = best ? best.run : rated;
+    rating = top;
     if (top > 1 && best) {
       const end = new Date(win[win.length - 1].h.time.getTime() + 3600e3);
       sub = `<span class="muted">Best window</span> <b>${hourRangeLabel(win[0].h.time, end)}</b>`;
     } else {
       sub = '<span class="muted">Nothing surfable in daylight</span>';
     }
-    const per = rangeText(day.hours.map(h => h.wavePeriod), v => String(Math.round(v)));
-    const ht = waveRangeText(day.hours);
+    // Waves and wind over the window: height and period ranges; wind speed
+    // range · strongest gust
+    const per = rangeText(win.map(x => x.h.wavePeriod), v => String(Math.round(v)));
+    const ht = waveRangeText(win.map(x => x.h));
     waveVal = `${ht}${per && ht !== 'flat' ? ` <span class="dim">· ${per} s</span>` : ''}`;
-    // Wind over the best window (or daylight): speed range · strongest gust
     const ws = rangeText(win.map(x => x.h.windSpeed), v => String(windParts(v).v));
     const gusts = win.map(x => x.h.windGust).filter(g => g != null && !isNaN(g));
     windVal = ws == null ? null : `${ws}${gusts.length ? ` <span class="dim">· ${windParts(Math.max(...gusts)).v}</span>` : ''}`;
