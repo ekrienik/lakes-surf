@@ -642,11 +642,12 @@ const POPULAR_SPOTS = [
   { id: 'pop_greenwood',  name: 'Greenwood Beach (Evanston)',     lat: 42.0449, lon: -87.6686, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/live/xrqe-P1uT_I', camAlt: 'https://www.webcamtaxi.com/en/usa/illinois/evanston-beach-cam.html' },
   { id: 'pop_promontory', name: 'Promontory / 57th St Beach',     lat: 41.793, lon: -87.578, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/live/xrqe-P1uT_I', camAlt: 'https://www.webcamtaxi.com/en/usa/illinois/evanston-beach-cam.html', camLabel: 'Nearest cam: Evanston (Dempster St)' },
   { id: 'pop_sheboygan',  name: 'Sheboygan (Deland Park)',        lat: 43.7578, lon: -87.6960, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=13j5iZkMpbE' },
-  { id: 'pop_bradford',   name: 'Bradford Beach (Milwaukee)',     lat: 43.063, lon: -87.872, lake: 'Michigan', offshoreDirs: ['W','NW'], cam: null },
+  { id: 'pop_bradford',   name: 'Bradford Beach (Milwaukee)',     lat: 43.0617, lon: -87.866, lake: 'Michigan', offshoreDirs: ['W','NW'], cam: null },
   { id: 'pop_stjoseph',   name: 'Silver Beach (St. Joseph)',      lat: 42.1085, lon: -86.5005, lake: 'Michigan', offshoreDirs: ['E','NE','SE'], cam: null },
   { id: 'pop_grandhaven', name: 'Grand Haven State Park',         lat: 43.0530, lon: -86.2543, lake: 'Michigan', offshoreDirs: ['E','NE','SE'], cam: 'https://surfshopgh.com/pages/swim-flag-cam' },
   { id: 'pop_michcity',   name: 'Washington Park (Michigan City)',lat: 41.726, lon: -86.913, lake: 'Michigan', offshoreDirs: ['S','SW','SE'], cam: 'https://www.youtube.com/watch?v=Y2VkN45kj_0' },
-  { id: 'pop_newbuffalo', name: 'New Buffalo Beach',              lat: 41.799, lon: -86.760, lake: 'Michigan', offshoreDirs: ['S','SE','E'], cam: null }
+  { id: 'pop_newbuffalo', name: 'New Buffalo Beach',              lat: 41.799, lon: -86.760, lake: 'Michigan', offshoreDirs: ['S','SE','E'], cam: null },
+  { id: 'pop_whihala',    name: 'Whihala Beach (Whiting)',        lat: 41.688, lon: -87.492, lake: 'Michigan', offshoreDirs: ['S','SW','SE'], cam: null }
 ];
 const FIRST_RUN_SEED = ['pop_montrose'];
 const DEFAULT_UNITS = { wave: 'ft', wind: 'mph', temp: 'F' };
@@ -699,6 +700,7 @@ function loadState() {
         { oldLat: 42.115,  oldLon: -86.500  }, // v5.5.2 nudge
         { oldLat: 42.1085, oldLon: -86.4955 }  // v5.7.3 (still on-shore for waves)
       ],
+      'pop_bradford':   [{ oldLat: 43.063, oldLon: -87.872 }], // pre-v5.11.13 (on shore)
       'pop_grandhaven': [{ oldLat: 43.057, oldLon: -86.247 }],
       'pop_newbuffalo': [{ oldLat: 41.799, oldLon: -86.745 }]
     };
@@ -1722,20 +1724,78 @@ function makeLineChart(opts) {
     if (arrows) dirRow = `<div style="position:relative; height:14px; line-height:14px;">${arrows}</div>`;
   }
 
+  // Touch / hover readout: stash the plotted points so a tap on the chart can
+  // show the nearest reading (see attachChartReadouts()).
+  const chartId = 'lc_' + (++lineChartSeq);
+  lineChartData[chartId] = {
+    pts: valid.map(p => ({ t: p.t, v: p.v, x: xToPx(p.t), y: yToPx(p.v) })),
+    unit, W, H, padT: padding.t, padB: padding.b, color
+  };
+
   return `<div style="margin-bottom:14px;">
     <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">
       ${title} <span style="text-transform:none; letter-spacing:0;">(${unit})</span>
       &middot; <span style="text-transform:none; font-weight:400;">last 24h</span>
+      <span class="chart-readout" id="${chartId}-readout" style="text-transform:none; letter-spacing:0; float:right; color:var(--fg); font-weight:600;"></span>
     </div>
     ${dirRow}
-    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%; height:${H}px;">
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="line-chart" data-chart-id="${chartId}" style="width:100%; height:${H}px; touch-action:pan-y; cursor:crosshair;">
       ${hGrid}
       ${yLabels}
       ${xLabels}
       <path d="${path}" fill="none" stroke="${color}" stroke-width="1.6"/>
       ${dot}
+      <g class="chart-cursor" style="display:none;">
+        <line x1="0" y1="${padding.t}" x2="0" y2="${(H - padding.b).toFixed(0)}" stroke="#ffffff" stroke-width="0.8" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>
+        <circle cx="0" cy="0" r="3.5" fill="${color}" stroke="#ffffff" stroke-width="1.2"/>
+      </g>
     </svg>
   </div>`;
+}
+let lineChartSeq = 0;
+const lineChartData = {};
+// Tap / drag / hover on a chart to read the nearest value. Attached once per
+// host container; charts re-rendered into it keep working because the
+// handler looks the chart up by its data-chart-id.
+function attachChartReadouts(host) {
+  if (!host || host.dataset.readouts) return;
+  host.dataset.readouts = '1';
+  const show = (svg, clientX) => {
+    const d = lineChartData[svg.dataset.chartId];
+    if (!d || !d.pts.length) return;
+    const rect = svg.getBoundingClientRect();
+    const x = (clientX - rect.left) / rect.width * d.W;
+    let best = d.pts[0];
+    for (const p of d.pts) if (Math.abs(p.x - x) < Math.abs(best.x - x)) best = p;
+    const g = svg.querySelector('.chart-cursor');
+    if (g) {
+      g.style.display = '';
+      const line = g.querySelector('line'), dot = g.querySelector('circle');
+      line.setAttribute('x1', best.x.toFixed(1)); line.setAttribute('x2', best.x.toFixed(1));
+      dot.setAttribute('cx', best.x.toFixed(1)); dot.setAttribute('cy', best.y.toFixed(1));
+    }
+    const out = document.getElementById(svg.dataset.chartId + '-readout');
+    if (out) {
+      const when = new Date(best.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      const val = Number.isInteger(best.v) ? best.v : best.v.toFixed(1);
+      out.textContent = `${val} ${d.unit} · ${when}`;
+    }
+  };
+  let active = null;
+  host.addEventListener('pointerdown', e => {
+    const svg = e.target.closest('svg.line-chart');
+    if (!svg) return;
+    active = svg;
+    show(svg, e.clientX);
+  });
+  host.addEventListener('pointermove', e => {
+    const svg = e.target.closest('svg.line-chart');
+    if (e.pointerType === 'mouse' && !e.buttons) { if (svg) show(svg, e.clientX); return; }
+    if (active && svg === active) { show(svg, e.clientX); }
+  });
+  const end = () => { active = null; };
+  host.addEventListener('pointerup', end);
+  host.addEventListener('pointercancel', end);
 }
 
 async function renderLiveCharts(spot, live) {
@@ -1783,8 +1843,10 @@ async function renderLiveCharts(spot, live) {
     ${makeLineChart({title: 'Wave height', unit: 'ft', times: ts.times, values: ts.waveHeight, dirs: ts.waveDirection, color: '#4ec3ff'})}
     ${makeLineChart({title: 'Wave period', unit: 's',  times: ts.times, values: ts.wavePeriod, color: '#4ec3ff'})}
     ${windChart}
+    <div class="muted" style="font-size:11px; margin-top:2px;">Tap or drag on a chart to read a value.</div>
     ${sourceLine}
   </div>`;
+  attachChartReadouts(host);
 }
 
 async function openForecast(spotId) {
