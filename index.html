@@ -3051,8 +3051,15 @@ function windUpdateLegend() {
 // Screen-space field rebuilt after each move/zoom/time change; the streak
 // animation reads from it instead of projecting every particle every frame.
 const WIND_CELL = 4; // px per field cell
-let windWrap = null, windFieldCanvas = null, windParticleCanvas = null;
+let windWrap = null, windFieldCanvas = null, windParticleCanvas = null, windLowCanvas = null;
 let windField = null, windParticles = [], windAnim = null;
+// Colors are clipped to the Great Lakes so the shoreline stays visible.
+// great-lakes.json: Natural Earth 10m lake outlines (public domain), simplified
+// to ~0.005° — an array of [lon, lat] rings, islands included (even-odd fill).
+let greatLakesRings = null;
+fetch('./great-lakes.json').then(r => r.json())
+  .then(j => { greatLakesRings = j; if (isWindLayer()) windRedraw(); })
+  .catch(e => console.warn('lake outlines', e));
 function windEnsureCanvases() {
   if (windWrap) return;
   nwsMap.createPane('windPane');
@@ -3060,6 +3067,7 @@ function windEnsureCanvases() {
   windWrap = L.DomUtil.create('div', 'wind-field-wrap', nwsMap.getPane('windPane'));
   windFieldCanvas = L.DomUtil.create('canvas', '', windWrap);
   windParticleCanvas = L.DomUtil.create('canvas', '', windWrap);
+  windLowCanvas = document.createElement('canvas'); // low-res colors, scaled up into windFieldCanvas
   nwsMap.on('zoomstart', () => { windWrap.style.display = 'none'; });
 }
 function windRedraw() {
@@ -3074,9 +3082,8 @@ function windRedraw() {
   const h = windHourIndex();
   const fw = Math.ceil(size.x / WIND_CELL) + 1, fh = Math.ceil(size.y / WIND_CELL) + 1;
   const s = new Float32Array(fw * fh).fill(NaN), u = new Float32Array(fw * fh), v = new Float32Array(fw * fh);
-  windFieldCanvas.width = fw; windFieldCanvas.height = fh;
-  windFieldCanvas.style.width = (fw * WIND_CELL) + 'px'; windFieldCanvas.style.height = (fh * WIND_CELL) + 'px';
-  const ctx = windFieldCanvas.getContext('2d');
+  windLowCanvas.width = fw; windLowCanvas.height = fh;
+  const ctx = windLowCanvas.getContext('2d');
   const img = ctx.createImageData(fw, fh);
   for (let y = 0; y < fh; y++) {
     for (let x = 0; x < fw; x++) {
@@ -3091,9 +3098,27 @@ function windRedraw() {
   }
   ctx.putImageData(img, 0, 0);
   windField = { fw, fh, s, u, v, w: size.x, h: size.y };
+  const dpr = window.devicePixelRatio || 1;
+  // Scale the low-res colors up (smoothed) into a full-res canvas, clipped to the lakes
+  windFieldCanvas.width = Math.round(size.x * dpr); windFieldCanvas.height = Math.round(size.y * dpr);
+  windFieldCanvas.style.width = size.x + 'px'; windFieldCanvas.style.height = size.y + 'px';
+  const fctx = windFieldCanvas.getContext('2d');
+  fctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (greatLakesRings) {
+    fctx.beginPath();
+    for (const ring of greatLakesRings) {
+      ring.forEach(([lon, lat], i) => {
+        const p = nwsMap.latLngToContainerPoint([lat, lon]);
+        if (i) fctx.lineTo(p.x, p.y); else fctx.moveTo(p.x, p.y);
+      });
+      fctx.closePath();
+    }
+    fctx.clip('evenodd');
+    fctx.imageSmoothingEnabled = true;
+    fctx.drawImage(windLowCanvas, 0, 0, fw * WIND_CELL, fh * WIND_CELL);
+  }
   // Only reset the streaks when the canvas size changes, so stepping through
   // time (or playing) keeps them flowing instead of restarting every frame.
-  const dpr = window.devicePixelRatio || 1;
   if (windParticleCanvas.width !== Math.round(size.x * dpr) || windParticleCanvas.height !== Math.round(size.y * dpr)) {
     windParticleCanvas.width = Math.round(size.x * dpr); windParticleCanvas.height = Math.round(size.y * dpr);
     windParticleCanvas.style.width = size.x + 'px'; windParticleCanvas.style.height = size.y + 'px';
