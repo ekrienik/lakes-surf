@@ -402,7 +402,14 @@
   .day-card .day-stat .lbl i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
   .day-card .day-stat .val { font-size: 16px; font-weight: 600; white-space: nowrap; }
   .day-card .dim { color: var(--fg-dim); font-weight: 500; }
-  .day-card .shore-compass { width: 104px; height: 104px; flex: 0 0 104px; }
+  .day-card .day-map {
+    width: 128px; height: 128px; flex: 0 0 128px; position: relative;
+    border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: var(--bg-3);
+    isolation: isolate; z-index: 0; /* keep Leaflet's panes under the sticky bars */
+  }
+  .day-card #day-map { position: absolute; inset: 0; }
+  .day-card #day-map .leaflet-tile-pane { filter: saturate(0.6) brightness(0.62) contrast(1.1); }
+  .day-card #day-map-arrows { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 500; pointer-events: none; }
   .day-card .day-note { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 12.5px; line-height: 1.4; }
   .rel-chip { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; }
   .rel-chip.off { background: #1d3b2a; color: #97c459; }
@@ -479,7 +486,18 @@
       <div class="subtab-content" data-subtab="forecast" hidden>
         <div class="day-tabs" id="day-tabs"></div>
         <!-- Summary of the selected day, or of the tapped hour (renderDayCard) -->
-        <div class="card day-card" id="day-card"></div>
+        <div class="card day-card" id="day-card">
+          <div id="day-card-top"></div>
+          <div class="day-body">
+            <div class="day-stats" id="day-stats"></div>
+            <!-- Real map of the beach; wave + wind arrows start from the spot -->
+            <div class="day-map">
+              <div id="day-map"></div>
+              <svg id="day-map-arrows" viewBox="0 0 100 100" aria-hidden="true"></svg>
+            </div>
+          </div>
+          <div id="day-note"></div>
+        </div>
         <div class="card hourly-card" style="padding:0;">
           <div class="hourly-head" id="hourly-head">
             <div class="hourly-head-scroll" id="hourly-head-scroll"><table class="hourly" id="hourly-head-table"></table></div>
@@ -701,6 +719,12 @@ const OMR_STATIONS = {
     { name: 'South Mid Lake Buoy',   lat: 42.500, lon: -86.900 }
   ]
 };
+// Spots tab subtitle, rotating every two days (by local date, same for everyone)
+const TAGLINES = ['When in doubt paddle out', 'It looks bigger than it looks!', 'Two feet and firing!'];
+function todaysTagline() {
+  const localDays = Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 86400000);
+  return TAGLINES[Math.floor(localDays / 2) % TAGLINES.length];
+}
 // Outline icons (Tabler Icons, MIT), drawn in currentColor so they take the button's color.
 const ICONS = {
   search: '<circle cx="10" cy="10" r="7"/><path d="M21 21l-6 -6"/>',
@@ -733,7 +757,7 @@ const POPULAR_SPOTS = [
   // windStation pins the live station (base STID, no "NDBC" prefix) when the
   // nearest lake station is a poor match, e.g. Montrose would otherwise get
   // the Harrison-Dever Crib, whose high-mounted sensor reads ~2× the beach.
-  { id: 'pop_montrose',   name: 'Montrose Beach',                 lat: 41.9699, lon: -87.6336, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], windStation: '45174', cam: 'https://www.youtube.com/live/xrqe-P1uT_I', camAlt: 'https://www.webcamtaxi.com/en/usa/illinois/evanston-beach-cam.html', camLabel: 'Nearest cam: Evanston (Dempster St)' },
+  { id: 'pop_montrose',   name: 'Montrose Beach',                 lat: 41.9699, lon: -87.6336, lake: 'Michigan', offshoreDirs: ['S','SW','SE'], windStation: '45174', cam: 'https://www.youtube.com/live/xrqe-P1uT_I', camAlt: 'https://www.webcamtaxi.com/en/usa/illinois/evanston-beach-cam.html', camLabel: 'Nearest cam: Evanston (Dempster St)' },
   { id: 'pop_greenwood',  name: 'Greenwood Beach (Evanston)',     lat: 42.0449, lon: -87.6686, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/live/xrqe-P1uT_I', camAlt: 'https://www.webcamtaxi.com/en/usa/illinois/evanston-beach-cam.html' },
   { id: 'pop_promontory', name: 'Promontory / 57th St Beach',     lat: 41.793, lon: -87.578, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/live/xrqe-P1uT_I', camAlt: 'https://www.webcamtaxi.com/en/usa/illinois/evanston-beach-cam.html', camLabel: 'Nearest cam: Evanston (Dempster St)' },
   { id: 'pop_sheboygan',  name: 'Sheboygan (Deland Park)',        lat: 43.7578, lon: -87.6960, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=13j5iZkMpbE' },
@@ -742,7 +766,7 @@ const POPULAR_SPOTS = [
   { id: 'pop_grandhaven', name: 'Grand Haven State Park',         lat: 43.0530, lon: -86.2543, lake: 'Michigan', offshoreDirs: ['E','NE','SE'], cam: 'https://surfshopgh.com/pages/swim-flag-cam' },
   { id: 'pop_michcity',   name: 'Washington Park (Michigan City)',lat: 41.726, lon: -86.913, lake: 'Michigan', offshoreDirs: ['S','SW','SE'], cam: 'https://www.youtube.com/watch?v=Y2VkN45kj_0' },
   { id: 'pop_newbuffalo', name: 'New Buffalo Beach',              lat: 41.799, lon: -86.760, lake: 'Michigan', offshoreDirs: ['S','SE','E'], cam: null },
-  { id: 'pop_whihala',    name: 'Whihala Beach (Whiting)',        lat: 41.688, lon: -87.492, lake: 'Michigan', offshoreDirs: ['S','SW','SE'], cam: 'https://www.ipcamlive.com/whihalaboatlaunch', camLabel: 'Whihala boat launch (can’t be embedded, opens in a new tab)' }
+  { id: 'pop_whihala',    name: 'Whihala Beach (Whiting)',        lat: 41.688, lon: -87.492, lake: 'Michigan', offshoreDirs: ['S','SW','W'], cam: 'https://www.ipcamlive.com/whihalaboatlaunch', camLabel: 'Whihala boat launch (can’t be embedded, opens in a new tab)' }
 ];
 const FIRST_RUN_SEED = ['pop_montrose'];
 const DEFAULT_UNITS = { wave: 'ft', wind: 'mph', temp: 'F' };
@@ -788,6 +812,16 @@ function loadState() {
     }
     // Migration: auto-update built-in spot coords when user is still on a
     // previous version's lat/lon. Each entry lists every prior coord pair.
+    // Migration (v5.24): offshore directions re-checked against the real shoreline.
+    // Montrose Beach faces NNE inside Montrose Point (land to the SSW); Whihala
+    // faces NE (land to the SW). Only spots still on the old defaults change.
+    const OFFSHORE_MIGRATIONS = { pop_montrose: ['W','NW','SW'], pop_whihala: ['S','SW','SE'] };
+    const sameDirs = (a, b) => Array.isArray(a) && a.length === b.length && b.every(d => a.includes(d));
+    for (const sp of s.spots) {
+      const old = sp.builtinId && OFFSHORE_MIGRATIONS[sp.builtinId];
+      const p = old && POPULAR_SPOTS.find(x => x.id === sp.builtinId);
+      if (p && sameDirs(sp.offshoreDirs, old)) sp.offshoreDirs = [...p.offshoreDirs];
+    }
     const COORD_MIGRATIONS = {
       'pop_montrose':   [{ oldLat: 41.968,    oldLon: -87.635   }],
       'pop_greenwood':  [
@@ -1021,7 +1055,7 @@ function switchView(name) {
     : name === 'settings' ? 'Settings' : 'Forecast';
 
   document.getElementById('header-sub').textContent =
-    name === 'spots' ? 'When in doubt paddle out'
+    name === 'spots' ? todaysTagline()
     : name === 'map' ? 'Waves & wind · spots · 7 days'
     : name === 'settings' ? 'Defaults, units, backup' : '';
 
@@ -1758,7 +1792,7 @@ function selectSubtab(name) {
   document.querySelectorAll('.subtab-content').forEach(el => {
     el.hidden = (el.dataset.subtab !== name);
   });
-  if (name === 'forecast') requestAnimationFrame(layoutHourly);
+  if (name === 'forecast') { requestAnimationFrame(layoutHourly); refreshDayMap(); }
   // The Live map needs invalidateSize AND a re-fit if it was initialized while
   // its container was display:none — Leaflet would have computed bounds against
   // a 0×0 container and gotten the wrong zoom.
@@ -2733,36 +2767,50 @@ function hourRangeLabel(start, endExclusive) {
   return `${a}–${b}`;
 }
 
-// Square SVG: land on the spot's offshore side, lake on the other, wave arrow
-// (blue) and wind arrow (orange) pointing where they travel.
-function shoreCompassSvg(offshoreDirs, swellDir, windDir) {
-  const land = meanDir((offshoreDirs || []).map(d => DIRS_8.indexOf(d) * 45));
-  const u = land == null ? null : [Math.sin(land * Math.PI / 180), -Math.cos(land * Math.PI / 180)];
-  const parts = [`<rect x="0" y="0" width="100" height="100" rx="12" fill="#0f1d2e"/>`];
-  if (u) {
-    // Land: everything more than 18 units from the centre toward the land side
-    parts.push(`<g clip-path="url(#shore-clip)"><g transform="rotate(${land.toFixed(0)} 50 50)"><rect x="-60" y="-60" width="220" height="${60 + 50 - 18}" fill="#26384a"/></g></g>`);
-    // Labels sit off to one side (along the shoreline) so the arrows don't cover them
-    const p = [-u[1], u[0]];
-    parts.push(`<text x="${(50 + u[0] * 33 + p[0] * 30).toFixed(1)}" y="${(50 + u[1] * 33 + p[1] * 30 + 3).toFixed(1)}" font-size="9" fill="#8aa0b4" text-anchor="middle">land</text>`);
-    parts.push(`<text x="${(50 - u[0] * 33 + p[0] * 30).toFixed(1)}" y="${(50 - u[1] * 33 + p[1] * 30 + 3).toFixed(1)}" font-size="9" fill="#8aa0b4" text-anchor="middle">lake</text>`);
+// Small real map of the beach (OpenStreetMap) so the actual shoreline shows;
+// created once and re-centred when the spot changes.
+let dayMap = null, dayMapSpotId = null;
+const DAY_MAP_SPAN_M = 1500; // width of the area shown, in metres
+function ensureDayMap(spot) {
+  const el = document.getElementById('day-map');
+  if (!el) return;
+  if (!dayMap) {
+    dayMap = L.map(el, {
+      zoomSnap: 0, // fit the shoreline exactly rather than snapping a whole zoom level out
+      zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false,
+      doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false, tap: false, inertia: false
+    });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: true }).addTo(dayMap);
   }
-  parts.push(`<text x="50" y="10" font-size="8" fill="#e6eef6" text-anchor="middle">N</text>`);
-  // Arrows centred a little toward the lake, pointing where the wave/wind goes
-  const cx = 50 - (u ? u[0] * 6 : 0), cy = 50 - (u ? u[1] * 6 : 0);
+  if (dayMapSpotId !== spot.id) {
+    // ~1 mi across: the beach's shoreline around the spot
+    dayMap.fitBounds(L.latLng(spot.lat, spot.lon).toBounds(DAY_MAP_SPAN_M), { animate: false });
+    dayMapSpotId = spot.id;
+  }
+}
+// Called when the Forecast sub-tab is shown: Leaflet can't size itself while hidden
+function refreshDayMap() {
+  const spot = state.spots.find(s => s.id === currentSpotId);
+  if (!dayMap || !spot) return;
+  setTimeout(() => {
+    try { dayMap.invalidateSize(); dayMap.fitBounds(L.latLng(spot.lat, spot.lon).toBounds(DAY_MAP_SPAN_M), { animate: false }); } catch (e) {}
+  }, 30);
+}
+// Wave (blue, longer) and wind (orange) arrows both start at the spot and
+// point where they're heading, so they fan out instead of overlapping.
+function dayMapArrowsSvg(swellDir, windDir) {
+  const cx = 50, cy = 50;
   const arrow = (dir, len, color) => {
     if (dir == null || isNaN(dir)) return '';
-    const rot = (dir + 180) % 360;
-    return `<g transform="rotate(${rot.toFixed(0)} ${cx.toFixed(1)} ${cy.toFixed(1)})">
-      <line x1="${cx.toFixed(1)}" y1="${(cy + len).toFixed(1)}" x2="${cx.toFixed(1)}" y2="${(cy - len + 7).toFixed(1)}" stroke="${color}" stroke-width="3.2" stroke-linecap="round"/>
-      <polygon points="${cx.toFixed(1)},${(cy - len).toFixed(1)} ${(cx - 6).toFixed(1)},${(cy - len + 9).toFixed(1)} ${(cx + 6).toFixed(1)},${(cy - len + 9).toFixed(1)}" fill="${color}"/>
+    const rot = (dir + 180) % 360; // FROM direction → heading
+    return `<g transform="rotate(${rot.toFixed(0)} ${cx} ${cy})" style="filter: drop-shadow(0 0 1.5px rgba(0,0,0,0.8));">
+      <line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy - len + 6}" stroke="${color}" stroke-width="3.4" stroke-linecap="round"/>
+      <polygon points="${cx},${cy - len} ${cx - 5.5},${cy - len + 9} ${cx + 5.5},${cy - len + 9}" fill="${color}"/>
     </g>`;
   };
-  parts.push(arrow(swellDir, 24, WAVE_ARROW_COLOR));
-  parts.push(arrow(windDir, 28, WIND_ARROW_COLOR));
-  return `<svg class="shore-compass" viewBox="0 0 100 100" role="img" aria-label="Shore compass">
-    <defs><clipPath id="shore-clip"><rect x="0" y="0" width="100" height="100" rx="12"/></clipPath></defs>
-    ${parts.join('')}</svg>`;
+  return `<text x="8" y="12" font-size="9" font-weight="700" fill="#fff" stroke="rgba(0,0,0,0.7)" stroke-width="0.6" paint-order="stroke" text-anchor="middle">N</text>` +
+    arrow(swellDir, 40, WAVE_ARROW_COLOR) + arrow(windDir, 30, WIND_ARROW_COLOR) +
+    `<circle cx="${cx}" cy="${cy}" r="3" fill="#fff" stroke="rgba(0,0,0,0.6)" stroke-width="0.8"/>`;
 }
 
 function renderDayCard() {
@@ -2772,7 +2820,8 @@ function renderDayCard() {
   const T = { ...state.defaults, ...(spot.thresholds || {}), offshoreDirs: spot.offshoreDirs || [] };
   const days = groupByLocalDay(currentForecast.hours).slice(0, 7);
   const day = days[currentDayIndex];
-  if (!day || !day.hours.length) { host.innerHTML = ''; return; }
+  host.hidden = !day || !day.hours.length;
+  if (host.hidden) return;
   const dow = day.date.toLocaleDateString(undefined, { weekday: 'short' });
   const dateLbl = `${dow} ${day.date.getMonth() + 1}/${day.date.getDate()}`;
   const waveUnit = waveParts(0).u, windUnit = windParts(0).u;
@@ -2845,21 +2894,19 @@ function renderDayCard() {
     if (line) note = `<div class="day-note">${line}</div>`;
   }
 
-  host.innerHTML = `
+  document.getElementById('day-card-top').innerHTML = `
     <div class="row between">
       <span class="day-title">${title}</span>
       <span class="chip r${rating}">${ratingLabel(rating)}</span>
     </div>
-    <div class="day-sub">${sub}</div>
-    <div class="day-body">
-      <div class="day-stats">
-        ${stat('Waves', waveUnit, WAVE_ARROW_COLOR, waveVal)}
-        ${stat('Wind', windUnit, WIND_ARROW_COLOR, windVal)}
-        ${chip(rel)}
-      </div>
-      ${shoreCompassSvg(T.offshoreDirs, swellDir, windDir)}
-    </div>
-    ${note}`;
+    <div class="day-sub">${sub}</div>`;
+  document.getElementById('day-stats').innerHTML = `
+    ${stat('Waves', waveUnit, WAVE_ARROW_COLOR, waveVal)}
+    ${stat('Wind', windUnit, WIND_ARROW_COLOR, windVal)}
+    ${chip(rel)}`;
+  document.getElementById('day-note').innerHTML = note;
+  ensureDayMap(spot);
+  document.getElementById('day-map-arrows').innerHTML = dayMapArrowsSvg(swellDir, windDir);
 }
 
 
