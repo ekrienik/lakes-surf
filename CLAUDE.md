@@ -41,7 +41,7 @@ Line endings: the working copy on Windows is CRLF; `.gitattributes` has `* text=
 - **Wind arrows on the map**: Open-Meteo (CORS open, multi-point): `api.open-meteo.com/v1/forecast?latitude=a,b,..&longitude=..&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&forecast_days=7&wind_speed_unit=mph&timezone=UTC&timeformat=unixtime` at the fixed `WIND_ARROW_POINTS` (on-water points for all five lakes). NOAA's NDFD point XML client is NOT CORS-open, don't try it.
 - **Water quality**: Chicago Data Portal `2ivx-z93u` (Chicago Park District beaches only, Memorial Day–Labor Day). Grade only shown when the sample is ≤24 h old.
 - **Water temp fallback**: NWS OMR bulletins via api.weather.gov products.
-- **Basemap**: OpenStreetMap tiles. CARTO `dark_all` showed an "API KEY REQUIRED" watermark; the forecast mini-maps still use CARTO `light_all` and may need the same swap.
+- **Basemap**: OpenStreetMap tiles everywhere (Map tab and both spot mini-maps). CARTO basemaps now show an "API KEY REQUIRED" watermark; don't reintroduce them.
 - **Cams**: YouTube IDs via `extractYouTubeId()` (handles watch/embed/v/live/shorts/youtu.be). `CAM_NO_EMBED` lists IDs whose owners block iframes (open in new tab instead). Evanston Dempster St is `live/xrqe-P1uT_I`, backup webcamtaxi link in `camAlt`.
 
 ## Conventions

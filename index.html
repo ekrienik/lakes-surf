@@ -526,7 +526,7 @@
 
     <div class="card">
       <h3 style="margin-top:0;">About</h3>
-      <p class="muted">Forecast data: NOAA <a href="https://api.weather.gov" target="_blank" style="color:var(--accent)">api.weather.gov</a>. Live observations: <a href="https://synopticdata.com" target="_blank" style="color:var(--accent)">Synoptic Mesowest</a>.</p>
+      <p class="muted">Forecast data: NOAA <a href="https://api.weather.gov" target="_blank" rel="noopener" style="color:var(--accent)">api.weather.gov</a>. Live observations: <a href="https://synopticdata.com" target="_blank" rel="noopener" style="color:var(--accent)">Synoptic Mesowest</a>.</p>
       <p class="muted">No account, no tracking. Saved spots live on this device.</p>
     </div>
   </section>
@@ -647,7 +647,7 @@ const POPULAR_SPOTS = [
   { id: 'pop_grandhaven', name: 'Grand Haven State Park',         lat: 43.0530, lon: -86.2543, lake: 'Michigan', offshoreDirs: ['E','NE','SE'], cam: 'https://surfshopgh.com/pages/swim-flag-cam' },
   { id: 'pop_michcity',   name: 'Washington Park (Michigan City)',lat: 41.726, lon: -86.913, lake: 'Michigan', offshoreDirs: ['S','SW','SE'], cam: 'https://www.youtube.com/watch?v=Y2VkN45kj_0' },
   { id: 'pop_newbuffalo', name: 'New Buffalo Beach',              lat: 41.799, lon: -86.760, lake: 'Michigan', offshoreDirs: ['S','SE','E'], cam: null },
-  { id: 'pop_whihala',    name: 'Whihala Beach (Whiting)',        lat: 41.688, lon: -87.492, lake: 'Michigan', offshoreDirs: ['S','SW','SE'], cam: null }
+  { id: 'pop_whihala',    name: 'Whihala Beach (Whiting)',        lat: 41.688, lon: -87.492, lake: 'Michigan', offshoreDirs: ['S','SW','SE'], cam: 'https://www.youtube.com/live/xrqe-P1uT_I', camAlt: 'https://www.webcamtaxi.com/en/usa/illinois/evanston-beach-cam.html', camLabel: 'Nearest cam: Evanston (Dempster St)' }
 ];
 const FIRST_RUN_SEED = ['pop_montrose'];
 const DEFAULT_UNITS = { wave: 'ft', wind: 'mph', temp: 'F' };
@@ -662,8 +662,9 @@ function loadState() {
     s.spots = s.spots || [];
     s.seeded = !!s.seeded;
     // Migration: backfill cam from POPULAR_SPOTS for builtin spots that don't have one yet
+    // (skipped when the user deliberately cleared it in the edit modal)
     for (const sp of s.spots) {
-      if (sp.cam == null && sp.builtinId) {
+      if (sp.cam == null && sp.builtinId && !sp.camCleared) {
         const p = POPULAR_SPOTS.find(x => x.id === sp.builtinId);
         if (p && p.cam) sp.cam = p.cam;
       }
@@ -778,6 +779,24 @@ function fmtTemp(c) {
   if (state.units.temp === 'F') return Math.round(c * 9/5 + 32) + '°';
   return Math.round(c) + '°';
 }
+// Value + unit pairs for stat cells and compact lines, in the user's units.
+// Inputs are internal units (m, km/h, °C); unlike fmtWave there's no "flat".
+function waveParts(m) {
+  return state.units.wave === 'ft' ? { v: (m * M_TO_FT).toFixed(1), u: 'ft' } : { v: m.toFixed(1), u: 'm' };
+}
+function windParts(kmh) {
+  if (state.units.wind === 'mph') return { v: Math.round(kmh * KMH_TO_MPH), u: 'mph' };
+  if (state.units.wind === 'kt')  return { v: Math.round(kmh * KMH_TO_KT), u: 'kt' };
+  return { v: Math.round(kmh), u: 'km/h' };
+}
+function tempParts(c) {
+  return state.units.temp === 'F' ? { v: Math.round(c * 9/5 + 32), u: '°F' } : { v: Math.round(c), u: '°C' };
+}
+// Mesowest is requested in ft / mph / °F; convert to internal units first.
+const obsFtToM = (ft) => parseFloat(ft) / M_TO_FT;
+const obsMphToKmh = (mph) => parseFloat(mph) / KMH_TO_MPH;
+const obsFToC = (f) => (parseFloat(f) - 32) * 5/9;
+
 function degToCompass(deg) {
   if (deg == null || isNaN(deg)) return '–';
   const d = ((deg % 360) + 360) % 360;
@@ -886,6 +905,7 @@ function switchView(name) {
   document.querySelectorAll('nav.tabbar button').forEach(b => b.classList.toggle('active', b.dataset.view === name));
   const view = document.getElementById('view-' + name);
   if (view) view.classList.add('active');
+  viewRenderedAt = Date.now();
 
   if (name === 'spots') renderSpots();
   if (name === 'map') initNwsMapIfNeeded();
@@ -1248,39 +1268,58 @@ function formatLiveCompact(live) {
   const parts = [];
   const waveSrc = o.waveHeight ? o : (wo.waveHeight ? wo : null);
   if (waveSrc) {
-    const ht = parseFloat(waveSrc.waveHeight.value).toFixed(1);
+    const ht = waveParts(obsFtToM(waveSrc.waveHeight.value));
     const dirDeg = waveSrc.waveDirection ? parseFloat(waveSrc.waveDirection.value) : null;
     const dir = (dirDeg != null && !isNaN(dirDeg)) ? ' ' + degToCompass(dirDeg) + dirArrow(dirDeg) : '';
     let per = '';
     if (waveSrc.wavePeriod && !isNaN(parseFloat(waveSrc.wavePeriod.value))) {
       per = ' ' + Math.round(parseFloat(waveSrc.wavePeriod.value)) + 's';
     }
-    parts.push(`${ht} ft${dir}${per}`);
+    parts.push(`${ht.v} ${ht.u}${dir}${per}`);
   }
   if (o.windSpeed) {
     const dir = o.windDirection ? degToCompass(parseFloat(o.windDirection.value)) : '';
     const arrow = o.windDirection ? dirArrow(parseFloat(o.windDirection.value)) : '';
-    parts.push(`${Math.round(parseFloat(o.windSpeed.value))} mph ${dir}${arrow}`.trim());
+    const sp = windParts(obsMphToKmh(o.windSpeed.value));
+    parts.push(`${sp.v} ${sp.u} ${dir}${arrow}`.trim());
   }
   if (o.waterTemp) {
-    parts.push(`Water ${Math.round(parseFloat(o.waterTemp.value))}°`);
+    parts.push(`Water ${tempParts(obsFToC(o.waterTemp.value)).v}°`);
+  } else if (wo.waterTemp) {
+    parts.push(`Water ${tempParts(obsFToC(wo.waterTemp.value)).v}°`);
   } else if (live.waterTempOmr) {
-    parts.push(`Water ${live.waterTempOmr.temp}°`);
+    parts.push(`Water ${tempParts(obsFToC(live.waterTempOmr.temp)).v}°`);
   }
   if (parts.length === 0) return null;
-  let footer = '';
-  if (live.station) {
+  // Credit each reading to the station it came from: waves often come from a
+  // farther buoy than the wind/temp station.
+  const srcLabel = (st, time) => {
+    const distLabel = st.distMiles < 1 ? '&lt;1 mi' : `${st.distMiles.toFixed(0)} mi`;
+    const ago = timeAgoStr(time);
+    return `${distLabel} ${escapeHtml(shortName(st.NAME || st.STID || ''))}${ago ? ' · ' + ago : ''}`;
+  };
+  const footers = [];
+  const waveFromBuoy = waveSrc === wo && live.waveStation;
+  if (waveFromBuoy) {
+    footers.push(`Waves ${srcLabel(live.waveStation, wo.waveHeight.time)}`);
+  }
+  if (live.station && (o.windSpeed || o.waveHeight || o.waterTemp)) {
     const obsTime = (o.waveHeight && o.waveHeight.time) || (o.windSpeed && o.windSpeed.time) || (o.airTemp && o.airTemp.time);
-    const ago = timeAgoStr(obsTime);
-    const distLabel = live.station.distMiles < 1 ? '&lt;1 mi' : `${live.station.distMiles.toFixed(0)} mi`;
-    const name = escapeHtml((live.station.NAME || live.station.STID || '').slice(0, 30));
-    footer = `${distLabel} ${name}${ago ? ' · ' + ago : ''}`;
-  } else if (live.waterTempOmr) {
+    footers.push(`${waveFromBuoy ? 'Wind ' : ''}${srcLabel(live.station, obsTime)}`);
+  } else if (live.waterTempOmr && !o.waterTemp && !wo.waterTemp) {
     const ago = timeAgoStr(live.waterTempOmr.issuanceTime);
     const distLabel = live.waterTempOmr.distMiles < 1 ? '&lt;1 mi' : `${live.waterTempOmr.distMiles.toFixed(0)} mi`;
-    footer = `${distLabel} ${escapeHtml(live.waterTempOmr.name)} (NWS OMR)${ago ? ' · ' + ago : ''}`;
+    footers.push(`${distLabel} ${escapeHtml(live.waterTempOmr.name)} (NWS OMR)${ago ? ' · ' + ago : ''}`);
   }
-  return footer ? `${parts.join(' · ')} · ${footer}` : parts.join(' · ');
+  return [...parts, ...footers].join(' · ');
+}
+
+// Shorten a station name at a word boundary ("Chicago, Chicago Midway Airport" → "Chicago, Chicago Midway…").
+function shortName(name, max = 28) {
+  if (name.length <= max) return name;
+  const cut = name.slice(0, max);
+  const sp = cut.lastIndexOf(' ');
+  return (sp > max / 2 ? cut.slice(0, sp) : cut).replace(/[\s,\-–]+$/, '') + '…';
 }
 
 async function getLiveForSpot(spot) {
@@ -1543,7 +1582,9 @@ function waveRangeText(hours) {
   if (state.units.wave === 'ft') { min = min * M_TO_FT; max = max * M_TO_FT; }
   const flatThreshold = state.units.wave === 'ft' ? 1.0 : 0.3;
   if (max < flatThreshold) return 'flat';
-  const lo = Math.round(min), hi = Math.round(max);
+  // Whole feet, but tenths of a metre (whole metres would hide most of the range)
+  const r = (v) => state.units.wave === 'ft' ? String(Math.round(v)) : v.toFixed(1);
+  const lo = r(min), hi = r(max);
   return lo === hi ? `${lo}` : `${lo}–${hi}`;
 }
 
@@ -1863,11 +1904,19 @@ async function renderLiveCharts(spot, live) {
       }
     }
   }
+  // The user may have moved to another spot while the timeseries loaded
+  if (currentSpotId !== spot.id) return;
+  // Timeseries arrive in ft / mph; chart them in the user's units.
+  const num = (v) => (v == null || v === '' || isNaN(parseFloat(v))) ? null : parseFloat(v);
+  const waveVals = ts.waveHeight.map(v => num(v) == null ? null : parseFloat(waveParts(obsFtToM(v)).v));
+  const waveUnit = waveParts(0).u;
+  const windUnit = windParts(0).u;
+  for (const k of Object.keys(lineChartData)) delete lineChartData[k];
   const windChart = windTs
-    ? makeLineChart({title: 'Wind speed', unit: 'mph', times: windTs.times, values: windTs.windSpeed, dirs: windTs.windDirection, color: '#4ec3ff'}) + windNote
+    ? makeLineChart({title: 'Wind speed', unit: windUnit, times: windTs.times, values: windTs.windSpeed.map(v => num(v) == null ? null : windParts(obsMphToKmh(v)).v), dirs: windTs.windDirection, color: '#4ec3ff'}) + windNote
     : `<div class="muted" style="font-size:12px; padding:10px;">No recent wind speed data.</div>`;
   host.innerHTML = `<div class="card chart-card">
-    ${makeLineChart({title: 'Wave height', unit: 'ft', times: ts.times, values: ts.waveHeight, dirs: ts.waveDirection, color: '#4ec3ff'})}
+    ${makeLineChart({title: 'Wave height', unit: waveUnit, times: ts.times, values: waveVals, dirs: ts.waveDirection, color: '#4ec3ff'})}
     ${makeLineChart({title: 'Wave period', unit: 's',  times: ts.times, values: ts.wavePeriod, color: '#4ec3ff'})}
     ${windChart}
     <div class="muted" style="font-size:11px; margin-top:2px;">Tap or drag on a chart to read a value.</div>
@@ -1906,7 +1955,10 @@ async function openForecast(spotId) {
   renderWaterQualityCard(spot);
 
   try {
-    currentForecast = await getForecast(spot.lat, spot.lon);
+    const fc = await getForecast(spot.lat, spot.lon);
+    // A slower response for a spot the user already left must not overwrite the new one
+    if (currentSpotId !== spot.id) return;
+    currentForecast = fc;
     currentDayIndex = 0;
     renderForecast();
     // Re-render the LIVE card now that the forecast is available — lets the
@@ -1914,6 +1966,7 @@ async function openForecast(spotId) {
     // didn't report a direction.
     loadLiveCardForForecast(spot);
   } catch (err) {
+    if (currentSpotId !== spot.id) return;
     document.getElementById('forecast-loading').style.display = 'none';
     const errEl = document.getElementById('forecast-error');
     errEl.style.display = 'block';
@@ -2090,6 +2143,8 @@ async function loadLiveCardForForecast(spot) {
     // Initialize / refresh the LIVE-tab full-width map and its arrows
     initSpotLiveMap(spot);
     updateSpotLiveMapArrows();
+  } else {
+    return; // user has moved on to another spot
   }
   const host = document.getElementById('live-card-host');
   if (!host) return;
@@ -2108,7 +2163,7 @@ async function loadLiveCardForForecast(spot) {
 
   // Wave — primary if available, else wave-buoy fallback
   function buildWave(src) {
-    const ht = parseFloat(src.waveHeight.value).toFixed(1);
+    const ht = waveParts(obsFtToM(src.waveHeight.value));
     let dirDeg = src.waveDirection ? parseFloat(src.waveDirection.value) : null;
     // Fallback: when the buoy doesn't report mean_wave_direction, use the
     // current-hour forecast's swell direction so the LIVE card still shows
@@ -2118,7 +2173,7 @@ async function loadLiveCardForForecast(spot) {
       if (fd != null && !isNaN(fd)) dirDeg = fd;
     }
     const dir = (dirDeg != null && !isNaN(dirDeg)) ? ' ' + degToCompass(dirDeg) + dirArrow(dirDeg) : '';
-    return `${ht}${u('ft')}${dir}`;
+    return `${ht.v}${u(ht.u)}${dir}`;
   }
   if (o.waveHeight) { waveVal = buildWave(o); primaryFields.push('Wave'); }
   else if (wo.waveHeight) { waveVal = buildWave(wo); waveFields.push('Wave'); }
@@ -2127,17 +2182,19 @@ async function loadLiveCardForForecast(spot) {
   else if (wo.wavePeriod) { perVal = `${Math.round(parseFloat(wo.wavePeriod.value))}${u('s')}`; waveFields.push('Per'); }
 
   if (o.windSpeed) {
-    const sp = Math.round(parseFloat(o.windSpeed.value));
+    const sp = windParts(obsMphToKmh(o.windSpeed.value));
     const dirDeg = o.windDirection ? parseFloat(o.windDirection.value) : null;
     const dir = (dirDeg != null && !isNaN(dirDeg)) ? ' ' + degToCompass(dirDeg) + dirArrow(dirDeg) : '';
-    windVal = `${sp}${u('mph')}${dir}`;
+    windVal = `${sp.v}${u(sp.u)}${dir}`;
     primaryFields.push('Wind');
   }
-  if (o.windGust) { gustVal = `${Math.round(parseFloat(o.windGust.value))}${u('mph')}`; primaryFields.push('Gust'); }
-  if (o.waterTemp) { waterVal = `${Math.round(parseFloat(o.waterTemp.value))}${u('°F')}`; primaryFields.push('Water'); }
-  else if (wo.waterTemp) { waterVal = `${Math.round(parseFloat(wo.waterTemp.value))}${u('°F')}`; waveFields.push('Water'); }
-  else if (live && live.waterTempOmr) { waterVal = `${live.waterTempOmr.temp}${u('°F')}`; waterFromOmr = true; }
-  if (o.airTemp) { airVal = `${Math.round(parseFloat(o.airTemp.value))}${u('°F')}`; primaryFields.push('Air'); }
+  const windCell = (mph) => { const p = windParts(obsMphToKmh(mph)); return `${p.v}${u(p.u)}`; };
+  const tempCell = (f) => { const p = tempParts(obsFToC(f)); return `${p.v}${u(p.u)}`; };
+  if (o.windGust) { gustVal = windCell(o.windGust.value); primaryFields.push('Gust'); }
+  if (o.waterTemp) { waterVal = tempCell(o.waterTemp.value); primaryFields.push('Water'); }
+  else if (wo.waterTemp) { waterVal = tempCell(wo.waterTemp.value); waveFields.push('Water'); }
+  else if (live && live.waterTempOmr) { waterVal = tempCell(live.waterTempOmr.temp); waterFromOmr = true; }
+  if (o.airTemp) { airVal = tempCell(o.airTemp.value); primaryFields.push('Air'); }
 
   const stats = [
     stat('Wave', waveVal),
@@ -2194,22 +2251,23 @@ function renderForecast() {
   const fU = (unit) => `<span class="muted" style="font-size:11px; margin-left:2px;">${unit}</span>`;
   let fWave = null, fPer = null, fWind = null, fGust = null;
   if (now.waveHeight != null && !isNaN(now.waveHeight)) {
-    const ht = (now.waveHeight * M_TO_FT).toFixed(1);
+    const ht = waveParts(now.waveHeight);
     const dirDeg = now.swellDir;
     const dir = (dirDeg != null && !isNaN(dirDeg)) ? ' ' + degToCompass(dirDeg) + dirArrow(dirDeg) : '';
-    fWave = `${ht}${fU('ft')}${dir}`;
+    fWave = `${ht.v}${fU(ht.u)}${dir}`;
   }
   if (now.wavePeriod != null && !isNaN(now.wavePeriod)) {
     fPer = `${Math.round(now.wavePeriod)}${fU('s')}`;
   }
   if (now.windSpeed != null && !isNaN(now.windSpeed)) {
-    const sp = Math.round(now.windSpeed * KMH_TO_MPH);
+    const sp = windParts(now.windSpeed);
     const dirDeg = now.windDir;
     const dir = (dirDeg != null && !isNaN(dirDeg)) ? ' ' + degToCompass(dirDeg) + dirArrow(dirDeg) : '';
-    fWind = `${sp}${fU('mph')}${dir}`;
+    fWind = `${sp.v}${fU(sp.u)}${dir}`;
   }
   if (now.windGust != null && !isNaN(now.windGust)) {
-    fGust = `${Math.round(now.windGust * KMH_TO_MPH)}${fU('mph')}`;
+    const g = windParts(now.windGust);
+    fGust = `${g.v}${fU(g.u)}`;
   }
   summary.innerHTML = `
     <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">Forecast (next hr)</div>
@@ -2617,13 +2675,14 @@ function updateSpotLiveMapArrows() {
 
   // Wind from the primary station
   let windDeg = (o.windDirection && !isNaN(parseFloat(o.windDirection.value))) ? parseFloat(o.windDirection.value) : null;
-  let windSpdMph = (o.windSpeed && !isNaN(parseFloat(o.windSpeed.value))) ? Math.round(parseFloat(o.windSpeed.value)) : null;
+  let windSpdMph = (o.windSpeed && !isNaN(parseFloat(o.windSpeed.value))) ? parseFloat(o.windSpeed.value) : null;
 
   // Wave from the wave-buoy station (or primary if it has waves)
   const waveSrc = o.waveHeight ? o : (wo.waveHeight ? wo : null);
   let waveHt = null, wavePer = null, waveDeg = null;
   if (waveSrc) {
-    waveHt = parseFloat(waveSrc.waveHeight.value).toFixed(1);
+    const p = waveParts(obsFtToM(waveSrc.waveHeight.value));
+    waveHt = p.v + p.u;
     if (waveSrc.wavePeriod && !isNaN(parseFloat(waveSrc.wavePeriod.value))) {
       wavePer = Math.round(parseFloat(waveSrc.wavePeriod.value));
     }
@@ -2637,7 +2696,7 @@ function updateSpotLiveMapArrows() {
     if (fd != null && !isNaN(fd)) waveDeg = fd;
   }
 
-  const windLabel = windSpdMph != null ? `${windSpdMph}mph` : null;
+  const windLabel = windSpdMph != null ? fmtWindCompact(obsMphToKmh(windSpdMph)) : null;
   const waveLabel = waveHt;
   const periodLabel = wavePer != null ? `${wavePer}s` : null;
 
@@ -2706,17 +2765,22 @@ const NWS_WMS = 'https://digital.weather.gov/ndfd/wms';
 const NWS_LEGEND = 'https://digital.weather.gov/scripts/wxmap_legendImage.php';
 const NWS_TIMES_URL = 'https://www.weather.gov/source/dlh/ndfd_times.json';
 const NWS_LAYERS = {
-  waveheight: { title: 'Wave height', unit: () => 'ft' },
+  waveheight: { title: 'Wave height', unit: () => state.units.wave },
   windspd:    { title: 'Wind speed',  unit: () => state.units.wind },
   windgust:   { title: 'Wind gusts',  unit: () => state.units.wind }
 };
 const NWS_OPACITY = 0.8;
-let nwsMap = null, nwsOverlay = null, nwsTimes = [], nwsTimeIndex = 0, nwsLayer = 'waveheight';
+let nwsMap = null, nwsOverlay = null, nwsTimes = [], nwsTimesAt = 0, nwsTimeIndex = 0, nwsLayer = 'waveheight';
 let nwsPlayInterval = null, nwsPrefetchToken = 0, nwsMoveTimer = null, nwsDropPinMode = false;
 const nwsImgCache = new Map(); // url -> HTMLImageElement (warms the browser cache)
 
 function nwsWindMs() {
   return state.units.wind === 'mph' ? 'english' : state.units.wind === 'kt' ? 'nautical' : 'metric';
+}
+// Legend measurement system for the current layer (waves follow the wave unit, not the wind unit).
+function nwsLegendMs() {
+  if (nwsLayer === 'waveheight') return state.units.wave === 'm' ? 'metric' : 'english';
+  return nwsWindMs();
 }
 // Valid-time list: [["2026-10-29T06:00","2026-10-28T22:30"], ...] (valid, issuance), UTC.
 async function loadNwsTimes() {
@@ -2727,15 +2791,12 @@ async function loadNwsTimes() {
     const list = (j.ndfd_valid_times || []).map(([v, i]) => ({ valid: v, issuance: i, date: new Date(v + ':00Z') }));
     if (!list.length) throw new Error('empty');
     nwsTimes = list;
+    nwsTimesAt = Date.now();
   } catch (e) {
-    // Fallback: hourly for 48h, then 3-hourly to 7 days, no issuance pin.
-    const now = new Date(); now.setUTCMinutes(0, 0, 0);
-    const out = [];
-    for (let h = 1; h <= 168; h += (h < 48 ? 1 : 3)) {
-      const d = new Date(now.getTime() + h * 3600e3);
-      out.push({ valid: d.toISOString().slice(0, 16), issuance: null, date: d });
-    }
-    nwsTimes = out;
+    // No made-up times: the WMS silently returns a default map for unknown
+    // VTITs, which would look plausible but be wrong. Show nothing instead.
+    console.warn('NDFD times unavailable', e);
+    nwsTimes = [];
   }
   // Start at the first frame that isn't already in the past.
   const now = Date.now();
@@ -2760,7 +2821,13 @@ function nwsViewSpec() {
   return { bounds: b, bbox: [sw.x.toFixed(1), sw.y.toFixed(1), ne.x.toFixed(1), ne.y.toFixed(1)], w, h };
 }
 function nwsShowFrame() {
-  if (!nwsMap || !nwsTimes.length) return;
+  if (!nwsMap) return;
+  if (!nwsTimes.length) {
+    document.getElementById('nws-map-loading').style.display = 'none';
+    nwsUpdateTimeLabel();
+    updateSpotMapMarkers();
+    return;
+  }
   const spec = nwsViewSpec();
   const url = nwsFrameUrl(nwsTimeIndex, spec.bbox, spec.w, spec.h);
   const loading = document.getElementById('nws-map-loading');
@@ -2809,20 +2876,20 @@ function nwsUpdateLegend() {
   const vt = t ? t.valid : '';
   document.getElementById('nws-legend').src =
     `${NWS_LEGEND}?dataset=ndfd&element=${nwsLayer}&region=conus&opacity=${NWS_OPACITY}&vt=${encodeURIComponent(vt)}` +
-    `&left=${b.bbox[0]}&bottom=${b.bbox[1]}&right=${b.bbox[2]}&top=${b.bbox[3]}&width=360&ms=${nwsWindMs()}`;
+    `&left=${b.bbox[0]}&bottom=${b.bbox[1]}&right=${b.bbox[2]}&top=${b.bbox[3]}&width=360&ms=${nwsLegendMs()}`;
 }
 function nwsUpdateTimeLabel() {
   const t = nwsTimes[nwsTimeIndex];
   const label = document.getElementById('nws-time-label');
   const sub = document.getElementById('nws-time-sub');
-  if (!t) { label.firstChild.textContent = 'No forecast times '; sub.textContent = ''; return; }
+  if (!t) { label.firstChild.textContent = 'NOAA map times unavailable — try again later '; sub.textContent = ''; return; }
   const d = t.date;
   const dow = d.toLocaleDateString(undefined, { weekday: 'short' });
   const time = d.toLocaleTimeString([], { hour: 'numeric' });
   const hoursOut = Math.round((d.getTime() - Date.now()) / 3600e3);
   label.firstChild.textContent = `${dow} ${(d.getMonth() + 1)}/${d.getDate()} ${time} `;
   const u = NWS_LAYERS[nwsLayer];
-  sub.textContent = `${u.title} (${u.unit()})` + (hoursOut > 0 ? ` · +${hoursOut}h` : ' · now');
+  sub.textContent = `${u.title} (${u.unit().replace('kmh', 'km/h')})` +(hoursOut > 0 ? ` · +${hoursOut}h` : ' · now');
 }
 // ── Wind direction arrows for the wind layers ─────────────────────────────
 // NDFD's WMS only draws colors, so arrows come from Open-Meteo's hourly
@@ -2931,8 +2998,9 @@ async function initNwsMapIfNeeded() {
       nwsTimeIndex = parseInt(e.target.value, 10);
       nwsShowFrame();
     });
-    await loadNwsTimes();
   }
+  // Also retries on later visits if the times list failed to load or is old
+  if (!nwsTimes.length || Date.now() - nwsTimesAt > FORECAST_STALE_MS) await loadNwsTimes();
   setTimeout(() => {
     nwsMap.invalidateSize();
     nwsShowFrame();
@@ -3020,9 +3088,10 @@ async function loadAllSpotMapForecasts() {
   const entries = spotMapEntries();
   await Promise.all(entries.map(async e => {
     const key = `${e.lat.toFixed(3)},${e.lon.toFixed(3)}`;
-    if (spotMapForecasts[key]) return;
-    try { spotMapForecasts[key] = await getForecast(e.lat, e.lon); }
-    catch (err) { console.warn('Spot map forecast fail', e.name, err); spotMapForecasts[key] = null; }
+    // Keep the old forecast on screen until a fresh one replaces it
+    if (spotMapForecasts[key] && Date.now() - (spotMapForecastsAt[key] || 0) < FORECAST_STALE_MS) return;
+    try { spotMapForecasts[key] = await getForecast(e.lat, e.lon); spotMapForecastsAt[key] = Date.now(); }
+    catch (err) { console.warn('Spot map forecast fail', e.name, err); }
   }));
 }
 
@@ -3060,6 +3129,7 @@ function spotPopupHtml(e, h, r, when) {
 // the hour nearest the slider's NDFD valid time.
 let spotMapMarkers = {};
 let spotMapForecasts = {}; // key (lat,lon) -> forecast
+let spotMapForecastsAt = {}; // key -> fetch time (ms)
 function nearestForecastHour(fc, when) {
   if (!fc || !fc.hours || !fc.hours.length) return null;
   const t = when.getTime();
@@ -3095,7 +3165,7 @@ function updateSpotMapMarkers() {
     } else {
       const [mLat, mLon] = offshoreMapCoord(e.lat, e.lon);
       spotMapMarkers[key] = L.marker([mLat, mLon], { icon, zIndexOffset: 1000 })
-        .bindTooltip(e.name, { direction: 'top', offset: [0, -8] })
+        .bindTooltip(escapeHtml(e.name), { direction: 'top', offset: [0, -8] })
         .addTo(nwsMap).bindPopup(popupHtml, { closeButton: false, maxWidth: 220 });
     }
   }
@@ -3168,7 +3238,15 @@ function saveSpotModal() {
   if (isNaN(lat) || isNaN(lon)) { toast('Valid coordinates required'); return; }
   if (editingSpotId) {
     const spot = state.spots.find(s => s.id === editingSpotId);
-    if (spot) { spot.name = name; spot.lat = lat; spot.lon = lon; spot.offshoreDirs = dirs; spot.cam = cam; }
+    if (spot) {
+      spot.name = name; spot.lat = lat; spot.lon = lon; spot.offshoreDirs = dirs;
+      if (cam !== spot.cam) {
+        // The backup link and "Nearest cam" label belong to the old cam
+        spot.camAlt = null; spot.camLabel = null;
+        spot.camCleared = !cam;
+      }
+      spot.cam = cam;
+    }
   } else {
     state.spots.push({ id: 'sp_' + Math.random().toString(36).slice(2,10), name, lat, lon, offshoreDirs: dirs, thresholds: null, cam });
   }
@@ -3357,8 +3435,20 @@ function importData() {
     reader.onload = () => {
       try {
         const obj = JSON.parse(reader.result);
-        if (!obj.spots) throw new Error('Invalid file');
-        state = { ...state, ...obj };
+        if (!obj || !Array.isArray(obj.spots)) throw new Error('Invalid file');
+        // Keep only well-formed spots; ids end up in onclick attributes, so
+        // re-issue any that aren't plain sp_xxxx tokens.
+        obj.spots = obj.spots.filter(sp => sp && typeof sp === 'object').map(sp => ({
+          ...sp,
+          id: /^sp_[a-z0-9]+$/i.test(sp.id) ? sp.id : 'sp_' + Math.random().toString(36).slice(2, 10),
+          name: String(sp.name || 'Spot'),
+          lat: parseFloat(sp.lat), lon: parseFloat(sp.lon),
+          offshoreDirs: Array.isArray(sp.offshoreDirs) ? sp.offshoreDirs.filter(d => DIRS_8.includes(d)) : []
+        })).filter(sp => !isNaN(sp.lat) && !isNaN(sp.lon));
+        // Run the file through loadState() so defaults/units are merged and
+        // migrations applied, exactly like a normal launch.
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, ...obj }));
+        state = loadState();
         saveState(); toast('Imported'); renderSettings();
       } catch (e) { toast('Import failed'); }
     };
@@ -3434,6 +3524,29 @@ function refreshLiveData() {
     if (spot) loadLiveCardForForecast(spot);
   }
 }
+
+// Forecasts (and the Spots tab's day columns) go stale overnight while the
+// PWA sits in the background; re-render the active view once they're old.
+const FORECAST_STALE_MS = 30 * 60 * 1000;
+let viewRenderedAt = Date.now();
+function refreshStaleView() {
+  if (Date.now() - viewRenderedAt < FORECAST_STALE_MS) return false;
+  viewRenderedAt = Date.now();
+  const active = document.querySelector('.view.active');
+  const name = active ? active.id.replace('view-', '') : 'spots';
+  if (name === 'forecast' && currentSpotId) {
+    selectedHourIndex = null;
+    openForecast(currentSpotId);
+  } else if (name === 'map') {
+    initNwsMapIfNeeded(); // reloads the time list and spot forecasts once stale
+  } else if (name === 'spots') {
+    renderSpots();
+  }
+  return true;
+}
+function onResume() {
+  if (!refreshStaleView()) refreshLiveData();
+}
 setInterval(refreshLiveData, 2 * 60 * 1000);
 
 // Also refresh when the app becomes visible (iOS PWA backgrounding throttles
@@ -3442,13 +3555,13 @@ let lastVisibleRefresh = Date.now();
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && (Date.now() - lastVisibleRefresh) > 15 * 1000) {
     lastVisibleRefresh = Date.now();
-    refreshLiveData();
+    onResume();
   }
 });
 window.addEventListener('pageshow', () => {
   if ((Date.now() - lastVisibleRefresh) > 15 * 1000) {
     lastVisibleRefresh = Date.now();
-    refreshLiveData();
+    onResume();
   }
 });
 // Manual click-to-refresh on the live card. Lets the user force-update if the

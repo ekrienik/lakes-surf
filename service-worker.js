@@ -4,7 +4,7 @@
    Cross-origin requests (api.weather.gov, weather.gov iframe, etc.) are NOT
    intercepted at all — they go straight to the browser's network stack.
 */
-const CACHE = 'lakes-surf-v5_11_15';
+const CACHE = 'lakes-surf-v5_12_0';
 const SHELL = [
   './',
   './index.html',
@@ -50,15 +50,22 @@ self.addEventListener('fetch', (event) => {
   // offline fallback. Everything else same-origin: cache-first.
   const isPage = req.mode === 'navigate' || /\/(index\.html)?$/.test(url.pathname);
   if (isPage) {
+    const network = fetch(req).then((res) => {
+      if (res.ok) {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy));
+      }
+      return res;
+    });
+    const cached = () => caches.match(req).then((hit) => hit || caches.match('./index.html'));
+    // On a weak signal (beach parking lot), don't hang the launch: after 3 s
+    // fall back to the cached page while the network copy still refreshes the cache.
+    const slow = new Promise((resolve) => setTimeout(resolve, 3000))
+      .then(() => cached().then((hit) => hit || network));
     event.respondWith(
-      fetch(req).then((res) => {
-        if (res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
-        }
-        return res;
-      }).catch(() => caches.match(req).then((hit) => hit || caches.match('./index.html')))
+      Promise.race([network.catch(() => cached()), slow])
     );
+    event.waitUntil(network.catch(() => {}));
     return;
   }
   event.respondWith(
