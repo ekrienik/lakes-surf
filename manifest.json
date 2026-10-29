@@ -7,7 +7,7 @@
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0b1622",
-  "theme_color": "#0b3a5b",
+  "theme_color": "#122336",
   "categories": ["weather", "sports", "lifestyle"],
   "icons": [
     {
