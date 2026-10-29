@@ -638,7 +638,10 @@ const DEFAULT_THRESHOLDS = {
 };
 
 const POPULAR_SPOTS = [
-  { id: 'pop_montrose',   name: 'Montrose Beach',                 lat: 41.9699, lon: -87.6336, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/live/xrqe-P1uT_I', camAlt: 'https://www.webcamtaxi.com/en/usa/illinois/evanston-beach-cam.html', camLabel: 'Nearest cam: Evanston (Dempster St)' },
+  // windStation pins the live station (base STID, no "NDBC" prefix) when the
+  // nearest lake station is a poor match, e.g. Montrose would otherwise get
+  // the Harrison-Dever Crib, whose high-mounted sensor reads ~2× the beach.
+  { id: 'pop_montrose',   name: 'Montrose Beach',                 lat: 41.9699, lon: -87.6336, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], windStation: '45174', cam: 'https://www.youtube.com/live/xrqe-P1uT_I', camAlt: 'https://www.webcamtaxi.com/en/usa/illinois/evanston-beach-cam.html', camLabel: 'Nearest cam: Evanston (Dempster St)' },
   { id: 'pop_greenwood',  name: 'Greenwood Beach (Evanston)',     lat: 42.0449, lon: -87.6686, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/live/xrqe-P1uT_I', camAlt: 'https://www.webcamtaxi.com/en/usa/illinois/evanston-beach-cam.html' },
   { id: 'pop_promontory', name: 'Promontory / 57th St Beach',     lat: 41.793, lon: -87.578, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/live/xrqe-P1uT_I', camAlt: 'https://www.webcamtaxi.com/en/usa/illinois/evanston-beach-cam.html', camLabel: 'Nearest cam: Evanston (Dempster St)' },
   { id: 'pop_sheboygan',  name: 'Sheboygan (Deland Park)',        lat: 43.7578, lon: -87.6960, lake: 'Michigan', offshoreDirs: ['W','NW','SW'], cam: 'https://www.youtube.com/watch?v=13j5iZkMpbE' },
@@ -1142,20 +1145,24 @@ function haversineMiles(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-// Tier-1 networks (NWS/FAA/NDBC) are quality-controlled and well-sited.
-// Tier-2 includes RAWS, USGS, established mesonets. Tier-3 is everything else (PWS, FW-prefix, etc.)
+// Tier-0 stations sit on the lake (wind over water differs from inland: often
+// stronger and turned 10–30°), so they win over closer inland stations.
+// Tier-1 is NWS/FAA ASOS. Tier-2 includes RAWS, USGS, established mesonets.
+// Tier-3 is everything else (PWS, FW-prefix, MDOT road weather (162), etc.)
 function stationTier(s) {
   const m = parseInt(s.MNET_ID, 10);
-  if ([1, 96, 153, 162, 286].includes(m)) return 1;   // NWS/FAA ASOS, NDBC C-MAN, NDBC buoys (286 = newer NDBC listings)
+  if ([96, 122, 286].includes(m)) return 0;  // NDBC buoys + lakefront C-MAN (286 = newer NDBC listings), NOS harbor gauges
+  if ([1, 153].includes(m)) return 1;        // NWS/FAA ASOS
   if ([2, 25, 51, 138, 152].includes(m)) return 2; // RAWS, USGS, mesonets
   return 3;
 }
 
-// Extract the bare numeric station ID so duplicate listings (e.g. "45174" and
-// "NDBC45174") collapse to the same physical buoy.
+// Duplicate listings of one station differ only by an "NDBC" prefix
+// ("45174" / "NDBC45174", "CNII2" / "NDBCCNII2"). Strip just that prefix:
+// matching on trailing digits would merge every Illinois C-MAN station
+// (CNII2, CMTI2, CHII2, OKSI2...) into one.
 function stationBaseId(stid) {
-  const m = String(stid || '').match(/(\d+)$/);
-  return m ? m[1] : String(stid || '');
+  return String(stid || '').replace(/^NDBC/i, '');
 }
 
 // When two listings refer to the same physical buoy (same numeric ID), keep the
@@ -1194,7 +1201,7 @@ function dedupeByStation(candidates) {
   return [...byBase.values()];
 }
 
-async function getNearestStationForSpot(lat, lon, maxMiles = 30) {
+async function getNearestStationForSpot(lat, lon, maxMiles = 30, preferStid = null) {
   const stations = await fetchAllLakeStations();
   const candidates = [];
   for (const s of stations) {
@@ -1209,9 +1216,13 @@ async function getNearestStationForSpot(lat, lon, maxMiles = 30) {
     candidates.push({ ...s, distMiles: d, tier: stationTier(s) });
   }
   // De-duplicate same-buoy listings (keeping the freshest), then sort by
-  // quality tier then distance.
+  // reports-wind, quality tier, distance. A lake gauge with only water temp
+  // mustn't beat a station that has wind (wind comes only from this station).
   const deduped = dedupeByStation(candidates);
-  deduped.sort((a, b) => (a.tier - b.tier) || (a.distMiles - b.distMiles));
+  const noWind = (s) => (s.OBSERVATIONS && s.OBSERVATIONS.wind_speed_value_1) ? 0 : 1;
+  const preferred = preferStid && deduped.find(s => stationBaseId(s.STID) === preferStid && !noWind(s));
+  if (preferred) return preferred;
+  deduped.sort((a, b) => (noWind(a) - noWind(b)) || (a.tier - b.tier) || (a.distMiles - b.distMiles));
   return deduped[0] || null;
 }
 
@@ -1331,7 +1342,8 @@ function shortName(name, max = 28) {
 
 async function getLiveForSpot(spot) {
   try {
-    const station = await getNearestStationForSpot(spot.lat, spot.lon, 30);
+    const builtin = spot.builtinId && POPULAR_SPOTS.find(p => p.id === spot.builtinId);
+    const station = await getNearestStationForSpot(spot.lat, spot.lon, 30, builtin && builtin.windStation);
     const obs = station ? extractObs(station) : null;
     // If the primary station doesn't have wave data, look up a nearby wave buoy
     // separately (broader radius) and merge in its wave/period/direction fields.
@@ -1896,19 +1908,16 @@ async function renderLiveCharts(spot, live) {
   const sourceLine = sourceStation
     ? `<div class="muted" style="font-size:11px; margin-top:6px;">From ${sourceName}${distLabel ? ' · ' + distLabel : ''}</div>`
     : '';
-  // Wind: use the wave buoy's wind if it reports any; otherwise pull the
-  // timeseries from the nearest wind station.
+  // Wind: chart the same station the live wind reading comes from; fall back
+  // to the wave buoy's own wind if that station's history won't load.
   const hasVals = (arr) => Array.isArray(arr) && arr.some(v => v != null && !isNaN(parseFloat(v)));
-  let windTs = ts, windNote = '';
-  if (!hasVals(ts.windSpeed)) {
-    const windStid = live && live.station && live.station.STID;
-    windTs = null;
-    if (windStid && windStid !== stid) {
-      const wts = await fetchWaveTimeseries(windStid, 24);
-      if (wts && hasVals(wts.windSpeed)) {
-        windTs = wts;
-        windNote = `<div class="muted" style="font-size:11px; margin-top:-8px; margin-bottom:10px;">Wind from ${escapeHtml(live.station.NAME || windStid)}</div>`;
-      }
+  let windTs = hasVals(ts.windSpeed) ? ts : null, windNote = '';
+  const windStid = live && live.station && live.station.STID;
+  if (windStid && windStid !== stid) {
+    const wts = await fetchWaveTimeseries(windStid, 24);
+    if (wts && hasVals(wts.windSpeed)) {
+      windTs = wts;
+      windNote = `<div class="muted" style="font-size:11px; margin-top:-8px; margin-bottom:10px;">Wind from ${escapeHtml(live.station.NAME || windStid)}</div>`;
     }
   }
   // The user may have moved to another spot while the timeseries loaded
