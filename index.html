@@ -16,7 +16,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
 <link rel="icon" type="image/png" sizes="512x512" href="./icon-512.png" />
 
-<!-- Leaflet for the Spot Map tab -->
+<!-- Leaflet for the Map tab -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin="" />
@@ -214,8 +214,8 @@
   /* Edit mode: subtle accent tint on cards */
   .loc-card.editing { background: rgba(78, 195, 255, 0.08); border-color: rgba(78, 195, 255, 0.4); }
 
-  /* NWS Map (NDFD heat map) */
-  #view-nwsmap.active { display: flex; flex-direction: column; height: calc(100vh - 170px - var(--safe-top) - var(--safe-bot)); }
+  /* Map tab (NOAA NDFD heat map + spots) */
+  #view-map.active { display: flex; flex-direction: column; height: calc(100vh - 170px - var(--safe-top) - var(--safe-bot)); }
   #nws-map-wrap { position: relative; flex: 1 1 auto; min-height: 240px; }
   #nws-map { width: 100%; height: 100%; min-height: 240px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #0b1622; }
   #nws-map.pin-mode { cursor: crosshair; }
@@ -233,27 +233,11 @@
   #nws-time-row button.play { background: var(--accent); color: #04243a; border-color: var(--accent); font-weight: 700; }
   #nws-time-slider { flex: 1; margin: 0 4px; }
   #nws-legend { display: block; max-width: 100%; height: 30px; width: auto; margin: 8px auto 0; border-radius: 4px; }
+  .wind-arrow-icon { display: block; pointer-events: none; }
 
-  /* Spot Map (custom Leaflet) */
-  #view-spotmap.active { display: flex; flex-direction: column; height: calc(100vh - 170px - var(--safe-top) - var(--safe-bot)); }
-  #spot-map-wrap { position: relative; flex: 1 1 auto; min-height: 240px; }
-  #spot-map { width: 100%; height: 100%; min-height: 240px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-  #spot-map.pin-mode { cursor: crosshair; }
-  #drop-pin-btn { position: absolute; top: 10px; right: 10px; z-index: 500; box-shadow: 0 2px 10px rgba(0,0,0,0.4); }
-  #drop-pin-btn.active { background: var(--r-1); color: #fff; border: 1px solid var(--r-1); }
   .spot-map-icon { display: block; }
-  .leaflet-popup-content { color: #04243a; font-size: 13px; }
-  #spot-map-controls {
-    margin-top: 10px; background: var(--bg-2); border: 1px solid var(--border);
-    border-radius: 12px; padding: 10px 12px;
-  }
-  #spot-map-time-label { color: var(--fg); font-size: 13px; font-weight: 600; text-align: center; margin-bottom: 8px; }
-  #spot-map-time-label .sub { color: var(--fg-dim); font-weight: normal; font-size: 11px; margin-left: 6px; }
-  #spot-map-time-row { display: flex; gap: 6px; align-items: center; }
-  #spot-map-time-row button { background: var(--bg-3); color: var(--fg); border: 1px solid var(--border); padding: 6px 10px; border-radius: 8px; font-size: 14px; cursor: pointer; font-family: inherit; }
-  #spot-map-time-row button.play { background: var(--accent); color: #04243a; border-color: var(--accent); font-weight: 700; }
-  #spot-map-time-slider { flex: 1; margin: 0 4px; }
-
+  .leaflet-popup-content { color: #04243a; font-size: 13px; margin: 10px 12px; line-height: 1.35; }
+  .leaflet-popup-content .muted { color: #5a6f85; }
   label { display: block; margin: 12px 0 4px; font-size: 13px; color: var(--fg-dim); }
   input[type="text"], input[type="number"], select {
     width: 100%; background: var(--bg-3); border: 1px solid var(--border);
@@ -452,30 +436,7 @@
     </div>
   </section>
 
-  <section id="view-spotmap" class="view">
-    <div id="spot-map-wrap">
-      <div id="spot-map"></div>
-      <button id="drop-pin-btn" class="btn small" onclick="toggleDropPinMode()">+ Drop pin</button>
-    </div>
-    <div id="spot-map-controls">
-      <div id="spot-map-time-label">Now <span class="sub" id="spot-map-time-sub"></span></div>
-      <div id="spot-map-time-row">
-        <button onclick="spotMapBack()" aria-label="Back 1 hour">⏮</button>
-        <button onclick="spotMapTogglePlay()" id="spot-map-play-btn" class="play" aria-label="Play">▶</button>
-        <button onclick="spotMapForward()" aria-label="Forward 1 hour">⏭</button>
-        <input type="range" id="spot-map-time-slider" min="0" max="167" value="0" step="1">
-      </div>
-      <div class="legend" style="justify-content:center; margin-top:8px;">
-        <span><i class="sw" style="background:var(--r-5)"></i>Epic</span>
-        <span><i class="sw" style="background:var(--r-4)"></i>Good</span>
-        <span><i class="sw" style="background:var(--r-3)"></i>OK</span>
-        <span><i class="sw" style="background:var(--r-2)"></i>Fair</span>
-        <span><i class="sw" style="background:var(--r-1)"></i>Poor</span>
-      </div>
-    </div>
-  </section>
-
-  <section id="view-nwsmap" class="view">
+  <section id="view-map" class="view">
     <div id="nws-map-wrap">
       <div id="nws-map"></div>
       <button id="nws-drop-pin-btn" class="btn small" onclick="toggleNwsDropPinMode()">+ Drop pin</button>
@@ -495,7 +456,14 @@
         <input type="range" id="nws-time-slider" min="0" max="0" value="0" step="1">
       </div>
       <img id="nws-legend" alt="Legend" src="">
-      <div class="muted" style="font-size:11px; text-align:center; margin-top:6px;">NOAA NDFD gridded forecast via digital.weather.gov · <a href="https://www.weather.gov/greatlakes/" target="_blank" rel="noopener" style="color:var(--accent);">weather.gov/greatlakes ↗</a></div>
+      <div class="legend" style="justify-content:center; margin-top:8px;">
+        <span><i class="sw" style="background:var(--r-5)"></i>Epic</span>
+        <span><i class="sw" style="background:var(--r-4)"></i>Good</span>
+        <span><i class="sw" style="background:var(--r-3)"></i>OK</span>
+        <span><i class="sw" style="background:var(--r-2)"></i>Fair</span>
+        <span><i class="sw" style="background:var(--r-1)"></i>Poor</span>
+      </div>
+      <div class="muted" id="nws-source-line" style="font-size:11px; text-align:center; margin-top:6px;">Heat map: NOAA NDFD via digital.weather.gov · <a href="https://www.weather.gov/greatlakes/" target="_blank" rel="noopener" style="color:var(--accent);">weather.gov/greatlakes ↗</a></div>
     </div>
   </section>
 
@@ -568,11 +536,8 @@
   <button data-view="spots" class="active" onclick="switchView('spots')">
     <span class="icn">🏄</span><span>Spots</span>
   </button>
-  <button data-view="spotmap" onclick="switchView('spotmap')">
-    <span class="icn">📍</span><span>Spot Map</span>
-  </button>
-  <button data-view="nwsmap" onclick="switchView('nwsmap')">
-    <span class="icn">🌊</span><span>NWS Map</span>
+  <button data-view="map" onclick="switchView('map')">
+    <span class="icn">🌊</span><span>Map</span>
   </button>
   <button data-view="settings" onclick="switchView('settings')">
     <span class="icn">⚙️</span><span>Settings</span>
@@ -921,21 +886,18 @@ function switchView(name) {
   if (view) view.classList.add('active');
 
   if (name === 'spots') renderSpots();
-  if (name === 'spotmap') initSpotMapIfNeeded();
-  if (name === 'nwsmap') initNwsMapIfNeeded();
+  if (name === 'map') initNwsMapIfNeeded();
   else nwsMapPause();
   if (name === 'settings') renderSettings();
 
   document.getElementById('header-title').textContent =
     name === 'spots' ? 'Lakes Surf'
-    : name === 'spotmap' ? 'Spot Map'
-    : name === 'nwsmap' ? 'NWS Map'
+    : name === 'map' ? 'Map'
     : name === 'settings' ? 'Settings' : 'Forecast';
 
   document.getElementById('header-sub').textContent =
     name === 'spots' ? 'Great Lakes wave forecast'
-    : name === 'spotmap' ? 'Lake Michigan · play through 7 days'
-    : name === 'nwsmap' ? 'NOAA NDFD · wave & wind heat map'
+    : name === 'map' ? 'NOAA heat map · spots · 7 days'
     : name === 'settings' ? 'Defaults, units, backup' : '';
 
   const action = document.getElementById('header-action');
@@ -2646,29 +2608,6 @@ function makeMiniArrowsSvg(windDeg, windLabel, swellDeg, waveLabel, periodLabel)
 }
 
 /* ============================================================================
-   Spot Map (custom Leaflet, Lake Michigan)
-   ============================================================================ */
-
-let spotMap = null;
-let spotMapMarkers = {};
-let spotMapForecasts = {}; // key (lat,lon) -> forecast
-let spotMapTimeIndex = 0;
-let spotMapPlayInterval = null;
-const SPOT_MAP_MAX_HOURS = 24 * 7 - 1;
-
-let dropPinMode = false;
-function toggleDropPinMode() {
-  dropPinMode = !dropPinMode;
-  const btn = document.getElementById('drop-pin-btn');
-  if (btn) {
-    btn.textContent = dropPinMode ? '✕ Cancel' : '+ Drop pin';
-    btn.classList.toggle('active', dropPinMode);
-  }
-  const mapEl = document.getElementById('spot-map');
-  if (mapEl) mapEl.classList.toggle('pin-mode', dropPinMode);
-}
-
-/* ============================================================================
    NWS Map — NOAA NDFD gridded forecast heat map (wave height / wind speed /
    wind gusts), the same WMS layers weather.gov/greatlakes draws. One image
    per frame (like the NWS page), re-requested when the view moves, and a
@@ -2748,6 +2687,8 @@ function nwsShowFrame() {
   if (!(cached && cached.complete && cached.naturalWidth)) { loading.textContent = 'Loading forecast…'; loading.style.display = 'block'; }
   else loading.style.display = 'none';
   nwsUpdateTimeLabel();
+  updateSpotMapMarkers();
+  updateWindArrows();
 }
 // Warm the browser cache for the frames around the current one so play is smooth.
 function nwsPrefetch() {
@@ -2794,6 +2735,83 @@ function nwsUpdateTimeLabel() {
   const u = NWS_LAYERS[nwsLayer];
   sub.textContent = `${u.title} (${u.unit()})` + (hoursOut > 0 ? ` · +${hoursOut}h` : ' · now');
 }
+// ── Wind direction arrows for the wind layers ─────────────────────────────
+// NDFD's WMS only draws colors, so arrows come from Open-Meteo's hourly
+// 10 m wind forecast at a fixed set of on-water points (the ones the NWS
+// Great Lakes page samples, plus extra Lake Michigan points). One request
+// for all points, cached for an hour.
+const WIND_ARROW_POINTS = [
+  // Lake Michigan
+  [41.98,-87.466],[41.98,-86.784],[41.8,-87.1],[42.3,-87.1],[42.3,-86.5],[42.605,-87.586],[42.589,-86.632],
+  [42.9,-87.3],[43.0,-86.6],[43.24,-86.697],[43.378,-87.596],[43.6,-87.0],[43.7,-86.7],[44.048,-86.767],
+  [44.135,-87.474],[44.4,-86.9],[44.5,-86.5],[44.831,-87.133],[44.935,-86.353],[45.1,-86.3],[45.399,-87.255],
+  [45.655,-86.353],[45.519,-85.572],[44.6,-87.9],[45.0,-87.6],
+  // Lake Superior
+  [46.808,-91.964],[47.207,-91.184],[47.207,-90.555],[47.611,-90.501],[46.793,-90.404],[47.237,-89.58],[47.858,-89.493],
+  [48.054,-88.323],[47.537,-88.626],[47.829,-87.531],[47.442,-87.456],[47.089,-88.062],[47.486,-86.729],[47.045,-87.011],
+  [47.237,-86.112],[46.652,-87.054],[46.815,-86.144],[46.89,-85.418],[46.585,-84.833],
+  // Lake Huron
+  [45.843,-84.231],[45.468,-83.451],[43.837,-83.711],[45.273,-82.752],[44.687,-83.126],[44.386,-82.573],[43.708,-82.491],
+  // Lake Erie / St. Clair
+  [42.509,-82.833],[41.847,-83.256],[41.531,-82.508],[41.859,-81.597],[42.197,-80.638],[42.425,-79.858],[42.713,-79.191],
+  // Lake Ontario
+  [43.39,-79.029],[43.52,-78.395],[43.449,-77.679],[43.52,-76.85],[44.024,-76.395],[43.673,-76.379]
+];
+let windArrowLayer = null, windArrowData = null, windArrowFetchedAt = 0, windArrowInflight = null;
+const WIND_ARROW_CACHE_MS = 60 * 60 * 1000;
+async function loadWindArrowData() {
+  if (windArrowData && (Date.now() - windArrowFetchedAt) < WIND_ARROW_CACHE_MS) return windArrowData;
+  if (windArrowInflight) return windArrowInflight;
+  const lat = WIND_ARROW_POINTS.map(p => p[0]).join(','), lon = WIND_ARROW_POINTS.map(p => p[1]).join(',');
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&forecast_days=7&wind_speed_unit=mph&timezone=UTC&timeformat=unixtime`;
+  windArrowInflight = fetch(url).then(r => { if (!r.ok) throw new Error('open-meteo ' + r.status); return r.json(); }).then(j => {
+    const arr = Array.isArray(j) ? j : [j];
+    windArrowData = arr.map((pt, i) => ({
+      lat: WIND_ARROW_POINTS[i][0], lon: WIND_ARROW_POINTS[i][1],
+      times: pt.hourly.time, dir: pt.hourly.wind_direction_10m, spd: pt.hourly.wind_speed_10m, gust: pt.hourly.wind_gusts_10m
+    }));
+    windArrowFetchedAt = Date.now();
+    windArrowInflight = null;
+    return windArrowData;
+  }).catch(e => { console.warn('wind arrows', e); windArrowInflight = null; return null; });
+  return windArrowInflight;
+}
+function makeWindArrowIcon(dirDeg, spd) {
+  const rot = (dirDeg + 180) % 360; // point where the wind is going
+  const len = Math.max(12, Math.min(24, 10 + (spd || 0) * 0.5));
+  const tip = (-len / 2).toFixed(1), tail = (len / 2).toFixed(1);
+  const html = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-14 -14 28 28" width="28" height="28" class="wind-arrow-icon">
+    <g transform="rotate(${rot})" stroke="#000" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="0" y1="${tail}" x2="0" y2="${tip}"/>
+      <polyline points="-3.2,${(-len / 2 + 4.5).toFixed(1)} 0,${tip} 3.2,${(-len / 2 + 4.5).toFixed(1)}"/>
+    </g></svg>`;
+  return L.divIcon({ html, className: '', iconSize: [28, 28], iconAnchor: [14, 14] });
+}
+function updateWindArrows() {
+  if (!nwsMap || !windArrowLayer) return;
+  windArrowLayer.clearLayers();
+  const srcLine = document.getElementById('nws-source-line');
+  const isWind = nwsLayer === 'windspd' || nwsLayer === 'windgust';
+  if (srcLine) srcLine.firstChild.textContent = isWind && windArrowData
+    ? 'Heat map: NOAA NDFD · arrows: Open-Meteo 10 m wind · '
+    : 'Heat map: NOAA NDFD via digital.weather.gov · ';
+  if (!isWind || !windArrowData || !nwsTimes.length) return;
+  const t = Math.round(nwsTimes[nwsTimeIndex].date.getTime() / 1000);
+  const bounds = nwsMap.getBounds().pad(0.1);
+  for (const pt of windArrowData) {
+    if (!bounds.contains([pt.lat, pt.lon])) continue;
+    // Nearest hour (Open-Meteo is hourly on the hour)
+    let idx = Math.round((t - pt.times[0]) / 3600);
+    if (idx < 0 || idx >= pt.times.length) continue;
+    const dir = pt.dir[idx], spd = nwsLayer === 'windgust' ? pt.gust[idx] : pt.spd[idx];
+    if (dir == null || isNaN(dir)) continue;
+    const spdLabel = spd != null ? `${fmtWind(spd / KMH_TO_MPH)}` : '';
+    L.marker([pt.lat, pt.lon], { icon: makeWindArrowIcon(dir, spd), interactive: true, keyboard: false, zIndexOffset: 500 })
+      .bindTooltip(`${degToCompass(dir)} ${Math.round(dir)}°${spdLabel ? ' · ' + spdLabel : ''}`, { direction: 'top', offset: [0, -10] })
+      .addTo(windArrowLayer);
+  }
+}
+
 async function initNwsMapIfNeeded() {
   if (!nwsMap) {
     nwsMap = L.map('nws-map', { zoomControl: true, minZoom: 5, maxZoom: 11 });
@@ -2817,11 +2835,7 @@ async function initNwsMapIfNeeded() {
       clearTimeout(nwsMoveTimer);
       nwsMoveTimer = setTimeout(() => { nwsShowFrame(); nwsUpdateLegend(); nwsPrefetch(); }, 150);
     });
-    // Saved spots as small markers for orientation.
-    for (const sp of state.spots) {
-      L.circleMarker([sp.lat, sp.lon], { radius: 4, color: '#fff', weight: 1, fillColor: '#4ec3ff', fillOpacity: 1 })
-        .bindTooltip(sp.name, { direction: 'top', offset: [0, -4] }).addTo(nwsMap);
-    }
+    windArrowLayer = L.layerGroup().addTo(nwsMap);
     const slider = document.getElementById('nws-time-slider');
     slider.addEventListener('input', e => {
       nwsMapPause();
@@ -2836,6 +2850,9 @@ async function initNwsMapIfNeeded() {
     nwsUpdateLegend();
     nwsPrefetch();
   }, 100);
+  // Spot markers (saved + popular) and wind arrows load in the background.
+  loadAllSpotMapForecasts().then(() => updateSpotMapMarkers());
+  loadWindArrowData().then(() => updateWindArrows());
 }
 function toggleNwsDropPinMode() {
   nwsDropPinMode = !nwsDropPinMode;
@@ -2850,6 +2867,7 @@ function toggleNwsDropPinMode() {
 function nwsMapSetLayer(layer) {
   if (!NWS_LAYERS[layer]) return;
   nwsLayer = layer;
+  updateWindArrows();
   for (const k of Object.keys(NWS_LAYERS)) {
     const b = document.getElementById('nws-layer-' + k);
     if (b) b.classList.toggle('on', k === layer);
@@ -2884,39 +2902,6 @@ function nwsMapForward() {
   nwsTimeIndex = Math.min(nwsTimes.length - 1, nwsTimeIndex + 1);
   document.getElementById('nws-time-slider').value = String(nwsTimeIndex);
   nwsShowFrame();
-}
-
-async function initSpotMapIfNeeded() {
-  if (!spotMap) {
-    spotMap = L.map('spot-map', { zoomControl: true });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 18, attribution: '© OpenStreetMap'
-    }).addTo(spotMap);
-    spotMap.fitBounds([[41.5, -88.0], [46.1, -84.7]]); // Lake Michigan
-    // Tap-to-drop after pressing the "+ Drop pin" button
-    spotMap.on('click', e => {
-      if (!dropPinMode) return;
-      toggleDropPinMode(); // exit mode first
-      showAddSpotModal({ lat: e.latlng.lat.toFixed(4), lon: e.latlng.lng.toFixed(4), name: '' });
-    });
-    // Long-press / right-click to add a spot (power-user gesture)
-    spotMap.on('contextmenu', e => {
-      showAddSpotModal({ lat: e.latlng.lat.toFixed(4), lon: e.latlng.lng.toFixed(4), name: '' });
-    });
-    // Slider
-    const slider = document.getElementById('spot-map-time-slider');
-    slider.max = String(SPOT_MAP_MAX_HOURS);
-    slider.addEventListener('input', e => {
-      spotMapPause();
-      spotMapTimeIndex = parseInt(e.target.value, 10);
-      updateSpotMapMarkers();
-      updateSpotMapTimeLabel();
-    });
-  }
-  setTimeout(() => spotMap.invalidateSize(), 100);
-  await loadAllSpotMapForecasts();
-  updateSpotMapMarkers();
-  updateSpotMapTimeLabel();
 }
 
 function spotMapEntries() {
@@ -2956,92 +2941,77 @@ function ratingColor(r) {
   return ['#2c4258','#d63b3b','#e07a26','#d9c233','#6cc24a','#1e8b3a'][r] || '#2c4258';
 }
 
-function makeSpotMarkerIcon(color, waveLabel, windDirDeg, windSpdMph) {
-  const arrowRot = (windDirDeg != null && !isNaN(windDirDeg)) ? ((windDirDeg + 180) % 360) : null;
-  const arrowSvg = arrowRot != null
-    ? `<g transform="translate(28 28) rotate(${arrowRot})"><path d="M 0 -22 L -3 -16 L 0 -19 L 3 -16 Z" fill="#ffffff" stroke="#0a1722" stroke-width="0.6"/></g>`
-    : '';
+// Small pin: a dot colored by the hour's rating (saved spots get a white
+// ring, popular-but-unsaved spots a dashed one). Tap for the data.
+function makeSpotMarkerIcon(color, saved) {
   const html = `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 56 56" width="48" height="48" class="spot-map-icon">
-      <circle cx="28" cy="28" r="14" fill="${color}" stroke="#ffffff" stroke-width="2"/>
-      <text x="28" y="32" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="700" font-family="-apple-system,system-ui,sans-serif">${waveLabel}</text>
-      ${arrowSvg}
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20" class="spot-map-icon">
+      <circle cx="10" cy="10" r="5.5" fill="${color}" stroke="#ffffff" stroke-width="2"${saved ? '' : ' stroke-dasharray="2.2 1.6"'}/>
+      <circle cx="10" cy="10" r="7.5" fill="none" stroke="rgba(0,0,0,0.45)" stroke-width="1"/>
     </svg>`;
-  return L.divIcon({ html, className: '', iconSize: [48,48], iconAnchor: [24,24] });
+  return L.divIcon({ html, className: '', iconSize: [20, 20], iconAnchor: [10, 10], popupAnchor: [0, -8] });
+}
+function spotPopupHtml(e, h, r, when) {
+  const link = e.savedSpotId
+    ? `<a href="#" onclick="event.preventDefault(); openForecast('${e.savedSpotId}')">Open forecast →</a>`
+    : `<a href="#" onclick="event.preventDefault(); addPopularSpot('${e.popularId}'); switchView('spots');">+ Add this spot</a>`;
+  const whenLbl = when.toLocaleString(undefined, { weekday: 'short', hour: 'numeric' });
+  if (!h) return `<b>${escapeHtml(e.name)}</b><div class="muted" style="font-size:11px;">No forecast for ${escapeHtml(whenLbl)}</div><div style="margin-top:4px;">${link}</div>`;
+  const wind = h.windSpeed != null ? `${fmtWind(h.windSpeed)}${h.windDir != null ? ' ' + degToCompass(h.windDir) + dirArrow(h.windDir) : ''}` : '–';
+  const gust = h.windGust != null ? ` · gusts ${fmtWind(h.windGust)}` : '';
+  const per = h.wavePeriod != null && !isNaN(h.wavePeriod) ? ` @ ${Math.round(h.wavePeriod)}s` : '';
+  return `<b>${escapeHtml(e.name)}</b> <span class="chip r${r.rating}" style="font-size:10px; padding:1px 6px;">${ratingLabel(r.rating)}</span>
+    <div class="muted" style="font-size:11px; margin-top:2px;">${escapeHtml(whenLbl)}</div>
+    <div style="margin-top:4px;">Waves <b>${fmtWave(h.waveHeight)}</b>${per}</div>
+    <div>Wind ${wind}${gust}</div>
+    <div style="margin-top:4px;">${link}</div>`;
 }
 
+// Spot markers on the Map tab: rating color + wave height + wind arrow for
+// the hour nearest the slider's NDFD valid time.
+let spotMapMarkers = {};
+let spotMapForecasts = {}; // key (lat,lon) -> forecast
+function nearestForecastHour(fc, when) {
+  if (!fc || !fc.hours || !fc.hours.length) return null;
+  const t = when.getTime();
+  let best = null, bestDt = Infinity;
+  for (const h of fc.hours) {
+    const dt = Math.abs(h.time.getTime() - t);
+    if (dt < bestDt) { bestDt = dt; best = h; }
+  }
+  return bestDt <= 2 * 3600e3 ? best : null;
+}
 function updateSpotMapMarkers() {
-  if (!spotMap) return;
-  for (const m of Object.values(spotMapMarkers)) spotMap.removeLayer(m);
-  spotMapMarkers = {};
-
+  if (!nwsMap) return;
+  const when = nwsTimes[nwsTimeIndex] ? nwsTimes[nwsTimeIndex].date : new Date();
   const entries = spotMapEntries();
+  const seen = new Set();
   for (const e of entries) {
     const key = `${e.lat.toFixed(3)},${e.lon.toFixed(3)}`;
+    seen.add(key);
     const fc = spotMapForecasts[key];
-    let color = '#2c4258', waveLbl = '?', windDir = null, windSpd = null;
-    if (fc && fc.hours[spotMapTimeIndex]) {
-      const h = fc.hours[spotMapTimeIndex];
+    const h = nearestForecastHour(fc, when);
+    let color = '#2c4258', r = { rating: 0 };
+    if (h) {
       const T = { ...state.defaults, ...(e.thresholds || {}), offshoreDirs: e.offshoreDirs };
-      const r = rateHour(h, T);
+      r = rateHour(h, T);
       color = ratingColor(r.rating);
-      waveLbl = fmtWaveFt(h.waveHeight);
-      windDir = h.windDir;
-      windSpd = h.windSpeed;
     }
-    const icon = makeSpotMarkerIcon(color, waveLbl, windDir, windSpd);
-    const popupHtml = `<b>${escapeHtml(e.name)}</b><br>${e.lat.toFixed(3)}, ${e.lon.toFixed(3)}<br>${
-      e.savedSpotId
-        ? `<a href="#" onclick="event.preventDefault(); openForecast('${e.savedSpotId}')">Open forecast</a>`
-        : `<a href="#" onclick="event.preventDefault(); addPopularSpot('${e.popularId}'); switchView('spots');">Add this spot</a>`
-    }`;
-    const [mLat, mLon] = offshoreMapCoord(e.lat, e.lon);
-    const marker = L.marker([mLat, mLon], { icon }).addTo(spotMap).bindPopup(popupHtml);
-    spotMapMarkers[key] = marker;
+    const icon = makeSpotMarkerIcon(color, !!e.savedSpotId);
+    const popupHtml = spotPopupHtml(e, h, r, when);
+    const existing = spotMapMarkers[key];
+    if (existing) {
+      existing.setIcon(icon);
+      existing.getPopup().setContent(popupHtml);
+    } else {
+      const [mLat, mLon] = offshoreMapCoord(e.lat, e.lon);
+      spotMapMarkers[key] = L.marker([mLat, mLon], { icon, zIndexOffset: 1000 })
+        .bindTooltip(e.name, { direction: 'top', offset: [0, -8] })
+        .addTo(nwsMap).bindPopup(popupHtml, { closeButton: false, maxWidth: 220 });
+    }
   }
-}
-
-function spotMapTogglePlay() {
-  if (spotMapPlayInterval) { spotMapPause(); return; }
-  document.getElementById('spot-map-play-btn').textContent = '⏸';
-  spotMapPlayInterval = setInterval(() => {
-    spotMapTimeIndex = (spotMapTimeIndex + 1) % (SPOT_MAP_MAX_HOURS + 1);
-    document.getElementById('spot-map-time-slider').value = String(spotMapTimeIndex);
-    updateSpotMapMarkers();
-    updateSpotMapTimeLabel();
-  }, 500);
-}
-function spotMapPause() {
-  if (spotMapPlayInterval) { clearInterval(spotMapPlayInterval); spotMapPlayInterval = null; }
-  document.getElementById('spot-map-play-btn').textContent = '▶';
-}
-function spotMapBack() {
-  spotMapPause();
-  spotMapTimeIndex = Math.max(0, spotMapTimeIndex - 1);
-  document.getElementById('spot-map-time-slider').value = String(spotMapTimeIndex);
-  updateSpotMapMarkers();
-  updateSpotMapTimeLabel();
-}
-function spotMapForward() {
-  spotMapPause();
-  spotMapTimeIndex = Math.min(SPOT_MAP_MAX_HOURS, spotMapTimeIndex + 1);
-  document.getElementById('spot-map-time-slider').value = String(spotMapTimeIndex);
-  updateSpotMapMarkers();
-  updateSpotMapTimeLabel();
-}
-function updateSpotMapTimeLabel() {
-  const t = new Date();
-  t.setMinutes(0, 0, 0);
-  t.setHours(t.getHours() + spotMapTimeIndex);
-  const labelEl = document.getElementById('spot-map-time-label');
-  const subEl = document.getElementById('spot-map-time-sub');
-  if (spotMapTimeIndex === 0) {
-    labelEl.firstChild && (labelEl.firstChild.textContent = 'Now');
-    if (subEl) subEl.textContent = '';
-  } else {
-    const main = t.toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
-    if (labelEl.firstChild) labelEl.firstChild.textContent = main;
-    if (subEl) subEl.textContent = `+${spotMapTimeIndex}h`;
+  for (const key of Object.keys(spotMapMarkers)) {
+    if (!seen.has(key)) { nwsMap.removeLayer(spotMapMarkers[key]); delete spotMapMarkers[key]; }
   }
 }
 

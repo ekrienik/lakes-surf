@@ -73,7 +73,7 @@ When you (or I) change any file:
 Tap a spot to see its 7-day forecast. The colored chip shows current rating. The 7-day strip shows the best rating per day at a glance.
 
 ### Map tab
-Tap anywhere on the Great Lakes (or anywhere with NOAA coverage, really) to drop a pin. Tap **Add this point** to save it as a named spot.
+NOAA's NDFD forecast heat map (wave height, wind speed or wind gusts — the same layers as weather.gov/greatlakes) drawn on our own map, with a 7-day time slider and play button. Your saved and popular spots sit on top as rating-colored markers showing wave height and a wind arrow for the selected hour; tap one to open its forecast or add it. On the wind layers, white arrows across the lake show forecast wind direction (Open-Meteo 10 m wind). Tap **+ Drop pin** (or long-press the map) to add any point as a spot.
 
 ### Forecast view
 Day tabs across the top, each colored by best rating that day. Tap a day to see the hourly breakdown. The colored bar on the left of each row indicates that hour's rating. Columns:
