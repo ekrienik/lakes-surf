@@ -1781,21 +1781,48 @@ function attachChartReadouts(host) {
       out.textContent = `${val} ${d.unit} · ${when}`;
     }
   };
+  const chartFor = (el) => {
+    // SVG children don't always have .closest on older mobile browsers
+    let n = el;
+    while (n && n !== host) {
+      if (n.classList && n.classList.contains('line-chart')) return n;
+      n = n.parentNode;
+    }
+    return null;
+  };
   let active = null;
-  host.addEventListener('pointerdown', e => {
-    const svg = e.target.closest('svg.line-chart');
+  // Touch first: iOS/Android deliver touch events reliably on SVG; passive
+  // listeners keep vertical page scrolling smooth.
+  host.addEventListener('touchstart', e => {
+    const svg = chartFor(e.target);
+    if (!svg || !e.touches.length) return;
+    active = svg;
+    show(svg, e.touches[0].clientX);
+  }, { passive: true });
+  host.addEventListener('touchmove', e => {
+    if (!active || !e.touches.length) return;
+    show(active, e.touches[0].clientX);
+  }, { passive: true });
+  const end = () => { active = null; };
+  host.addEventListener('touchend', end, { passive: true });
+  host.addEventListener('touchcancel', end, { passive: true });
+  // Mouse / pen (desktop): press-drag or just hover.
+  host.addEventListener('mousedown', e => {
+    const svg = chartFor(e.target);
     if (!svg) return;
     active = svg;
     show(svg, e.clientX);
   });
-  host.addEventListener('pointermove', e => {
-    const svg = e.target.closest('svg.line-chart');
-    if (e.pointerType === 'mouse' && !e.buttons) { if (svg) show(svg, e.clientX); return; }
-    if (active && svg === active) { show(svg, e.clientX); }
+  host.addEventListener('mousemove', e => {
+    const svg = chartFor(e.target);
+    if (svg) show(svg, e.clientX);
   });
-  const end = () => { active = null; };
-  host.addEventListener('pointerup', end);
-  host.addEventListener('pointercancel', end);
+  host.addEventListener('mouseup', end);
+  // Fallback for anything that only synthesizes clicks.
+  host.addEventListener('click', e => {
+    const svg = chartFor(e.target);
+    if (svg) show(svg, e.clientX);
+  });
 }
 
 async function renderLiveCharts(spot, live) {
