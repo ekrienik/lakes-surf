@@ -3063,25 +3063,29 @@ async function loadWaveGrid() {
     for (let k = 0; k < idx.length; k += 240) chunks.push(idx.slice(k, k + 240));
     return Promise.all(chunks.map(c =>
       fetchJsonCached(`https://marine-api.open-meteo.com/v1/marine?latitude=${c.map(k => (lat0 + Math.floor(k / nLon) * dLat).toFixed(3)).join(',')}` +
-            `&longitude=${c.map(k => (lon0 + (k % nLon) * dLon).toFixed(3)).join(',')}&hourly=wave_height,wave_direction&forecast_days=7&timezone=UTC&timeformat=unixtime`)
+            `&longitude=${c.map(k => (lon0 + (k % nLon) * dLon).toFixed(3)).join(',')}&hourly=wave_height,wave_direction,wave_period&forecast_days=7&timezone=UTC&timeformat=unixtime`)
         .then(j => ({ c, j: Array.isArray(j) ? j : [j] }))
     )).then(parts => {
       const times = parts[0].j[0].hourly.time;
       const blank = () => times.map(() => new Float32Array(nLat * nLon).fill(NaN));
-      // hgt in metres; u/v = unit vector the waves travel TOWARD (direction is FROM)
-      const hgt = blank(), u = blank(), v = blank();
+      // hgt in metres, per in seconds; u/v = the waves' travel velocity (mph, TOWARD;
+      // direction is FROM), from the deep-water crest speed g·T/2π — longer-period
+      // swell moves faster than short chop.
+      const hgt = blank(), per = blank(), u = blank(), v = blank();
       for (const { c, j } of parts) j.forEach((p, n) => {
-        const vals = p.hourly.wave_height, dirs = p.hourly.wave_direction || [];
+        const vals = p.hourly.wave_height, dirs = p.hourly.wave_direction || [], pers = p.hourly.wave_period || [];
         for (let h = 0; h < times.length; h++) {
           if (vals[h] == null) continue;
           hgt[h][c[n]] = vals[h];
+          if (pers[h] != null) per[h][c[n]] = pers[h];
           if (dirs[h] != null) {
+            const mph = pers[h] ? 9.81 * pers[h] / (2 * Math.PI) * 2.23694 : WAVE_STREAK_SPEED;
             const rad = dirs[h] * Math.PI / 180;
-            u[h][c[n]] = -Math.sin(rad); v[h][c[n]] = -Math.cos(rad);
+            u[h][c[n]] = -Math.sin(rad) * mph; v[h][c[n]] = -Math.cos(rad) * mph;
           }
         }
       });
-      waveGrid = { times, hgt, u, v };
+      waveGrid = { times, hgt, per, u, v };
       waveGridFetchedAt = Date.now();
       waveGridInflight = null;
       return waveGrid;
@@ -3089,26 +3093,27 @@ async function loadWaveGrid() {
   }).catch(e => { console.warn('wave grid', e); waveGridInflight = null; return null; });
   return waveGridInflight;
 }
-// Wave streaks drift at this fixed pace (in the wind streaks' mph units), so they
-// show direction only; height is what the colors are for.
+// Fallback streak pace (mph) where Open-Meteo gives a direction but no period
 const WAVE_STREAK_SPEED = 12;
-// NaN-aware bilinear sample of the wave grid → { s: metres, u, v } or null
+// NaN-aware bilinear sample of the wave grid → { s: metres, per: s, u, v } or null
 function waveSample(h, lat, lon) {
   const { lat0, lon0, dLat, dLon, nLat, nLon } = WAVE_GRID;
   const fi = (lat - lat0) / dLat, fj = (lon - lon0) / dLon;
   if (fi < 0 || fj < 0 || fi > nLat - 1 || fj > nLon - 1) return null;
   const i = Math.min(nLat - 2, Math.floor(fi)), j = Math.min(nLon - 2, Math.floor(fj));
-  const di = fi - i, dj = fj - j, a = waveGrid.hgt[h], au = waveGrid.u[h], av = waveGrid.v[h];
-  let sum = 0, wsum = 0, su = 0, sv = 0, dsum = 0;
+  const di = fi - i, dj = fj - j;
+  const a = waveGrid.hgt[h], ap = waveGrid.per[h], au = waveGrid.u[h], av = waveGrid.v[h];
+  let sum = 0, wsum = 0, sp = 0, psum = 0, su = 0, sv = 0, dsum = 0;
   for (const [k, w] of [[i * nLon + j, (1 - di) * (1 - dj)], [i * nLon + j + 1, (1 - di) * dj],
                         [(i + 1) * nLon + j, di * (1 - dj)], [(i + 1) * nLon + j + 1, di * dj]]) {
     if (!isNaN(a[k])) { sum += a[k] * w; wsum += w; }
+    if (!isNaN(ap[k])) { sp += ap[k] * w; psum += w; }
     if (!isNaN(au[k])) { su += au[k] * w; sv += av[k] * w; dsum += w; }
   }
   if (wsum <= 0.01) return null;
-  const len = Math.hypot(su, sv);
-  const dirOk = dsum > 0.01 && len > 1e-6;
-  return { s: sum / wsum, u: dirOk ? su / len * WAVE_STREAK_SPEED : 0, v: dirOk ? sv / len * WAVE_STREAK_SPEED : 0 };
+  const dirOk = dsum > 0.01;
+  return { s: sum / wsum, per: psum > 0.01 ? sp / psum : null,
+           u: dirOk ? su / dsum : 0, v: dirOk ? sv / dsum : 0 };
 }
 // Hour index into whichever grid the current layer draws from
 function windHourIndex() {
@@ -3365,7 +3370,8 @@ function mapTapReadout(latlng) {
       popup.setContent(`<b>${fmtWind(w.s / KMH_TO_MPH)}</b> ${nwsLayer === 'windgust' ? 'gusts' : 'wind'}${from} <span class="muted">· Open-Meteo</span>`);
     } else {
       const p = waveParts(w.s);
-      popup.setContent(`<b>${p.v} ${p.u}</b> waves${from} <span class="muted">· Open-Meteo</span>`);
+      const per = w.per ? ` @ ${Math.round(w.per)}s` : '';
+      popup.setContent(`<b>${p.v} ${p.u}</b>${per} waves${from} <span class="muted">· Open-Meteo</span>`);
     }
     popup.openOn(nwsMap);
     return;
