@@ -240,9 +240,9 @@
   #field-legend .bar { height: 10px; border-radius: 5px; }
   #field-legend .ticks { position: relative; height: 14px; font-size: 10px; color: var(--fg-dim); margin-top: 2px; }
   #field-legend .ticks span { position: absolute; transform: translateX(-50%); }
-  #wave-src-row { display: none; gap: 6px; justify-content: center; margin: -2px 0 8px; }
-  #wave-src-row button { background: none; color: var(--fg-dim); border: 1px solid var(--border); padding: 3px 10px; border-radius: 999px; font-size: 11px; cursor: pointer; font-family: inherit; }
-  #wave-src-row button.on { color: var(--fg); border-color: var(--accent); }
+  #map-src-row { display: flex; gap: 6px; justify-content: center; margin: -2px 0 8px; }
+  #map-src-row button { background: none; color: var(--fg-dim); border: 1px solid var(--border); padding: 3px 10px; border-radius: 999px; font-size: 11px; cursor: pointer; font-family: inherit; }
+  #map-src-row button.on { color: var(--fg); border-color: var(--accent); }
 
   .spot-map-icon { display: block; }
   .leaflet-popup-content { color: #04243a; font-size: 13px; margin: 10px 12px; line-height: 1.35; }
@@ -469,9 +469,9 @@
         <button id="nws-layer-windspd" onclick="nwsMapSetLayer('windspd')">Wind speed</button>
         <button id="nws-layer-windgust" onclick="nwsMapSetLayer('windgust')">Wind gusts</button>
       </div>
-      <div id="wave-src-row">
-        <button id="wave-src-blend" onclick="setWaveMapSource('blend')">Smooth (Open-Meteo)</button>
-        <button id="wave-src-noaa" onclick="setWaveMapSource('noaa')">NOAA bands</button>
+      <div id="map-src-row">
+        <button id="map-src-blend" onclick="setMapSource('blend')">Smooth (Open-Meteo)</button>
+        <button id="map-src-noaa" onclick="setMapSource('noaa')">NOAA</button>
       </div>
       <div id="nws-time-label">Loading… <span class="sub" id="nws-time-sub"></span></div>
       <div id="nws-time-row">
@@ -2928,11 +2928,8 @@ function nwsPrefetch() {
 }
 function nwsUpdateLegend() {
   if (!nwsMap) return;
-  // The Smooth / NOAA toggle only applies to the wave layer
-  const wave = nwsLayer === 'waveheight';
-  document.getElementById('wave-src-row').style.display = wave ? 'flex' : 'none';
-  document.getElementById('wave-src-blend').classList.toggle('on', isWaveBlend());
-  document.getElementById('wave-src-noaa').classList.toggle('on', wave && !isWaveBlend());
+  document.getElementById('map-src-blend').classList.toggle('on', isLocalLayer());
+  document.getElementById('map-src-noaa').classList.toggle('on', !isLocalLayer());
   fieldUpdateLegend();
 }
 function nwsUpdateTimeLabel() {
@@ -2971,9 +2968,12 @@ async function fetchJsonCached(url, maxAgeMs = 60 * 60 * 1000) {
 }
 const WIND_GRID = { lat0: 40.5, lon0: -93.0, step: 0.5, nLat: 19, nLon: 36 }; // 40.5–49.5 N, 93–75.5 W
 const isWindLayer = () => nwsLayer === 'windspd' || nwsLayer === 'windgust';
-// Wave height can be NOAA's banded image or a smooth field drawn here from Open-Meteo marine
-const isWaveBlend = () => nwsLayer === 'waveheight' && state.waveMapSource !== 'noaa';
-const isLocalLayer = () => isWindLayer() || isWaveBlend();
+// One switch for all three layers: 'blend' draws a smooth field here from
+// Open-Meteo; 'noaa' shows NOAA's NDFD image (bands). waveMapSource is the
+// pre-v5.17 wave-only setting.
+const mapSource = () => state.mapSource || state.waveMapSource || 'blend';
+const isLocalLayer = () => mapSource() !== 'noaa';
+const isWaveBlend = () => nwsLayer === 'waveheight' && isLocalLayer();
 const fieldGrid = () => isWindLayer() ? windGrid : waveGrid;
 let windGrid = null, windGridFetchedAt = 0, windGridInflight = null;
 async function loadWindGrid() {
@@ -3063,16 +3063,25 @@ async function loadWaveGrid() {
     for (let k = 0; k < idx.length; k += 240) chunks.push(idx.slice(k, k + 240));
     return Promise.all(chunks.map(c =>
       fetchJsonCached(`https://marine-api.open-meteo.com/v1/marine?latitude=${c.map(k => (lat0 + Math.floor(k / nLon) * dLat).toFixed(3)).join(',')}` +
-            `&longitude=${c.map(k => (lon0 + (k % nLon) * dLon).toFixed(3)).join(',')}&hourly=wave_height&forecast_days=7&timezone=UTC&timeformat=unixtime`)
+            `&longitude=${c.map(k => (lon0 + (k % nLon) * dLon).toFixed(3)).join(',')}&hourly=wave_height,wave_direction&forecast_days=7&timezone=UTC&timeformat=unixtime`)
         .then(j => ({ c, j: Array.isArray(j) ? j : [j] }))
     )).then(parts => {
       const times = parts[0].j[0].hourly.time;
-      const hgt = times.map(() => new Float32Array(nLat * nLon).fill(NaN)); // metres
+      const blank = () => times.map(() => new Float32Array(nLat * nLon).fill(NaN));
+      // hgt in metres; u/v = unit vector the waves travel TOWARD (direction is FROM)
+      const hgt = blank(), u = blank(), v = blank();
       for (const { c, j } of parts) j.forEach((p, n) => {
-        const vals = p.hourly.wave_height;
-        for (let h = 0; h < times.length; h++) if (vals[h] != null) hgt[h][c[n]] = vals[h];
+        const vals = p.hourly.wave_height, dirs = p.hourly.wave_direction || [];
+        for (let h = 0; h < times.length; h++) {
+          if (vals[h] == null) continue;
+          hgt[h][c[n]] = vals[h];
+          if (dirs[h] != null) {
+            const rad = dirs[h] * Math.PI / 180;
+            u[h][c[n]] = -Math.sin(rad); v[h][c[n]] = -Math.cos(rad);
+          }
+        }
       });
-      waveGrid = { times, hgt };
+      waveGrid = { times, hgt, u, v };
       waveGridFetchedAt = Date.now();
       waveGridInflight = null;
       return waveGrid;
@@ -3080,19 +3089,26 @@ async function loadWaveGrid() {
   }).catch(e => { console.warn('wave grid', e); waveGridInflight = null; return null; });
   return waveGridInflight;
 }
-// NaN-aware bilinear sample of the wave grid → { s: metres } or null
+// Wave streaks drift at this fixed pace (in the wind streaks' mph units), so they
+// show direction only; height is what the colors are for.
+const WAVE_STREAK_SPEED = 12;
+// NaN-aware bilinear sample of the wave grid → { s: metres, u, v } or null
 function waveSample(h, lat, lon) {
   const { lat0, lon0, dLat, dLon, nLat, nLon } = WAVE_GRID;
   const fi = (lat - lat0) / dLat, fj = (lon - lon0) / dLon;
   if (fi < 0 || fj < 0 || fi > nLat - 1 || fj > nLon - 1) return null;
   const i = Math.min(nLat - 2, Math.floor(fi)), j = Math.min(nLon - 2, Math.floor(fj));
-  const di = fi - i, dj = fj - j, a = waveGrid.hgt[h];
-  let sum = 0, wsum = 0;
+  const di = fi - i, dj = fj - j, a = waveGrid.hgt[h], au = waveGrid.u[h], av = waveGrid.v[h];
+  let sum = 0, wsum = 0, su = 0, sv = 0, dsum = 0;
   for (const [k, w] of [[i * nLon + j, (1 - di) * (1 - dj)], [i * nLon + j + 1, (1 - di) * dj],
                         [(i + 1) * nLon + j, di * (1 - dj)], [(i + 1) * nLon + j + 1, di * dj]]) {
     if (!isNaN(a[k])) { sum += a[k] * w; wsum += w; }
+    if (!isNaN(au[k])) { su += au[k] * w; sv += av[k] * w; dsum += w; }
   }
-  return wsum > 0.01 ? { s: sum / wsum } : null;
+  if (wsum <= 0.01) return null;
+  const len = Math.hypot(su, sv);
+  const dirOk = dsum > 0.01 && len > 1e-6;
+  return { s: sum / wsum, u: dirOk ? su / len * WAVE_STREAK_SPEED : 0, v: dirOk ? sv / len * WAVE_STREAK_SPEED : 0 };
 }
 // Hour index into whichever grid the current layer draws from
 function windHourIndex() {
@@ -3143,24 +3159,35 @@ function rampColor(stops, x) {
 }
 const windColor = (mph) => rampColor(WIND_STOPS_KT, mph * KMH_TO_KT / KMH_TO_MPH);
 const waveColor = (m) => rampColor(WAVE_STOPS_FT, m * M_TO_FT);
-// One legend for every layer: gradient (wind, smooth waves) or hard bands (NOAA waves),
-// with ticks in the user's units. `max` is the scale's top in its base unit.
+// NOAA NDFD wind speed / gust colors in mph (transcribed from its legend; it
+// steps in 1 mph, so it reads as a continuous ramp): grey → pink → purple →
+// blue → cyan → green → yellow → orange → red.
+const NOAA_WIND_STOPS_MPH = [
+  [0, [235, 235, 235]], [3, [215, 210, 215]], [6, [215, 165, 205]], [9, [255, 140, 240]], [12, [225, 95, 215]],
+  [15, [180, 50, 190]], [18, [140, 0, 180]], [20, [125, 0, 170]], [22, [80, 60, 190]], [25, [70, 140, 220]],
+  [28, [0, 200, 220]], [30, [0, 225, 190]], [33, [0, 220, 120]], [35, [0, 225, 60]], [37, [100, 225, 40]],
+  [39, [235, 235, 40]], [41, [255, 230, 30]], [44, [255, 170, 30]], [47, [255, 110, 30]], [50, [255, 0, 40]],
+  [55, [190, 0, 40]], [60, [150, 0, 60]]
+];
+// One legend for every layer: a gradient, or hard bands for NOAA waves, with
+// ticks in the user's units. `max` is the scale's top in its base unit.
 function fieldUpdateLegend() {
   const el = document.getElementById('field-legend');
-  const wave = nwsLayer === 'waveheight';
-  const stops = wave ? WAVE_STOPS_FT : WIND_STOPS_KT;
+  const wave = nwsLayer === 'waveheight', noaa = !isLocalLayer();
+  const stops = wave ? WAVE_STOPS_FT : noaa ? NOAA_WIND_STOPS_MPH : WIND_STOPS_KT;
   const max = stops[stops.length - 1][0];
   const pct = (x) => (Math.max(0, Math.min(max, x)) / max * 100).toFixed(1) + '%';
-  el.querySelector('.bar').style.background = 'linear-gradient(to right,' + (wave && !isWaveBlend()
+  el.querySelector('.bar').style.background = 'linear-gradient(to right,' + (wave && noaa
     ? stops.map(([x, c]) => `rgb(${c.join(',')}) ${pct(x - 0.5)} ${pct(x + 0.5)}`)
     : stops.map(([x, c]) => `rgb(${c.join(',')}) ${pct(x)}`)).join(',') + ')';
-  // perBase: user units per base unit (ft for waves, kt for wind)
+  // perBase: user units per base unit (ft for waves, mph for NOAA wind, kt for smooth wind)
   let unit, perBase, stepU;
   if (wave) {
     unit = state.units.wave; perBase = unit === 'm' ? 1 / M_TO_FT : 1; stepU = unit === 'm' ? 1 : 2;
   } else {
     unit = windParts(0).u;
-    perBase = state.units.wind === 'mph' ? KMH_TO_MPH / KMH_TO_KT : state.units.wind === 'kmh' ? 1 / KMH_TO_KT : 1;
+    const perMph = state.units.wind === 'kt' ? KMH_TO_KT / KMH_TO_MPH : state.units.wind === 'kmh' ? 1 / KMH_TO_MPH : 1;
+    perBase = noaa ? perMph : perMph * KMH_TO_MPH / KMH_TO_KT;
     stepU = unit === 'km/h' ? 20 : 10;
   }
   let ticks = '';
@@ -3227,25 +3254,41 @@ function windRedraw() {
   windFieldCanvas.style.width = size.x + 'px'; windFieldCanvas.style.height = size.y + 'px';
   const fctx = windFieldCanvas.getContext('2d');
   fctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  if (greatLakesRings) {
-    fctx.beginPath();
+  const traceLakes = (c) => {
+    c.beginPath();
     for (const ring of greatLakesRings) {
       ring.forEach(([lon, lat], i) => {
         const p = nwsMap.latLngToContainerPoint([lat, lon]);
-        if (i) fctx.lineTo(p.x, p.y); else fctx.moveTo(p.x, p.y);
+        if (i) c.lineTo(p.x, p.y); else c.moveTo(p.x, p.y);
       });
-      fctx.closePath();
+      c.closePath();
     }
+  };
+  if (greatLakesRings) {
+    traceLakes(fctx);
     fctx.clip('evenodd');
     fctx.imageSmoothingEnabled = true;
     fctx.drawImage(windLowCanvas, 0, 0, fw * WIND_CELL, fh * WIND_CELL);
   }
   if (!isWindLayer()) {
-    // Waves: color field only, no streaks
-    windStopAnim();
-    windParticleCanvas.getContext('2d').clearRect(0, 0, windParticleCanvas.width, windParticleCanvas.height);
-    windParticles = [];
-    return;
+    // Wave streaks stay on the water: rasterize the lakes at field resolution
+    // and blank the field elsewhere (wind streaks keep crossing land).
+    if (greatLakesRings) {
+      const m = document.createElement('canvas');
+      m.width = fw; m.height = fh;
+      const mctx = m.getContext('2d');
+      mctx.scale(1 / WIND_CELL, 1 / WIND_CELL);
+      traceLakes(mctx);
+      mctx.fill('evenodd');
+      const md = mctx.getImageData(0, 0, fw, fh).data;
+      for (let k = 0; k < s.length; k++) if (md[k * 4 + 3] < 128) s[k] = NaN;
+    }
+    // No direction data at all → nothing to animate
+    if (!u.some(x => x !== 0)) {
+      windStopAnim();
+      windParticleCanvas.getContext('2d').clearRect(0, 0, windParticleCanvas.width, windParticleCanvas.height);
+      return;
+    }
   }
   // Only reset the streaks when the canvas size changes, so stepping through
   // time (or playing) keeps them flowing instead of restarting every frame.
@@ -3295,7 +3338,7 @@ function windStartAnim() {
   if (windAnim) return;
   const loop = () => {
     const mapActive = document.getElementById('view-map').classList.contains('active');
-    if (!mapActive || !isWindLayer() || document.hidden || !windField) { windAnim = null; return; }
+    if (!mapActive || !isLocalLayer() || document.hidden || !windField) { windAnim = null; return; }
     windStep();
     windAnim = requestAnimationFrame(loop);
   };
@@ -3306,7 +3349,7 @@ function windStopAnim() {
   windAnim = null;
 }
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && windField && isWindLayer()) windStartAnim();
+  if (!document.hidden && windField && isLocalLayer()) windStartAnim();
 });
 // Tap the map for a reading at that point (tap again to close it).
 function mapTapReadout(latlng) {
@@ -3315,21 +3358,31 @@ function mapTapReadout(latlng) {
     const h = windHourIndex();
     const w = h >= 0 ? fieldSample(h, latlng.lat, latlng.lng) : null;
     if (!w) return;
+    // u/v point where the wind/waves go; flip back to the FROM direction
+    const dir = (Math.atan2(-w.u, -w.v) * 180 / Math.PI + 360) % 360;
+    const from = (w.u || w.v) ? ` from ${degToCompass(dir)} (${Math.round(dir)}°)` : '';
     if (isWindLayer()) {
-      const dir = (Math.atan2(-w.u, -w.v) * 180 / Math.PI + 360) % 360; // back to FROM direction
-      popup.setContent(`<b>${fmtWind(w.s / KMH_TO_MPH)}</b> ${nwsLayer === 'windgust' ? 'gusts' : 'wind'} from ${degToCompass(dir)} (${Math.round(dir)}°)`);
+      popup.setContent(`<b>${fmtWind(w.s / KMH_TO_MPH)}</b> ${nwsLayer === 'windgust' ? 'gusts' : 'wind'}${from} <span class="muted">· Open-Meteo</span>`);
     } else {
       const p = waveParts(w.s);
-      popup.setContent(`<b>${p.v} ${p.u}</b> waves <span class="muted">· Open-Meteo</span>`);
+      popup.setContent(`<b>${p.v} ${p.u}</b> waves${from} <span class="muted">· Open-Meteo</span>`);
     }
     popup.openOn(nwsMap);
     return;
   }
-  // NOAA bands: the WMS image can't be read, so ask NOAA's forecast for this point (~2 s)
+  // NOAA: the WMS image can't be read, so ask NOAA's forecast for this point (~2 s)
   const when = nwsTimes[nwsTimeIndex] ? nwsTimes[nwsTimeIndex].date : new Date();
+  const layer = nwsLayer;
   popup.setContent('<span class="muted">Loading NOAA forecast…</span>').openOn(nwsMap);
+  const fromDir = (d) => (d != null && !isNaN(d)) ? ` from ${degToCompass(d)} (${Math.round(d)}°)` : '';
   getForecast(latlng.lat, latlng.lng).then(fc => {
     const hr = nearestForecastHour(fc, when);
+    if (layer !== 'waveheight') {
+      const v = hr && (layer === 'windgust' ? hr.windGust : hr.windSpeed);
+      popup.setContent(v == null || isNaN(v) ? '<span class="muted">No NOAA wind forecast here</span>'
+        : `<b>${fmtWind(v)}</b> ${layer === 'windgust' ? 'gusts' : 'wind'}${fromDir(hr.windDir)} <span class="muted">· NOAA</span>`);
+      return;
+    }
     // Land grid cells come back as a placeholder 0 ft with no period
     const noWaves = !hr || hr.waveHeight == null || isNaN(hr.waveHeight) || (hr.waveHeight === 0 && !hr.wavePeriod);
     if (noWaves) {
@@ -3338,20 +3391,19 @@ function mapTapReadout(latlng) {
     }
     const p = waveParts(hr.waveHeight);
     const per = hr.wavePeriod != null && !isNaN(hr.wavePeriod) ? ` @ ${Math.round(hr.wavePeriod)}s` : '';
-    popup.setContent(`<b>${p.v} ${p.u}</b>${per} waves <span class="muted">· NOAA</span>`);
+    popup.setContent(`<b>${p.v} ${p.u}</b>${per} waves${fromDir(hr.swellDir)} <span class="muted">· NOAA</span>`);
   }).catch(() => popup.setContent('<span class="muted">No NOAA forecast for this point</span>'));
 }
 function updateWindArrows() {
   const srcLine = document.getElementById('nws-source-line');
-  if (srcLine) srcLine.firstChild.textContent = isWindLayer()
-    ? 'Wind: Open-Meteo forecast (tap the map for a reading) · '
-    : isWaveBlend()
-      ? 'Waves: Open-Meteo marine forecast (tap the map for a reading) · '
-      : 'Waves: NOAA NDFD (tap the map for a reading) · ';
+  const what = isWindLayer() ? 'Wind' : 'Waves';
+  if (srcLine) srcLine.firstChild.textContent = isLocalLayer()
+    ? `${what}: Open-Meteo ${isWindLayer() ? '' : 'marine '}forecast (tap the map for a reading) · `
+    : `${what}: NOAA NDFD (tap the map for a reading) · `;
   windRedraw();
 }
-function setWaveMapSource(src) {
-  state.waveMapSource = src;
+function setMapSource(src) {
+  state.mapSource = src;
   saveState();
   nwsMap.closePopup();
   nwsShowFrame();
