@@ -2487,8 +2487,8 @@ function initSpotMiniMap(spot) {
       boxZoom: false, keyboard: false, touchZoom: false, tap: false,
       inertia: false
     });
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19, subdomains: 'abcd', crossOrigin: true
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, crossOrigin: true
     }).addTo(spotMiniMap);
     spotMiniMapSpotId = spot.id;
   }
@@ -2597,8 +2597,8 @@ function initSpotLiveMap(spot) {
       boxZoom: false, keyboard: false, touchZoom: false, tap: false,
       inertia: false
     });
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19, subdomains: 'abcd', crossOrigin: true
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, crossOrigin: true
     }).addTo(spotLiveMap);
     spotLiveMapSpotId = spot.id;
   }
