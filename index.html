@@ -467,6 +467,7 @@
     <div id="first-run-tips" class="card" style="display:none; border-color:var(--accent);">
       <h3 style="margin:0 0 8px;">Getting started</h3>
       <ul style="margin:0; padding-left:18px; font-size:13px; line-height:1.6;">
+        <li id="tip-install" hidden></li>
         <li>Tap <span class="inline-icn" data-icon="search"></span> (top right) to add popular beaches.</li>
         <li>Tap <span class="inline-icn" data-icon="plus"></span> to add your own spot, or drop a pin on the <b>Map</b> tab.</li>
         <li>Tap a spot card for live conditions, the hourly forecast, cams and water quality.</li>
@@ -765,7 +766,8 @@ const ICONS = {
   search: '<circle cx="10" cy="10" r="7"/><path d="M21 21l-6 -6"/>',
   plus: '<path d="M12 5l0 14"/><path d="M5 12l14 0"/>',
   pencil: '<path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"/><path d="M13.5 6.5l4 4"/>',
-  chevronRight: '<path d="M9 6l6 6l-6 6"/>'
+  chevronRight: '<path d="M9 6l6 6l-6 6"/>',
+  share: '<path d="M8 9h-1a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-8a2 2 0 0 0 -2 -2h-1"/><path d="M12 14v-11"/><path d="M9 6l3 -3l3 3"/>'
 };
 function icon(name, size = 20) {
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
@@ -776,6 +778,20 @@ new ResizeObserver(([e]) => {
 }).observe(document.querySelector('header'));
 // Fill <span data-icon="..."> placeholders in the static markup
 document.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = icon(el.dataset.icon, 16); });
+// First tip: how to add the app to the home screen, unless it's already
+// running from there. On iPhone the Home Screen app keeps its own storage,
+// separate from Safari, so spots saved in the browser don't carry over.
+(function setInstallTip() {
+  const li = document.getElementById('tip-install');
+  const installed = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const android = /Android/.test(navigator.userAgent);
+  if (!li || installed || !(ios || android)) return;
+  li.innerHTML = ios
+    ? `<b>Add it to your Home Screen first:</b> tap Share <span class="inline-icn">${icon('share', 16)}</span>, then <b>Add to Home Screen</b>. Spots you save here in the browser won't carry over to the Home Screen app.`
+    : `<b>Add it to your home screen:</b> tap <b>⋮</b> (top right), then <b>Add to Home screen</b> or <b>Install app</b>.`;
+  li.hidden = false;
+})();
 const STORAGE_KEY = 'lakesurf-v1';
 const DIRS_8 = ['N','NE','E','SE','S','SW','W','NW'];
 
