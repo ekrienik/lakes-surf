@@ -31,7 +31,7 @@ Line endings: the working copy on Windows is CRLF; `.gitattributes` has `* text=
 | Map tab: NDFD WMS overlay, time slider, wind arrows, spot pins, drop pin | ~2640–3100 |
 | Add/edit spot modal, settings, SW registration | end of file |
 
-## External data (all called straight from the browser, no keys except the public Mesowest token)
+## External data (all called straight from the browser, no keys except the app's own Synoptic public token, `MESOWEST_TOKEN`; the private API key that generates it is never in the repo)
 
 - **Forecast**: NOAA `api.weather.gov/points/{lat},{lon}` → `forecastGridData`. A coordinate on land gets a grid cell with no wave data, so built-in spots sit a few hundred metres offshore (e.g. Bradford Beach is at `-87.866`, not the beach's `-87.873`). When adding a spot, probe the gridpoint and check `waveHeight.values` isn't a single `0`.
 - **Live obs**: Synoptic/Mesowest `latest` + `timeseries`. Quirk: most Lake Michigan buoys are listed twice (`45186` and `NDBC45186`); only the NDBC listing has `mean_wave_direction`/`dominant_wave_period`. `dedupeByStation()` merges listings (richest = base STID). Many buoys are pulled out of the water Nov–Apr.
