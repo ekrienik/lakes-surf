@@ -18,6 +18,9 @@
 <meta property="og:image:height" content="512" />
 <meta name="twitter:card" content="summary" />
 
+<!-- Anonymous visit counts (GoatCounter: no cookies, nothing personal). See gcEvent(). -->
+<script data-goatcounter="https://ekrienik.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
+
 <!-- iOS PWA -->
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -653,7 +656,7 @@
       <h3 style="margin-top:0;">About</h3>
       <p class="muted">Forecast data: NOAA <a href="https://api.weather.gov" target="_blank" rel="noopener" style="color:var(--accent)">api.weather.gov</a>. Live observations: <a href="https://synopticdata.com" target="_blank" rel="noopener" style="color:var(--accent)">Synoptic Mesowest</a>.</p>
       <p class="muted">Forecasts can be wrong. Check conditions, water temp and beach rules before you paddle out.</p>
-      <p class="muted">No account, no tracking. Saved spots live on this device.</p>
+      <p class="muted">No account, no cookies. Saved spots live only on this device. We count visits anonymously (GoatCounter) to see how the app is used; nothing personal is collected, and your own spots are never sent.</p>
       <p class="muted">Found a bug, wrong data or a spot we're missing? <a href="https://docs.google.com/forms/d/e/1FAIpQLSfOGKu4AM8GqL1iYE1HAaOnQ5QbZ3pDXrYndv70S662CKwTSA/viewform" target="_blank" rel="noopener" style="color:var(--accent)">Send feedback</a></p>
     </div>
   </section>
@@ -1074,6 +1077,7 @@ function switchView(name) {
   document.querySelectorAll('nav.tabbar button').forEach(b => b.classList.toggle('active', b.dataset.view === name));
   const view = document.getElementById('view-' + name);
   if (view) view.classList.add('active');
+  if (name === 'map' || name === 'settings') gcEvent('tab/' + name, name === 'map' ? 'Map tab' : 'Settings tab');
   viewRenderedAt = Date.now();
   document.getElementById('header-back').hidden = name !== 'forecast';
 
@@ -2165,6 +2169,7 @@ async function renderLiveCharts(spot, live) {
 async function openForecast(spotId) {
   const spot = state.spots.find(s => s.id === spotId);
   if (!spot) return;
+  gcSpotEvent(spot);
   currentSpotId = spotId;
   currentLive = null;
   selectedHourIndex = null;
@@ -4112,6 +4117,24 @@ function addPopularSpot(popularId) {
 /* ============================================================================
    Util + boot
    ============================================================================ */
+
+// GoatCounter events, each counted at most once per app launch. Only built-in
+// spot names are ever sent; a user's own spots count as "custom" (no name or
+// location). Does nothing if the counter is blocked or hasn't loaded.
+const gcCounted = new Set();
+function gcEvent(path, title) {
+  if (gcCounted.has(path) || !window.goatcounter || !window.goatcounter.count) return;
+  gcCounted.add(path);
+  try { window.goatcounter.count({ path, title: title || path, event: true }); } catch (e) {}
+}
+function gcSpotEvent(spot) {
+  const pop = spot.builtinId && POPULAR_SPOTS.find(p => p.id === spot.builtinId);
+  gcEvent(pop ? 'spot/' + pop.id.replace('pop_', '') : 'spot/custom', pop ? pop.name : 'Custom spot');
+}
+window.addEventListener('load', () => {
+  const installed = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  gcEvent(installed ? 'open/installed-app' : 'open/browser', installed ? 'Opened installed app' : 'Opened in browser');
+});
 
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
