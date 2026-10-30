@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
 <meta name="theme-color" content="#122336" />
 <title>Lakes Surf</title>
+<meta name="description" content="Great Lakes surf forecast: live buoy readings, 7-day hourly waves and wind, cams and maps for your local spots." />
+
+<!-- Link preview (iMessage, WhatsApp, Facebook, Slack) -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Lakes Surf" />
+<meta property="og:title" content="Lakes Surf · Great Lakes surf forecast" />
+<meta property="og:description" content="Live buoy readings, 7-day hourly waves and wind, cams and maps for your local spots." />
+<meta property="og:url" content="https://ekrienik.github.io/lakes-surf/" />
+<meta property="og:image" content="https://ekrienik.github.io/lakes-surf/icon-512.png" />
+<meta property="og:image:width" content="512" />
+<meta property="og:image:height" content="512" />
+<meta name="twitter:card" content="summary" />
 
 <!-- iOS PWA -->
 <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1257,7 +1269,10 @@ function sampleAt(series, t) {
 
 let stationsCache = null;
 let stationsCacheTime = 0;
-const STATIONS_CACHE_MS = 90 * 1000; // 90 sec — re-fetch quickly so the live timestamps stay current
+// Live readings refresh every 5 min while the app is on screen. Every fetch
+// counts against the Synoptic token's monthly allowance, and buoys only
+// report about every 10 min anyway.
+const STATIONS_CACHE_MS = 5 * 60 * 1000;
 let stationsInflight = null;
 
 async function fetchAllLakeStations() {
@@ -4105,8 +4120,10 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-function refreshLiveData() {
-  stationsCache = null; stationsCacheTime = 0;
+// force: skip the 5-min cache (timer and tap-to-refresh); otherwise (resume)
+// cached readings are reused until they're 5 min old
+function refreshLiveData(force) {
+  if (force) { stationsCache = null; stationsCacheTime = 0; }
   const spotsView = document.getElementById('view-spots');
   const forecastView = document.getElementById('view-forecast');
   if (spotsView && spotsView.classList.contains('active')) {
@@ -4139,7 +4156,7 @@ function refreshStaleView() {
 function onResume() {
   if (!refreshStaleView()) refreshLiveData();
 }
-setInterval(refreshLiveData, 2 * 60 * 1000);
+setInterval(() => { if (!document.hidden) refreshLiveData(true); }, STATIONS_CACHE_MS);
 
 // Also refresh when the app becomes visible (iOS PWA backgrounding throttles
 // setInterval timers, so users would otherwise see hours-old data on resume).
@@ -4161,7 +4178,8 @@ window.addEventListener('pageshow', () => {
 document.addEventListener('click', (e) => {
   const liveCard = e.target.closest('#live-card');
   if (liveCard) {
-    refreshLiveData();
+    // At most one forced fetch a minute, however often the card is tapped
+    refreshLiveData(Date.now() - stationsCacheTime > 60 * 1000);
     // Brief visual feedback
     liveCard.style.transition = 'opacity 0.15s';
     liveCard.style.opacity = '0.55';
