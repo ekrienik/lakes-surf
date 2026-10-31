@@ -4,7 +4,7 @@
    Cross-origin requests (api.weather.gov, weather.gov iframe, etc.) are NOT
    intercepted at all — they go straight to the browser's network stack.
 */
-const CACHE = 'lakes-surf-v5_31_0';
+const CACHE = 'lakes-surf-v5_32_0';
 const SHELL = [
   './',
   './index.html',

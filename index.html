@@ -290,6 +290,16 @@
   #nws-map-wrap { position: relative; flex: 1 1 auto; min-height: 240px; }
   #nws-map { width: 100%; height: 100%; min-height: 240px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #0b1622; }
   #nws-map.pin-mode { cursor: crosshair; }
+  #map-search { position: relative; z-index: 1100; /* results open over Leaflet's controls (z 1000) */ display: flex; gap: 6px; margin: 0 0 8px; flex: 0 0 auto; }
+  #map-search input { flex: 1; min-width: 0; padding: 8px 12px; }
+  #map-search .btn { padding: 0 12px; display: inline-flex; align-items: center; }
+  #map-search-results { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 700; background: var(--bg-2);
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.45); }
+  #map-search-results button { display: block; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--border);
+    color: var(--fg); padding: 10px 12px; font: inherit; font-size: 14px; cursor: pointer; }
+  #map-search-results button:first-child { border-top: 0; }
+  #map-search-results .sub { display: block; font-size: 11px; color: var(--fg-dim); margin-top: 2px; }
+  #map-search-results .none { padding: 10px 12px; font-size: 13px; color: var(--fg-dim); }
   #nws-drop-pin-btn { position: absolute; top: 10px; right: 10px; z-index: 500; box-shadow: 0 2px 10px rgba(0,0,0,0.4); }
   #nws-drop-pin-btn.active { background: var(--r-1); color: #fff; border: 1px solid var(--r-1); }
   #nws-map-loading { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 500; background: rgba(4,36,58,0.85); color: var(--fg); font-size: 11px; padding: 4px 10px; border-radius: 999px; display: none; pointer-events: none; }
@@ -319,7 +329,7 @@
   .leaflet-popup-content { color: #04243a; font-size: 13px; margin: 10px 12px; line-height: 1.35; }
   .leaflet-popup-content .muted { color: #5a6f85; }
   label { display: block; margin: 12px 0 4px; font-size: 13px; color: var(--fg-dim); }
-  input[type="text"], input[type="number"], select {
+  input[type="text"], input[type="number"], input[type="search"], select {
     width: 100%; background: var(--bg-3); border: 1px solid var(--border);
     border-radius: 8px; padding: 10px 12px; color: var(--fg); font-size: 15px; font-family: inherit;
   }
@@ -571,6 +581,11 @@
   </section>
 
   <section id="view-map" class="view">
+    <form id="map-search" onsubmit="event.preventDefault(); mapSearch();">
+      <input type="search" id="map-search-input" placeholder="Search a beach or town" enterkeyhint="search" autocomplete="off" />
+      <button type="submit" class="btn small" aria-label="Search"><span data-icon="search"></span></button>
+      <div id="map-search-results" hidden></div>
+    </form>
     <div id="nws-map-wrap">
       <div id="nws-map"></div>
       <button id="nws-drop-pin-btn" class="btn small" onclick="toggleNwsDropPinMode()">+ Drop pin</button>
@@ -711,7 +726,7 @@
       <button class="btn ghost" onclick="closeSpotModal()">Cancel</button>
       <div>
         <button class="btn danger" id="modal-delete" style="display:none; margin-right:6px;" onclick="deleteCurrentSpot()">Delete</button>
-        <button class="btn" onclick="saveSpotModal()">Save</button>
+        <button class="btn" id="spot-save-btn" onclick="saveSpotModal()">Save</button>
       </div>
     </div>
   </div>
@@ -1216,6 +1231,10 @@ function toast(msg) {
 
 const forecastCache = new Map();
 const CACHE_MS = 30 * 60 * 1000;
+
+// Where a spot's NOAA forecast comes from: its own coordinates, or, for a pin
+// dropped on land, a point moved out into the lake (findForecastPoint).
+function forecastLatLon(s) { return s.fcLat != null ? [s.fcLat, s.fcLon] : [s.lat, s.lon]; }
 
 async function getForecast(lat, lon) {
   const key = `${lat.toFixed(3)},${lon.toFixed(3)}`;
@@ -1821,7 +1840,7 @@ async function renderSpots() {
 const spotCardData = new Map();
 
 async function loadSpotSummary(spot) {
-  const data = await getForecast(spot.lat, spot.lon);
+  const data = await getForecast(...forecastLatLon(spot));
   const T = { ...state.defaults, ...(spot.thresholds || {}), offshoreDirs: spot.offshoreDirs || [] };
   spotCardData.set(spot.id, { ...(spotCardData.get(spot.id) || {}), fc: data.hours[0] });
   updateNowChip(spot);
@@ -2296,7 +2315,7 @@ async function openForecast(spotId, dayIndex) {
   renderWaterQualityCard(spot);
 
   try {
-    const fc = await getForecast(spot.lat, spot.lon);
+    const fc = await getForecast(...forecastLatLon(spot));
     // A slower response for a spot the user already left must not overwrite the new one
     if (currentSpotId !== spot.id) return;
     currentForecast = fc;
@@ -3738,6 +3757,47 @@ async function initNwsMapIfNeeded() {
   // grids load on demand in nwsShowFrame() when their layer is shown.
   loadAllSpotMapForecasts().then(() => updateSpotMapMarkers());
 }
+// Map search: OpenStreetMap (Nominatim) places within the Great Lakes region.
+// Runs on Search/Enter only; Nominatim's usage policy forbids search-as-you-type.
+const GREAT_LAKES_VIEWBOX = '-92.6,49.2,-75.4,40.9';
+async function mapSearch() {
+  const input = document.getElementById('map-search-input');
+  const box = document.getElementById('map-search-results');
+  const q = input.value.trim();
+  if (!q) { box.hidden = true; return; }
+  box.innerHTML = '<div class="none">Searching…</div>';
+  box.hidden = false;
+  let list = null;
+  try {
+    const r = await fetch(`${NOMINATIM}/search?format=jsonv2&q=${encodeURIComponent(q)}&viewbox=${GREAT_LAKES_VIEWBOX}&bounded=1&limit=6`);
+    if (r.ok) list = await r.json();
+  } catch (e) { list = null; }
+  if (input.value.trim() !== q) return; // a newer search replaced this one
+  if (!list || !list.length) {
+    box.innerHTML = `<div class="none">${list ? 'No places found near the Great Lakes' : 'Search failed, check your connection'}</div>`;
+    return;
+  }
+  mapSearchResults = list;
+  box.innerHTML = list.map((p, i) => {
+    const parts = p.display_name.split(', ');
+    const title = p.name || parts[0];
+    const sub = parts.filter(x => x !== title).slice(0, 3).join(', ');
+    return `<button type="button" onclick="mapSearchGo(${i})">${escapeHtml(title)}<span class="sub">${escapeHtml(sub)}</span></button>`;
+  }).join('');
+}
+let mapSearchResults = [];
+function mapSearchGo(i) {
+  const p = mapSearchResults[i];
+  if (!p || !nwsMap) return;
+  document.getElementById('map-search-results').hidden = true;
+  document.getElementById('map-search-input').blur();
+  // Street-level when dropping a pin; otherwise as close as the layers allow
+  nwsMap.setView([+p.lat, +p.lon], nwsDropPinMode ? 15 : NWS_MAX_ZOOM);
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#map-search')) document.getElementById('map-search-results').hidden = true;
+});
+
 function toggleNwsDropPinMode() {
   nwsDropPinMode = !nwsDropPinMode;
   const btn = document.getElementById('nws-drop-pin-btn');
@@ -3798,7 +3858,7 @@ function nwsMapForward() {
 
 function spotMapEntries() {
   // Combine saved spots + popular spots (deduped by builtinId AND by coord proximity ~500m)
-  const entries = state.spots.map(s => ({ name: s.name, lat: s.lat, lon: s.lon, savedSpotId: s.id, offshoreDirs: s.offshoreDirs || [], thresholds: s.thresholds }));
+  const entries = state.spots.map(s => ({ name: s.name, lat: s.lat, lon: s.lon, fcLat: s.fcLat, fcLon: s.fcLon, savedSpotId: s.id, offshoreDirs: s.offshoreDirs || [], thresholds: s.thresholds }));
   for (const p of POPULAR_SPOTS) {
     const alreadyHave = state.spots.some(s => s.builtinId === p.id || haversineMiles(s.lat, s.lon, p.lat, p.lon) < 0.31);
     if (alreadyHave) continue;
@@ -3825,7 +3885,7 @@ async function loadAllSpotMapForecasts() {
     const key = `${e.lat.toFixed(3)},${e.lon.toFixed(3)}`;
     // Keep the old forecast on screen until a fresh one replaces it
     if (spotMapForecasts[key] && Date.now() - (spotMapForecastsAt[key] || 0) < FORECAST_STALE_MS) return;
-    try { spotMapForecasts[key] = await getForecast(e.lat, e.lon); spotMapForecastsAt[key] = Date.now(); }
+    try { spotMapForecasts[key] = await getForecast(...forecastLatLon(e)); spotMapForecastsAt[key] = Date.now(); }
     catch (err) { console.warn('Spot map forecast fail', e.name, err); }
   }));
 }
@@ -4006,10 +4066,12 @@ function inGreatLakes(lon, lat) {
   });
   return inside;
 }
-function guessOffshoreDirs(lat, lon) {
-  if (!greatLakesRings) return [];
+// Share of land along each 10° bearing out to 4 km (36 values), or null when
+// the point is in open water or well inland
+function landShares(lat, lon) {
+  if (!greatLakesRings) return null;
   const kmLat = 1 / 111, kmLon = 1 / (111 * Math.cos(lat * Math.PI / 180));
-  const land = []; // share of land along each 10° bearing
+  const land = [];
   for (let b = 0; b < 360; b += 10) {
     const s = Math.sin(b * Math.PI / 180), c = Math.cos(b * Math.PI / 180);
     let n = 0, l = 0;
@@ -4017,15 +4079,45 @@ function guessOffshoreDirs(lat, lon) {
     land.push(l / n);
   }
   const total = land.reduce((a, f) => a + f, 0);
-  if (total < 1 || total > land.length - 2) return []; // open water, or inland
+  return (total < 1 || total > land.length - 2) ? null : land;
+}
+// Compass bearing (degrees) toward the middle of the land
+function landBearing(land) {
   let vx = 0, vy = 0;
   land.forEach((f, i) => { vx += Math.sin(i * Math.PI / 18) * f; vy += Math.cos(i * Math.PI / 18) * f; });
-  const mid = Math.round(((Math.atan2(vx, vy) * 180 / Math.PI + 360) % 360) / 45) % 8;
+  return (Math.atan2(vx, vy) * 180 / Math.PI + 360) % 360;
+}
+function guessOffshoreDirs(lat, lon) {
+  const land = landShares(lat, lon);
+  if (!land) return [];
+  const mid = Math.round(landBearing(land) / 45) % 8;
   const sectorLand = (i) => {
     const near = land.filter((f, k) => Math.abs(((k * 10 - i * 45 + 540) % 360) - 180) <= 22.5);
     return near.reduce((a, f) => a + f, 0) / near.length;
   };
   return [mid, (mid + 7) % 8, (mid + 1) % 8].filter((i, n) => n === 0 || sectorLand(i) >= 0.5).map(i => DIRS_8[i]);
+}
+
+// NOAA's grid has no waves over land, so a pin dropped on the beach would
+// forecast "flat" forever (why the built-in spots sit a few hundred metres
+// offshore). If the pin's grid cell has no wave heights, step out into the
+// lake, away from the land, until one does. Returns {lat, lon} for the
+// forecast, or null to keep using the pin.
+async function findForecastPoint(lat, lon) {
+  const hasWaves = async (la, lo) => {
+    try { return (await getForecast(la, lo)).hours.some(h => h.waveHeight > 0); } catch (e) { return false; }
+  };
+  if (await hasWaves(lat, lon)) return null;
+  await greatLakesReady;
+  const land = landShares(lat, lon);
+  if (!land) return null;
+  const out = (landBearing(land) + 180) * Math.PI / 180;
+  for (const km of [0.3, 0.6, 1, 1.5, 2.5, 4]) {
+    const la = +(lat + Math.cos(out) * km / 111).toFixed(4);
+    const lo = +(lon + Math.sin(out) * km / (111 * Math.cos(lat * Math.PI / 180))).toFixed(4);
+    if (await hasWaves(la, lo)) return { lat: la, lon: lo };
+  }
+  return null;
 }
 function getSelectedDirs() {
   return [...document.querySelectorAll('#spot-dirs button.on')].map(b => b.dataset.dir);
@@ -4072,7 +4164,7 @@ async function fillSuggestedName(lat, lon) {
   input.value = name;
   if (document.activeElement === input) input.select(); // typing replaces it
 }
-function saveSpotModal() {
+async function saveSpotModal() {
   const name = document.getElementById('spot-name').value.trim();
   const lat = parseFloat(document.getElementById('spot-lat').value);
   const lon = parseFloat(document.getElementById('spot-lon').value);
@@ -4080,10 +4172,22 @@ function saveSpotModal() {
   const cam = (document.getElementById('spot-cam').value || '').trim() || null;
   if (!name) { toast('Name is required'); return; }
   if (isNaN(lat) || isNaN(lon)) { toast('Valid coordinates required'); return; }
+  const editing = editingSpotId && state.spots.find(s => s.id === editingSpotId);
+  // New or moved spots: check the forecast has waves there (findForecastPoint)
+  let fc = editing ? { lat: editing.fcLat, lon: editing.fcLon } : null;
+  if (!editing || editing.lat !== lat || editing.lon !== lon) {
+    const btn = document.getElementById('spot-save-btn');
+    btn.disabled = true; btn.textContent = 'Checking forecast…';
+    try { fc = await findForecastPoint(lat, lon); } catch (e) { fc = null; }
+    btn.disabled = false; btn.textContent = 'Save';
+    if (!document.getElementById('modal-spot').classList.contains('open')) return; // cancelled meanwhile
+  }
+  const fcLat = fc && fc.lat != null ? fc.lat : undefined, fcLon = fc && fc.lat != null ? fc.lon : undefined;
   if (editingSpotId) {
     const spot = state.spots.find(s => s.id === editingSpotId);
     if (spot) {
       spot.name = name; spot.lat = lat; spot.lon = lon; spot.offshoreDirs = dirs;
+      spot.fcLat = fcLat; spot.fcLon = fcLon;
       if (cam !== spot.cam) {
         // The backup link and "Nearest cam" label belong to the old cam
         spot.camAlt = null; spot.camLabel = null;
@@ -4092,7 +4196,7 @@ function saveSpotModal() {
       spot.cam = cam;
     }
   } else {
-    state.spots.push({ id: 'sp_' + Math.random().toString(36).slice(2,10), name, lat, lon, offshoreDirs: dirs, thresholds: null, cam });
+    state.spots.push({ id: 'sp_' + Math.random().toString(36).slice(2,10), name, lat, lon, fcLat, fcLon, offshoreDirs: dirs, thresholds: null, cam });
   }
   saveState();
   closeSpotModal();
@@ -4287,6 +4391,8 @@ function importData() {
           id: /^sp_[a-z0-9]+$/i.test(sp.id) ? sp.id : 'sp_' + Math.random().toString(36).slice(2, 10),
           name: String(sp.name || 'Spot'),
           lat: parseFloat(sp.lat), lon: parseFloat(sp.lon),
+          fcLat: isFinite(parseFloat(sp.fcLat)) ? parseFloat(sp.fcLat) : undefined,
+          fcLon: isFinite(parseFloat(sp.fcLon)) ? parseFloat(sp.fcLon) : undefined,
           offshoreDirs: Array.isArray(sp.offshoreDirs) ? sp.offshoreDirs.filter(d => DIRS_8.includes(d)) : []
         })).filter(sp => !isNaN(sp.lat) && !isNaN(sp.lon));
         // Run the file through loadState() so defaults/units are merged and
