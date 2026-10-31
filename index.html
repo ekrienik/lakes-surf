@@ -2254,6 +2254,7 @@ async function openForecast(spotId, dayIndex) {
   // Default to the Live sub-tab when opening a spot.
   selectSubtab(dayIndex != null ? 'forecast' : 'live');
   switchView('forecast');
+  window.scrollTo(0, 0); // don't carry over how far down the Spots list was scrolled
   document.getElementById('header-title').textContent = spot.name;
   document.getElementById('header-sub').textContent = '';
   const action = document.getElementById('header-action');
