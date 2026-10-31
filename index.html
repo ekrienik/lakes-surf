@@ -489,7 +489,7 @@
       <ul style="margin:0; padding-left:18px; font-size:13px; line-height:1.6;">
         <li id="tip-install" hidden></li>
         <li>Tap <span class="inline-icn" data-icon="plus"></span> (top right) to add popular beaches.</li>
-        <li>Tap <span class="inline-icn" data-icon="search"></span> to find your own beach on the map and drop a pin.</li>
+        <li>Tap <span class="inline-icn" data-icon="search"></span> to find your own beach on the map and add it.</li>
         <li>Tap a spot card for live conditions, the hourly forecast, cams and water quality.</li>
         <li>Each day's color is its best rating, from <b>Epic</b> to <b>Poor</b>; tap a day to open its forecast. Tap <span class="inline-icn" data-icon="pencil"></span> to reorder or delete spots.</li>
         <li>Change units and ratings in <b>Settings</b>.</li>
@@ -499,9 +499,9 @@
     <div id="spots-list"></div>
     <div id="spots-empty" class="empty" style="display:none;">
       <h2>No saved spots yet</h2>
-      <p>Browse the popular Lake Michigan breaks, or find your beach on the map and drop a pin.</p>
+      <p>Browse the popular Lake Michigan breaks, or find your beach on the map and add it.</p>
       <button class="btn" onclick="openPopularSpotsModal()">★ Browse popular spots</button>
-      <div style="margin-top:10px;"><button class="btn ghost" onclick="startAddSpotOnMap()">+ Drop a pin on the map</button></div>
+      <div style="margin-top:10px;"><button class="btn ghost" onclick="startAddSpotOnMap()">+ Add a spot from the map</button></div>
     </div>
   </section>
 
@@ -588,7 +588,7 @@
     </form>
     <div id="nws-map-wrap">
       <div id="nws-map"></div>
-      <button id="nws-drop-pin-btn" class="btn small" onclick="toggleNwsDropPinMode()">+ Drop pin</button>
+      <button id="nws-drop-pin-btn" class="btn small" onclick="toggleNwsDropPinMode()">+ Add spot</button>
       <div id="nws-map-loading">Loading forecast…</div>
     </div>
     <div id="nws-map-controls">
@@ -3113,7 +3113,12 @@ const NWS_LAYERS = {
 const NWS_OPACITY = 0.8;
 let nwsMap = null, nwsOverlay = null, nwsTimes = [], nwsTimesAt = 0, nwsTimeIndex = 0, nwsLayer = 'waveheight';
 let nwsPlayInterval = null, nwsPrefetchToken = 0, nwsMoveTimer = null, nwsDropPinMode = false;
-const NWS_MAX_ZOOM = 11; // the forecast layers are too coarse to zoom further (pin mode allows 17)
+// The map zooms to street level, but the wave/wind layers hide past zoom 11:
+// their grids are 2.5–55 km and the lake outline that clips them is simplified
+// to ~500 m, so closer in they show no more detail and miss the shoreline.
+const NWS_MAX_ZOOM = 17;
+const NWS_LAYER_MAX_ZOOM = 11;
+function nwsLayerHidden() { return nwsDropPinMode || (nwsMap && nwsMap.getZoom() > NWS_LAYER_MAX_ZOOM); }
 const nwsImgCache = new Map(); // url -> HTMLImageElement (warms the browser cache)
 
 // Valid-time list: [["2026-10-29T06:00","2026-10-28T22:30"], ...] (valid, issuance), UTC.
@@ -3156,11 +3161,13 @@ function nwsViewSpec() {
 }
 function nwsShowFrame() {
   if (!nwsMap) return;
-  // Dropping a pin: bare basemap so the shoreline shows, and nothing to load
-  if (nwsDropPinMode) {
+  // Adding a spot, or zoomed in past the layers' detail: bare basemap so the
+  // shoreline shows, and nothing to load
+  if (nwsLayerHidden()) {
     if (nwsOverlay) { nwsOverlay.remove(); nwsOverlay = null; }
     const loading = document.getElementById('nws-map-loading');
-    loading.textContent = 'Zoom in and tap where you surf';
+    loading.textContent = nwsDropPinMode ? 'Zoom in and tap where you surf'
+      : `Zoom out to see ${nwsLayer === 'waveheight' ? 'waves' : nwsLayer === 'windgust' ? 'gusts' : 'wind'}`;
     loading.style.display = 'block';
     updateWindArrows(); // hides the wind/wave field (windRedraw)
     updateSpotMapMarkers();
@@ -3209,7 +3216,7 @@ function nwsShowFrame() {
 }
 // Warm the browser cache for the frames around the current one so play is smooth.
 function nwsPrefetch() {
-  if (!nwsMap || !nwsTimes.length || isLocalLayer() || nwsDropPinMode) return;
+  if (!nwsMap || !nwsTimes.length || isLocalLayer() || nwsLayerHidden()) return;
   const token = ++nwsPrefetchToken;
   const spec = nwsViewSpec();
   const order = [];
@@ -3531,7 +3538,7 @@ function windEnsureCanvases() {
 }
 function windRedraw() {
   if (!nwsMap) return;
-  const show = isLocalLayer() && fieldGrid() && windHourIndex() >= 0 && !nwsDropPinMode;
+  const show = isLocalLayer() && fieldGrid() && windHourIndex() >= 0 && !nwsLayerHidden();
   document.getElementById('nws-map').classList.toggle('wind-mode', isLocalLayer());
   if (!show) { if (windWrap) windWrap.style.display = 'none'; windStopAnim(); return; }
   windEnsureCanvases();
@@ -3733,7 +3740,7 @@ async function initNwsMapIfNeeded() {
       maxZoom: 18, attribution: '© OpenStreetMap · NOAA NDFD · Open-Meteo'
     }).addTo(nwsMap);
     nwsMap.fitBounds([[41.5, -88.0], [46.1, -84.7]]); // Lake Michigan, same as Spot Map
-    // Tap-to-drop after pressing "+ Drop pin"; long-press / right-click also works.
+    // Tap-to-drop after pressing "+ Add spot"; long-press / right-click also works.
     nwsMap.on('click', e => {
       if (!nwsDropPinMode) {
         if (popupOpen) nwsMap.closePopup(); else mapTapReadout(e.latlng);
@@ -3806,7 +3813,7 @@ function mapSearchGo(i) {
   document.getElementById('map-search-results').hidden = true;
   document.getElementById('map-search-input').blur();
   // Street-level when dropping a pin; otherwise as close as the layers allow
-  nwsMap.setView([+p.lat, +p.lon], nwsDropPinMode ? 15 : NWS_MAX_ZOOM);
+  nwsMap.setView([+p.lat, +p.lon], nwsDropPinMode ? 15 : NWS_LAYER_MAX_ZOOM);
 }
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#map-search')) document.getElementById('map-search-results').hidden = true;
@@ -3816,16 +3823,14 @@ function toggleNwsDropPinMode() {
   nwsDropPinMode = !nwsDropPinMode;
   const btn = document.getElementById('nws-drop-pin-btn');
   if (btn) {
-    btn.textContent = nwsDropPinMode ? '✕ Cancel' : '+ Drop pin';
+    btn.textContent = nwsDropPinMode ? '✕ Cancel' : '+ Add spot';
     btn.classList.toggle('active', nwsDropPinMode);
   }
   const mapEl = document.getElementById('nws-map');
   if (mapEl) mapEl.classList.toggle('pin-mode', nwsDropPinMode);
   if (!nwsMap) return;
-  // Pin mode hides the wave/wind layer (nwsShowFrame) and allows street-level
-  // zoom; leaving it zooms back out to the layer's limit if needed.
+  // Pin mode hides the wave/wind layer (nwsShowFrame) so the shoreline shows
   if (nwsDropPinMode) nwsMapPause();
-  nwsMap.setMaxZoom(nwsDropPinMode ? 17 : NWS_MAX_ZOOM);
   nwsShowFrame();
   nwsUpdateLegend();
 }
