@@ -74,14 +74,17 @@
     background: var(--bg); color: var(--fg);
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
     font-size: 15px; line-height: 1.4;
-    padding-top: var(--safe-top);
     padding-bottom: calc(64px + var(--safe-bot));
   }
+  /* The header itself covers the status-bar area (notch / Dynamic Island) via
+     its top padding. With that space on <body> instead, it scrolled away and
+     left a status-bar-high gap under the header that the sticky bars below,
+     offset by it, showed cards through. */
   header {
     position: sticky; top: 0;
     background: linear-gradient(180deg, var(--bg-2), var(--bg));
     border-bottom: 1px solid var(--border);
-    padding: 14px 16px 12px; z-index: 50;
+    padding: calc(14px + var(--safe-top)) 16px 12px; z-index: 50;
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
   }
   header h1 { font-size: 18px; margin: 0; font-weight: 600; letter-spacing: 0.3px; }
@@ -183,7 +186,7 @@
   /* Sticky day-of-week header on the Spots tab */
   .spots-day-header {
     position: sticky;
-    top: calc(var(--safe-top, 0px) + 72px);
+    top: var(--hdr-h, 72px); /* flush under the header (its measured height) */
     z-index: 40;
     background: var(--bg);
     padding: 8px 14px 10px;
@@ -205,7 +208,7 @@
     /* Sticky below the main app header + sub-tab bar so days stay visible
        while scrolling the hourly table */
     position: sticky;
-    top: calc(var(--safe-top, 0px) + var(--hdr-h, 72px) + 48px);
+    top: calc(var(--hdr-h, 72px) + var(--subtab-h, 48px));
     z-index: 40;
     background: var(--bg);
     padding: 8px 0 10px;
@@ -253,8 +256,8 @@
   /* Page-colored backing so rows sliding under the strip don't show through its rounded corners */
   .hourly-head {
     position: sticky; z-index: 35; background: var(--bg);
-    /* header + sub-tab bar (48) + day tabs (measured into --daytabs-h) */
-    top: calc(var(--safe-top, 0px) + var(--hdr-h, 72px) + 48px + var(--daytabs-h, 67px));
+    /* header + sub-tab bar + day tabs (each measured: --hdr-h, --subtab-h, --daytabs-h) */
+    top: calc(var(--hdr-h, 72px) + var(--subtab-h, 48px) + var(--daytabs-h, 67px));
     margin: -1px -1px 0; /* sit over the card's top border and redraw it below */
   }
   .hourly-head-scroll { overflow: hidden; border: 1px solid var(--border); border-bottom: 0; border-radius: 14px 14px 0 0; background: var(--bg-2); }
@@ -400,7 +403,7 @@
     position: sticky;
     /* --hdr-h is the header's measured height (it's shorter on spot pages,
        which have no subtitle); set by a ResizeObserver on <header> */
-    top: calc(var(--safe-top, 0px) + var(--hdr-h, 72px));
+    top: var(--hdr-h, 72px);
     z-index: 45;
     background: var(--bg);
     padding: 8px 0 10px;
@@ -799,10 +802,17 @@ const ICONS = {
 function icon(name, size = 20) {
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
 }
-// Track the header's height so the sticky bars below it sit flush (--hdr-h)
-new ResizeObserver(([e]) => {
-  document.documentElement.style.setProperty('--hdr-h', e.target.offsetHeight + 'px');
-}).observe(document.querySelector('header'));
+// Track the header's and spot sub-tab bar's heights so the sticky bars below
+// them sit flush (--hdr-h, --subtab-h). The header's includes the status-bar area.
+const stickyHeights = new ResizeObserver(entries => {
+  for (const e of entries) {
+    const h = e.target.offsetHeight;
+    if (!h) continue; // hidden (spot pages closed): keep the last value
+    document.documentElement.style.setProperty(e.target.tagName === 'HEADER' ? '--hdr-h' : '--subtab-h', h + 'px');
+  }
+});
+stickyHeights.observe(document.querySelector('header'));
+stickyHeights.observe(document.getElementById('subtab-bar'));
 // Fill <span data-icon="..."> placeholders in the static markup
 document.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = icon(el.dataset.icon, 16); });
 // First tip: how to add the app to the home screen, unless it's already
