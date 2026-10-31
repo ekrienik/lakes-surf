@@ -157,7 +157,9 @@
   .live-line .rel.on { color: #f09595; }
   .day-strip .d[role=button] { cursor: pointer; }
   .day-strip .d[role=button]:active { background: var(--bg-2); }
-  .drag-handle { touch-action: none; cursor: grab; color: var(--fg-dim); font-size: 20px; line-height: 1; padding: 6px 12px 6px 2px; margin-right: 4px; user-select: none; }
+  /* Boxed like the small Delete button beside it, in the accent color */
+  .drag-handle { touch-action: none; cursor: grab; user-select: none; display: inline-flex; align-items: center; justify-content: center;
+    color: var(--accent); border: 1px solid var(--accent); border-radius: 8px; font-size: 16px; line-height: 1; padding: 6px 10px; margin-right: 12px; }
   .loc-card.dragging { position: relative; z-index: 5; box-shadow: 0 8px 24px rgba(0,0,0,0.45); transition: none; }
 
   .chip {
