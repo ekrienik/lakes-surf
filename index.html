@@ -693,16 +693,17 @@
     <div class="grid2">
       <div>
         <label>Latitude</label>
-        <input type="number" id="spot-lat" step="0.0001" placeholder="43.7508" />
+        <input type="number" id="spot-lat" step="0.0001" placeholder="43.7508" oninput="autoFillDirs()" />
       </div>
       <div>
         <label>Longitude</label>
-        <input type="number" id="spot-lon" step="0.0001" placeholder="-87.7145" />
+        <input type="number" id="spot-lon" step="0.0001" placeholder="-87.7145" oninput="autoFillDirs()" />
       </div>
     </div>
     <label>Offshore wind directions (best for this spot)</label>
     <p class="muted" style="margin:0;">Pick the directions wind should come <b>from</b> for clean surf. Tap to toggle.</p>
     <div class="dir-grid" id="spot-dirs"></div>
+    <p class="muted" id="spot-dirs-note" style="margin:6px 0 0; font-size:12px;" hidden>Pre-selected from the shoreline: wind blowing off the land. Lake days are often best just past cross-shore, so adjust to taste.</p>
     <label>Live cam URL (optional)</label>
     <input type="text" id="spot-cam" placeholder="https://www.youtube.com/watch?v=..." />
     <p class="muted" style="margin:4px 0 0; font-size:11px;">YouTube URLs embed automatically. Other sites open in a new tab.</p>
@@ -3895,7 +3896,9 @@ function showAddSpotModal(prefill) {
     sub.textContent = '';
     sub.style.display = 'none';
   }
+  dirsTouched = false;
   renderDirGrid([]);
+  autoFillDirs();
   document.getElementById('modal-spot').classList.add('open');
   // Auto-focus the name field after the modal animates in
   setTimeout(() => {
@@ -3914,13 +3917,76 @@ function editCurrentSpot() {
   document.getElementById('spot-lon').value = spot.lon;
   document.getElementById('spot-cam').value = spot.cam || '';
   renderDirGrid(spot.offshoreDirs || []);
+  document.getElementById('spot-dirs-note').hidden = true;
   document.getElementById('modal-spot').classList.add('open');
 }
 function renderDirGrid(selected) {
   const g = document.getElementById('spot-dirs');
   g.innerHTML = DIRS_8.map(d => `<button type="button" class="${selected.includes(d) ? 'on':''}" data-dir="${d}" onclick="toggleDir(this)">${d}</button>`).join('');
 }
-function toggleDir(btn) { btn.classList.toggle('on'); }
+function toggleDir(btn) { btn.classList.toggle('on'); dirsTouched = true; }
+
+// New spots get their offshore directions pre-selected from the shoreline,
+// until the user taps a direction themselves. Saved spots are never changed.
+let dirsTouched = false;
+async function autoFillDirs() {
+  if (editingSpotId || dirsTouched) return;
+  const lat = parseFloat(document.getElementById('spot-lat').value);
+  const lon = parseFloat(document.getElementById('spot-lon').value);
+  const note = document.getElementById('spot-dirs-note');
+  if (isNaN(lat) || isNaN(lon)) { renderDirGrid([]); note.hidden = true; return; }
+  await greatLakesReady;
+  if (editingSpotId || dirsTouched) return;
+  const dirs = guessOffshoreDirs(lat, lon);
+  renderDirGrid(dirs);
+  note.hidden = !dirs.length;
+}
+
+// Offshore guess: look up to 4 km out along 36 bearings and see how much of
+// each is land (great-lakes.json). Wind from the land side is offshore: the
+// compass point nearest the middle of the land, plus each neighbour that is at
+// least half land. It matched 9 of the 10 hand-set built-ins to within a
+// compass point; the outline is simplified to ~500 m, so it misses small
+// shapes like the Montrose harbor hook.
+let greatLakesBoxes = null;
+function inGreatLakes(lon, lat) {
+  if (!greatLakesBoxes) greatLakesBoxes = greatLakesRings.map(r => {
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const [x, y] of r) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    return [x0, x1, y0, y1];
+  });
+  let inside = false; // even-odd over all rings, so islands count as land
+  greatLakesRings.forEach((r, k) => {
+    const b = greatLakesBoxes[k];
+    if (lon < b[0] || lon > b[1] || lat < b[2] || lat > b[3]) return;
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+      const [xi, yi] = r[i], [xj, yj] = r[j];
+      if ((yi > lat) !== (yj > lat) && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside;
+    }
+  });
+  return inside;
+}
+function guessOffshoreDirs(lat, lon) {
+  if (!greatLakesRings) return [];
+  const kmLat = 1 / 111, kmLon = 1 / (111 * Math.cos(lat * Math.PI / 180));
+  const land = []; // share of land along each 10° bearing
+  for (let b = 0; b < 360; b += 10) {
+    const s = Math.sin(b * Math.PI / 180), c = Math.cos(b * Math.PI / 180);
+    let n = 0, l = 0;
+    for (let d = 0.5; d <= 4; d += 0.5, n++) if (!inGreatLakes(lon + s * d * kmLon, lat + c * d * kmLat)) l++;
+    land.push(l / n);
+  }
+  const total = land.reduce((a, f) => a + f, 0);
+  if (total < 1 || total > land.length - 2) return []; // open water, or inland
+  let vx = 0, vy = 0;
+  land.forEach((f, i) => { vx += Math.sin(i * Math.PI / 18) * f; vy += Math.cos(i * Math.PI / 18) * f; });
+  const mid = Math.round(((Math.atan2(vx, vy) * 180 / Math.PI + 360) % 360) / 45) % 8;
+  const sectorLand = (i) => {
+    const near = land.filter((f, k) => Math.abs(((k * 10 - i * 45 + 540) % 360) - 180) <= 22.5);
+    return near.reduce((a, f) => a + f, 0) / near.length;
+  };
+  return [mid, (mid + 7) % 8, (mid + 1) % 8].filter((i, n) => n === 0 || sectorLand(i) >= 0.5).map(i => DIRS_8[i]);
+}
 function getSelectedDirs() {
   return [...document.querySelectorAll('#spot-dirs button.on')].map(b => b.dataset.dir);
 }
