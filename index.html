@@ -1145,15 +1145,15 @@ function switchView(name) {
   action.innerHTML = '';
   if (name === 'spots') {
     if (!editingSpots) {
-      // 🔍 finds your own beach on the map; + adds from the popular spots list
-      const searchBtn = document.createElement('button');
-      searchBtn.className = 'btn ghost icon-btn'; searchBtn.innerHTML = icon('search'); searchBtn.title = 'Find a beach on the map'; searchBtn.setAttribute('aria-label', 'Find a beach on the map'); searchBtn.style.marginRight = '6px';
-      searchBtn.onclick = startAddSpotOnMap;
-      action.appendChild(searchBtn);
+      // + adds from the popular spots list; 🔍 finds your own beach on the map
       const popBtn = document.createElement('button');
       popBtn.className = 'btn ghost icon-btn'; popBtn.innerHTML = icon('plus'); popBtn.title = 'Add a popular spot'; popBtn.setAttribute('aria-label', 'Add a popular spot'); popBtn.style.marginRight = '6px';
       popBtn.onclick = () => openPopularSpotsModal();
       action.appendChild(popBtn);
+      const searchBtn = document.createElement('button');
+      searchBtn.className = 'btn ghost icon-btn'; searchBtn.innerHTML = icon('search'); searchBtn.title = 'Find a beach on the map'; searchBtn.setAttribute('aria-label', 'Find a beach on the map'); searchBtn.style.marginRight = '6px';
+      searchBtn.onclick = startAddSpotOnMap;
+      action.appendChild(searchBtn);
       const editBtn = document.createElement('button');
       editBtn.className = 'btn ghost icon-btn'; editBtn.innerHTML = icon('pencil'); editBtn.title = 'Edit spots'; editBtn.setAttribute('aria-label', 'Edit spots');
       editBtn.onclick = toggleEditingSpots;
