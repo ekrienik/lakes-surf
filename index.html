@@ -1330,22 +1330,41 @@ let stationsCacheTime = 0;
 // report about every 10 min anyway.
 const STATIONS_CACHE_MS = 5 * 60 * 1000;
 let stationsInflight = null;
+let stationsBboxKey = null; // the search area the cache and in-flight request are for
+
+// Search area for live stations: the saved spots plus 60 miles (the wave-buoy
+// reach) on every side, so a spot on any Great Lake gets live data while a
+// phone only downloads stations near its own spots (all five lakes at once is
+// ~2,300 stations, ~2 MB). Rounded outward to 0.5° so small moves keep the cache.
+function stationsBbox() {
+  if (!state.spots.length) return LAKE_MI_BBOX;
+  const lats = state.spots.map(s => s.lat), lons = state.spots.map(s => s.lon);
+  const padLat = 60 / 69;
+  const padLon = padLat / Math.cos(Math.max(...lats.map(Math.abs)) * Math.PI / 180);
+  const down = (v) => Math.floor(v * 2) / 2, up = (v) => Math.ceil(v * 2) / 2;
+  return [down(Math.min(...lons) - padLon), down(Math.min(...lats) - padLat),
+          up(Math.max(...lons) + padLon), up(Math.max(...lats) + padLat)].join(',');
+}
 
 async function fetchAllLakeStations() {
   const now = Date.now();
+  const bbox = stationsBbox();
+  if (bbox !== stationsBboxKey) { stationsCache = null; stationsInflight = null; stationsBboxKey = bbox; }
   if (stationsCache && (now - stationsCacheTime) < STATIONS_CACHE_MS) return stationsCache;
   if (stationsInflight) return stationsInflight;
-  const url = `${MESOWEST_BASE}/latest?bbox=${LAKE_MI_BBOX}&within=180&vars=wave_height,wave_period,dominant_wave_period,mean_wave_direction,wind_speed,wind_direction,wind_gust,water_temp,T_water_temp,air_temp&varoperator=or&status=active&output=json&units=temp|F,speed|mph,height|ft&token=${MESOWEST_TOKEN}`;
+  const url = `${MESOWEST_BASE}/latest?bbox=${bbox}&within=180&vars=wave_height,wave_period,dominant_wave_period,mean_wave_direction,wind_speed,wind_direction,wind_gust,water_temp,T_water_temp,air_temp&varoperator=or&status=active&output=json&units=temp|F,speed|mph,height|ft&token=${MESOWEST_TOKEN}`;
   stationsInflight = fetch(url).then(r => {
     if (!r.ok) throw new Error('Mesowest fetch failed: ' + r.status);
     return r.json();
   }).then(data => {
-    stationsCache = (data && data.STATION) ? data.STATION : [];
+    const list = (data && data.STATION) ? data.STATION : [];
+    if (stationsBboxKey !== bbox) return list; // spots changed meanwhile; don't cache the old area
+    stationsCache = list;
     stationsCacheTime = Date.now();
     stationsInflight = null;
     return stationsCache;
   }).catch(err => {
-    stationsInflight = null;
+    if (stationsBboxKey === bbox) stationsInflight = null;
     console.warn('Mesowest fetch error', err);
     return [];
   });
