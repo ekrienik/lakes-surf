@@ -489,7 +489,7 @@
       <ul style="margin:0; padding-left:18px; font-size:13px; line-height:1.6;">
         <li id="tip-install" hidden></li>
         <li>Tap <span class="inline-icn" data-icon="search"></span> (top right) to add popular beaches.</li>
-        <li>Tap <span class="inline-icn" data-icon="plus"></span> to add your own spot, or drop a pin on the <b>Map</b> tab.</li>
+        <li>Tap <span class="inline-icn" data-icon="plus"></span> to find your beach on the map and drop a pin.</li>
         <li>Tap a spot card for live conditions, the hourly forecast, cams and water quality.</li>
         <li>Each day's color is its best rating, from <b>Epic</b> to <b>Poor</b>; tap a day to open its forecast. Tap <span class="inline-icn" data-icon="pencil"></span> to reorder or delete spots.</li>
         <li>Change units and ratings in <b>Settings</b>.</li>
@@ -499,9 +499,9 @@
     <div id="spots-list"></div>
     <div id="spots-empty" class="empty" style="display:none;">
       <h2>No saved spots yet</h2>
-      <p>Browse the popular Lake Michigan breaks, or pin a coordinate from the map.</p>
+      <p>Browse the popular Lake Michigan breaks, or find your beach on the map and drop a pin.</p>
       <button class="btn" onclick="openPopularSpotsModal()">★ Browse popular spots</button>
-      <div style="margin-top:10px;"><button class="btn ghost" onclick="showAddSpotModal()">+ Add a spot manually</button></div>
+      <div style="margin-top:10px;"><button class="btn ghost" onclick="startAddSpotOnMap()">+ Drop a pin on the map</button></div>
     </div>
   </section>
 
@@ -1124,7 +1124,10 @@ function switchView(name) {
 
   if (name === 'spots') renderSpots();
   if (name === 'map') initNwsMapIfNeeded();
-  else nwsMapPause();
+  else {
+    nwsMapPause();
+    if (nwsDropPinMode) toggleNwsDropPinMode(); // leaving the map cancels a pin drop
+  }
   if (name === 'settings') renderSettings();
 
   document.getElementById('header-title').textContent =
@@ -1147,7 +1150,7 @@ function switchView(name) {
       action.appendChild(popBtn);
       const addBtn = document.createElement('button');
       addBtn.className = 'btn ghost icon-btn'; addBtn.innerHTML = icon('plus'); addBtn.title = 'Add spot'; addBtn.setAttribute('aria-label', 'Add spot'); addBtn.style.marginRight = '6px';
-      addBtn.onclick = () => showAddSpotModal();
+      addBtn.onclick = startAddSpotOnMap;
       action.appendChild(addBtn);
       const editBtn = document.createElement('button');
       editBtn.className = 'btn ghost icon-btn'; editBtn.innerHTML = icon('pencil'); editBtn.title = 'Edit spots'; editBtn.setAttribute('aria-label', 'Edit spots');
@@ -1160,6 +1163,15 @@ function switchView(name) {
       action.appendChild(doneBtn);
     }
   }
+}
+
+// The + button: find the beach on the Map tab and drop a pin there (search,
+// street-level zoom, suggested name, offshore forecast point). Exact
+// coordinates can still be typed in the form the pin opens.
+function startAddSpotOnMap() {
+  switchView('map'); // creates the map synchronously on first visit
+  if (!nwsDropPinMode) toggleNwsDropPinMode();
+  document.getElementById('map-search-input').focus();
 }
 
 let editingSpots = false;
