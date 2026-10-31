@@ -488,8 +488,8 @@
       <h3 style="margin:0 0 8px;">Getting started</h3>
       <ul style="margin:0; padding-left:18px; font-size:13px; line-height:1.6;">
         <li id="tip-install" hidden></li>
-        <li>Tap <span class="inline-icn" data-icon="search"></span> (top right) to add popular beaches.</li>
-        <li>Tap <span class="inline-icn" data-icon="plus"></span> to find your beach on the map and drop a pin.</li>
+        <li>Tap <span class="inline-icn" data-icon="plus"></span> (top right) to add popular beaches.</li>
+        <li>Tap <span class="inline-icn" data-icon="search"></span> to find your own beach on the map and drop a pin.</li>
         <li>Tap a spot card for live conditions, the hourly forecast, cams and water quality.</li>
         <li>Each day's color is its best rating, from <b>Epic</b> to <b>Poor</b>; tap a day to open its forecast. Tap <span class="inline-icn" data-icon="pencil"></span> to reorder or delete spots.</li>
         <li>Change units and ratings in <b>Settings</b>.</li>
@@ -754,6 +754,7 @@
     </div>
     <p class="muted" style="margin:0 0 10px;">Tap any spot to add it to your saved list. You can edit thresholds and offshore directions afterwards.</p>
     <div id="popular-list"></div>
+    <p style="margin:12px 0 0; font-size:13px;">Don't see your break? <a href="#" style="color:var(--accent); font-weight:600;" onclick="event.preventDefault(); closePopularSpotsModal(); startAddSpotOnMap();">Find it on the map →</a></p>
     <div class="row between" style="margin-top:14px;">
       <button class="btn ghost" onclick="closePopularSpotsModal()">Close</button>
     </div>
@@ -1144,14 +1145,15 @@ function switchView(name) {
   action.innerHTML = '';
   if (name === 'spots') {
     if (!editingSpots) {
+      // 🔍 finds your own beach on the map; + adds from the popular spots list
+      const searchBtn = document.createElement('button');
+      searchBtn.className = 'btn ghost icon-btn'; searchBtn.innerHTML = icon('search'); searchBtn.title = 'Find a beach on the map'; searchBtn.setAttribute('aria-label', 'Find a beach on the map'); searchBtn.style.marginRight = '6px';
+      searchBtn.onclick = startAddSpotOnMap;
+      action.appendChild(searchBtn);
       const popBtn = document.createElement('button');
-      popBtn.className = 'btn ghost icon-btn'; popBtn.innerHTML = icon('search'); popBtn.title = 'Browse popular spots'; popBtn.setAttribute('aria-label', 'Browse popular spots'); popBtn.style.marginRight = '6px';
+      popBtn.className = 'btn ghost icon-btn'; popBtn.innerHTML = icon('plus'); popBtn.title = 'Add a popular spot'; popBtn.setAttribute('aria-label', 'Add a popular spot'); popBtn.style.marginRight = '6px';
       popBtn.onclick = () => openPopularSpotsModal();
       action.appendChild(popBtn);
-      const addBtn = document.createElement('button');
-      addBtn.className = 'btn ghost icon-btn'; addBtn.innerHTML = icon('plus'); addBtn.title = 'Add spot'; addBtn.setAttribute('aria-label', 'Add spot'); addBtn.style.marginRight = '6px';
-      addBtn.onclick = startAddSpotOnMap;
-      action.appendChild(addBtn);
       const editBtn = document.createElement('button');
       editBtn.className = 'btn ghost icon-btn'; editBtn.innerHTML = icon('pencil'); editBtn.title = 'Edit spots'; editBtn.setAttribute('aria-label', 'Edit spots');
       editBtn.onclick = toggleEditingSpots;
