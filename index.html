@@ -3936,6 +3936,9 @@ function showAddSpotModal(prefill) {
   dirsTouched = false;
   renderDirGrid([]);
   autoFillDirs();
+  nameLookup++; // drop any lookup still running for an earlier pin
+  document.getElementById('spot-name').placeholder = SPOT_NAME_PLACEHOLDER;
+  if (prefill && prefill.lat != null && prefill.lon != null && !prefill.name) fillSuggestedName(prefill.lat, prefill.lon);
   document.getElementById('modal-spot').classList.add('open');
   // Auto-focus the name field after the modal animates in
   setTimeout(() => {
@@ -4027,7 +4030,48 @@ function guessOffshoreDirs(lat, lon) {
 function getSelectedDirs() {
   return [...document.querySelectorAll('#spot-dirs button.on')].map(b => b.dataset.dir);
 }
-function closeSpotModal() { document.getElementById('modal-spot').classList.remove('open'); pendingCoords = null; }
+function closeSpotModal() { document.getElementById('modal-spot').classList.remove('open'); pendingCoords = null; nameLookup++; }
+
+// Dropped pins get a suggested name from OpenStreetMap (Nominatim, free, no
+// key): the nearest named beach within ~1.6 km, else a park within 1 km, else
+// the town. Plain reverse lookup returns roads and footpaths, hence the
+// searches. Nominatim allows at most one request a second, hence the pauses.
+const SPOT_NAME_PLACEHOLDER = 'e.g., Sheboygan North';
+const NOMINATIM = 'https://nominatim.openstreetmap.org';
+let nameLookup = 0;
+async function suggestSpotName(lat, lon) {
+  const get = (url) => fetch(url, AbortSignal.timeout ? { signal: AbortSignal.timeout(8000) } : {})
+    .then(r => r.ok ? r.json() : null).catch(() => null);
+  const pause = () => new Promise(r => setTimeout(r, 1000));
+  const nearest = async (q, km) => {
+    const dLat = km / 111, dLon = km / (111 * Math.cos(lat * Math.PI / 180));
+    const vb = [lon - dLon, lat + dLat, lon + dLon, lat - dLat].join(',');
+    const list = await get(`${NOMINATIM}/search?format=jsonv2&q=${q}&viewbox=${vb}&bounded=1&limit=10`);
+    const dist = (x) => haversineMiles(lat, lon, +x.lat, +x.lon);
+    const named = (list || []).filter(x => x.name).sort((a, b) => dist(a) - dist(b));
+    return named.length ? named[0].name : null;
+  };
+  const beach = await nearest('beach', 1.6);
+  if (beach) return beach;
+  await pause();
+  const park = await nearest('park', 1.0);
+  if (park) return park;
+  await pause();
+  const place = await get(`${NOMINATIM}/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=12`);
+  const a = (place && place.address) || {};
+  return a.city || a.town || a.village || a.hamlet || null;
+}
+async function fillSuggestedName(lat, lon) {
+  const token = nameLookup;
+  const input = document.getElementById('spot-name');
+  input.placeholder = 'Looking up a name…';
+  const name = await suggestSpotName(parseFloat(lat), parseFloat(lon));
+  if (token !== nameLookup) return; // form closed or another pin dropped
+  input.placeholder = SPOT_NAME_PLACEHOLDER;
+  if (!name || input.value.trim()) return; // never overwrite what the user typed
+  input.value = name;
+  if (document.activeElement === input) input.select(); // typing replaces it
+}
 function saveSpotModal() {
   const name = document.getElementById('spot-name').value.trim();
   const lat = parseFloat(document.getElementById('spot-lat').value);
