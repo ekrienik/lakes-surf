@@ -3080,6 +3080,7 @@ const NWS_LAYERS = {
 const NWS_OPACITY = 0.8;
 let nwsMap = null, nwsOverlay = null, nwsTimes = [], nwsTimesAt = 0, nwsTimeIndex = 0, nwsLayer = 'waveheight';
 let nwsPlayInterval = null, nwsPrefetchToken = 0, nwsMoveTimer = null, nwsDropPinMode = false;
+const NWS_MAX_ZOOM = 11; // the forecast layers are too coarse to zoom further (pin mode allows 17)
 const nwsImgCache = new Map(); // url -> HTMLImageElement (warms the browser cache)
 
 // Valid-time list: [["2026-10-29T06:00","2026-10-28T22:30"], ...] (valid, issuance), UTC.
@@ -3122,6 +3123,16 @@ function nwsViewSpec() {
 }
 function nwsShowFrame() {
   if (!nwsMap) return;
+  // Dropping a pin: bare basemap so the shoreline shows, and nothing to load
+  if (nwsDropPinMode) {
+    if (nwsOverlay) { nwsOverlay.remove(); nwsOverlay = null; }
+    const loading = document.getElementById('nws-map-loading');
+    loading.textContent = 'Zoom in and tap where you surf';
+    loading.style.display = 'block';
+    updateWindArrows(); // hides the wind/wave field (windRedraw)
+    updateSpotMapMarkers();
+    return;
+  }
   if (isLocalLayer()) {
     // Wind and smooth-wave layers are drawn locally (see windRedraw); drop the NOAA image
     if (nwsOverlay) { nwsOverlay.remove(); nwsOverlay = null; }
@@ -3165,7 +3176,7 @@ function nwsShowFrame() {
 }
 // Warm the browser cache for the frames around the current one so play is smooth.
 function nwsPrefetch() {
-  if (!nwsMap || !nwsTimes.length || isLocalLayer()) return;
+  if (!nwsMap || !nwsTimes.length || isLocalLayer() || nwsDropPinMode) return;
   const token = ++nwsPrefetchToken;
   const spec = nwsViewSpec();
   const order = [];
@@ -3487,7 +3498,7 @@ function windEnsureCanvases() {
 }
 function windRedraw() {
   if (!nwsMap) return;
-  const show = isLocalLayer() && fieldGrid() && windHourIndex() >= 0;
+  const show = isLocalLayer() && fieldGrid() && windHourIndex() >= 0 && !nwsDropPinMode;
   document.getElementById('nws-map').classList.toggle('wind-mode', isLocalLayer());
   if (!show) { if (windWrap) windWrap.style.display = 'none'; windStopAnim(); return; }
   windEnsureCanvases();
@@ -3681,7 +3692,7 @@ async function initNwsMapIfNeeded() {
   if (!nwsMap) {
     // closePopupOnClick off: the click handler below closes popups itself so a
     // tap either closes the open reading or opens a new one, never both.
-    nwsMap = L.map('nws-map', { zoomControl: true, minZoom: 5, maxZoom: 11, closePopupOnClick: false });
+    nwsMap = L.map('nws-map', { zoomControl: true, minZoom: 5, maxZoom: NWS_MAX_ZOOM, closePopupOnClick: false });
     let popupOpen = false;
     nwsMap.on('popupopen', () => { popupOpen = true; });
     nwsMap.on('popupclose', () => { popupOpen = false; });
@@ -3736,6 +3747,13 @@ function toggleNwsDropPinMode() {
   }
   const mapEl = document.getElementById('nws-map');
   if (mapEl) mapEl.classList.toggle('pin-mode', nwsDropPinMode);
+  if (!nwsMap) return;
+  // Pin mode hides the wave/wind layer (nwsShowFrame) and allows street-level
+  // zoom; leaving it zooms back out to the layer's limit if needed.
+  if (nwsDropPinMode) nwsMapPause();
+  nwsMap.setMaxZoom(nwsDropPinMode ? 17 : NWS_MAX_ZOOM);
+  nwsShowFrame();
+  nwsUpdateLegend();
 }
 function nwsMapSetLayer(layer) {
   if (!NWS_LAYERS[layer]) return;
