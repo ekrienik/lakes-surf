@@ -151,6 +151,14 @@
   .live-line { font-size: 11px; color: var(--fg-dim); margin: 6px 0 0; line-height: 1.35; }
   .live-line strong { color: var(--fg); font-weight: 600; }
   .live-line .live-src { font-size: 10.5px; opacity: 0.8; margin-top: 2px; }
+  .live-line .rel { font-weight: 600; margin-left: 2px; }
+  .live-line .rel.off { color: #97c459; }
+  .live-line .rel.cross { color: #d9c233; }
+  .live-line .rel.on { color: #f09595; }
+  .day-strip .d[role=button] { cursor: pointer; }
+  .day-strip .d[role=button]:active { background: var(--bg-2); }
+  .drag-handle { touch-action: none; cursor: grab; color: var(--fg-dim); font-size: 20px; line-height: 1; padding: 6px 12px 6px 2px; margin-right: 4px; user-select: none; }
+  .loc-card.dragging { position: relative; z-index: 5; box-shadow: 0 8px 24px rgba(0,0,0,0.45); transition: none; }
 
   .chip {
     display: inline-flex; align-items: center; justify-content: center;
@@ -471,7 +479,7 @@
         <li>Tap <span class="inline-icn" data-icon="search"></span> (top right) to add popular beaches.</li>
         <li>Tap <span class="inline-icn" data-icon="plus"></span> to add your own spot, or drop a pin on the <b>Map</b> tab.</li>
         <li>Tap a spot card for live conditions, the hourly forecast, cams and water quality.</li>
-        <li>Each day's color is its best rating, from <b>Epic</b> to <b>Poor</b>. Tap <span class="inline-icn" data-icon="pencil"></span> to reorder or delete spots.</li>
+        <li>Each day's color is its best rating, from <b>Epic</b> to <b>Poor</b>; tap a day to open its forecast. Tap <span class="inline-icn" data-icon="pencil"></span> to reorder or delete spots.</li>
         <li>Change units and ratings in <b>Settings</b>.</li>
       </ul>
       <button class="btn small" style="margin-top:12px;" onclick="dismissFirstRunTips()">Got it</button>
@@ -1150,21 +1158,44 @@ function deleteSpotFromList(spotId) {
   toast('Deleted');
   renderSpots();
 }
-function moveSpotUp(spotId) {
-  const i = state.spots.findIndex(s => s.id === spotId);
-  if (i > 0) {
-    [state.spots[i-1], state.spots[i]] = [state.spots[i], state.spots[i-1]];
+// Edit mode: drag a card by its ☰ handle. The card follows the finger and
+// swaps places with a neighbour once it passes that neighbour's middle; the
+// new order is saved on release.
+function startSpotDrag(e) {
+  const handle = e.currentTarget;
+  const card = handle.closest('.loc-card');
+  const list = card.parentNode;
+  e.preventDefault();
+  try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+  const grab = e.clientY - card.getBoundingClientRect().top;
+  card.classList.add('dragging');
+  const move = (ev) => {
+    card.style.transform = '';
+    const top = ev.clientY - grab, h = card.offsetHeight;
+    const prev = card.previousElementSibling, next = card.nextElementSibling;
+    if (prev) {
+      const r = prev.getBoundingClientRect();
+      if (top < r.top + r.height / 2) list.insertBefore(card, prev);
+    }
+    if (next) {
+      const r = next.getBoundingClientRect();
+      if (top + h > r.top + r.height / 2) list.insertBefore(next, card);
+    }
+    card.style.transform = `translateY(${top - card.getBoundingClientRect().top}px)`;
+  };
+  const end = () => {
+    handle.removeEventListener('pointermove', move);
+    handle.removeEventListener('pointerup', end);
+    handle.removeEventListener('pointercancel', end);
+    card.classList.remove('dragging');
+    card.style.transform = '';
+    const order = [...list.children].map(c => c.dataset.spotId);
+    state.spots.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
     saveState();
-    renderSpots();
-  }
-}
-function moveSpotDown(spotId) {
-  const i = state.spots.findIndex(s => s.id === spotId);
-  if (i >= 0 && i < state.spots.length - 1) {
-    [state.spots[i], state.spots[i+1]] = [state.spots[i+1], state.spots[i]];
-    saveState();
-    renderSpots();
-  }
+  };
+  handle.addEventListener('pointermove', move);
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
 }
 
 let toastTimer;
@@ -1461,7 +1492,7 @@ function timeAgoStr(iso) {
   return `${hr} hr ago`;
 }
 
-function formatLiveCompact(live) {
+function formatLiveCompact(live, offshoreDirs) {
   if (!live) return null;
   const o = live.obs || {};
   const wo = live.waveObs || {};
@@ -1481,7 +1512,10 @@ function formatLiveCompact(live) {
     const dir = o.windDirection ? degToCompass(parseFloat(o.windDirection.value)) : '';
     const arrow = o.windDirection ? dirArrow(parseFloat(o.windDirection.value)) : '';
     const sp = windParts(obsMphToKmh(o.windSpeed.value));
-    parts.push(`${sp.v} ${sp.u} ${dir}${arrow}`.trim());
+    // "offshore" / "onshore" / "cross-shore" when the spot has offshore directions set
+    const rel = o.windDirection ? shoreRelation(parseFloat(o.windDirection.value), offshoreDirs) : null;
+    const relTxt = rel ? ` <span class="rel ${rel.key}">${rel.label.split(' ')[0].toLowerCase()}</span>` : '';
+    parts.push(`${sp.v} ${sp.u} ${dir}${arrow}`.trim() + relTxt);
   }
   if (o.waterTemp) {
     parts.push(`Water ${tempParts(obsFToC(o.waterTemp.value)).v}°`);
@@ -1734,11 +1768,8 @@ async function renderSpots() {
     } else {
       card.style.cursor = 'default';
     }
-    const reorderControls = editingSpots ? `
-      <div style="display:flex; flex-direction:column; gap:4px; margin-right:10px;">
-        <button class="btn small ghost" style="padding:2px 8px; line-height:1.2;" ${i === 0 ? 'disabled style="padding:2px 8px; line-height:1.2; opacity:0.4;"' : ''} onclick="event.stopPropagation(); moveSpotUp('${spot.id}');">▲</button>
-        <button class="btn small ghost" style="padding:2px 8px; line-height:1.2;" ${i === state.spots.length - 1 ? 'disabled style="padding:2px 8px; line-height:1.2; opacity:0.4;"' : ''} onclick="event.stopPropagation(); moveSpotDown('${spot.id}');">▼</button>
-      </div>` : '';
+    const reorderControls = editingSpots && state.spots.length > 1
+      ? `<span class="drag-handle" aria-label="Drag to reorder" onpointerdown="startSpotDrag(event)">☰</span>` : '';
     card.innerHTML = `
       <div class="row between">
         ${reorderControls}
@@ -1763,23 +1794,52 @@ async function renderSpots() {
   }
 }
 
+// What each spot card has loaded so far: { fc: forecast hour 0, live }. The
+// badge waits on both, so it can prefer the buoy over the forecast.
+const spotCardData = new Map();
+
 async function loadSpotSummary(spot) {
   const data = await getForecast(spot.lat, spot.lon);
   const T = { ...state.defaults, ...(spot.thresholds || {}), offshoreDirs: spot.offshoreDirs || [] };
-  const now = data.hours[0];
-  const nowR = rateHour(now, T);
-  const nowEl = document.getElementById('now-' + spot.id);
-  if (nowEl) nowEl.innerHTML = `<span class="chip r${nowR.rating}">${fmtWave(now.waveHeight)}</span>`;
+  spotCardData.set(spot.id, { ...(spotCardData.get(spot.id) || {}), fc: data.hours[0] });
+  updateNowChip(spot);
 
   const days = groupByLocalDay(data.hours);
   const strip = document.getElementById('strip-' + spot.id);
   if (strip) {
-    strip.innerHTML = days.slice(0,7).map(day => {
+    // Each day opens that day on the spot's Forecast tab
+    strip.innerHTML = days.slice(0,7).map((day, i) => {
       const dr = rateDay(day.hours, T);
       const range = waveRangeText(day.hours);
-      return `<div class="d"><span class="lbl">${range}</span><span class="pill r${dr.rating}"></span></div>`;
+      return `<div class="d" role="button" onclick="event.stopPropagation(); if (!editingSpots) openForecast('${spot.id}', ${i});"><span class="lbl">${range}</span><span class="pill r${dr.rating}"></span></div>`;
     }).join('');
   }
+}
+
+// Badge on the spot card: the buoy's wave height when there is one, else this
+// hour's forecast. The color is the rating of live waves/wind on top of the
+// forecast hour, the same way the spot page's "Right now" card rates them.
+function updateNowChip(spot) {
+  const el = document.getElementById('now-' + spot.id);
+  const d = spotCardData.get(spot.id);
+  if (!el || !d || !d.fc) return;
+  const T = { ...state.defaults, ...(spot.thresholds || {}), offshoreDirs: spot.offshoreDirs || [] };
+  const o = (d.live && d.live.obs) || {}, wo = (d.live && d.live.waveObs) || {};
+  const val = (x) => (x && x.value != null && !isNaN(parseFloat(x.value))) ? parseFloat(x.value) : null;
+  const h = { ...d.fc };
+  const waveObs = o.waveHeight ? o : (wo.waveHeight ? wo : null);
+  let text = fmtWave(d.fc.waveHeight);
+  if (waveObs && val(waveObs.waveHeight) != null) {
+    h.waveHeight = obsFtToM(waveObs.waveHeight.value);
+    h.wavePeriod = val(waveObs.wavePeriod);
+    const ht = waveParts(h.waveHeight);
+    text = `${ht.v} ${ht.u}`;
+  }
+  if (o.windSpeed && val(o.windSpeed) != null) {
+    h.windSpeed = obsMphToKmh(o.windSpeed.value);
+    if (val(o.windDirection) != null) h.windDir = val(o.windDirection);
+  }
+  el.innerHTML = `<span class="chip r${rateHour(h, T).rating}">${text}</span>`;
 }
 
 // Compact min-max wave label for the daily pill on the Spots tab.
@@ -1800,7 +1860,9 @@ function waveRangeText(hours) {
 
 async function loadLiveForSpotCard(spot) {
   const live = await getLiveForSpot(spot);
-  const compact = formatLiveCompact(live);
+  spotCardData.set(spot.id, { ...(spotCardData.get(spot.id) || {}), live });
+  updateNowChip(spot);
+  const compact = formatLiveCompact(live, spot.offshoreDirs);
   const el = document.getElementById('live-' + spot.id);
   if (!el) return;
   if (compact) {
@@ -2181,15 +2243,16 @@ async function renderLiveCharts(spot, live) {
 }
 
 
-async function openForecast(spotId) {
+// dayIndex (from a day on the Spots tab) opens that day on the Forecast sub-tab
+async function openForecast(spotId, dayIndex) {
   const spot = state.spots.find(s => s.id === spotId);
   if (!spot) return;
   gcSpotEvent(spot);
   currentSpotId = spotId;
   currentLive = null;
   selectedHourIndex = null;
-  // Always default to Live sub-tab when opening a spot.
-  selectSubtab('live');
+  // Default to the Live sub-tab when opening a spot.
+  selectSubtab(dayIndex != null ? 'forecast' : 'live');
   switchView('forecast');
   document.getElementById('header-title').textContent = spot.name;
   document.getElementById('header-sub').textContent = '';
@@ -2214,8 +2277,9 @@ async function openForecast(spotId) {
     // A slower response for a spot the user already left must not overwrite the new one
     if (currentSpotId !== spot.id) return;
     currentForecast = fc;
-    currentDayIndex = 0;
+    currentDayIndex = dayIndex || 0;
     renderForecast();
+    if (dayIndex != null) selectSubtab('forecast'); // lays out the hourly table now it exists
     // Re-render the LIVE card now that the forecast is available — lets the
     // wave-direction fallback (forecast swellDir) take effect when the buoy
     // didn't report a direction.
