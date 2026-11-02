@@ -28,7 +28,7 @@ Line endings: the working copy on Windows is CRLF; `.gitattributes` has `* text=
 | Spots tab: `renderSpots()` (edit mode has Delete buttons), `loadLiveForSpotCard()` | ~1453 |
 | Live charts: `fetchWaveTimeseries()`, `makeLineChart()` (dir-arrow row, touch readout), `attachChartReadouts()`, `renderLiveCharts()` | ~1620–1870 |
 | Forecast page: `openForecast()`, water quality card, `renderCamSection()` | ~1879–2080 |
-| Map tab: NDFD WMS overlay, time slider, wind arrows, spot pins, "+ Add spot" pin mode, place search. Map zooms to 17 but layers hide past `NWS_LAYER_MAX_ZOOM` (11) and in pin mode (`nwsLayerHidden()`) | ~2640–3100 |
+| Map tab: NDFD WMS overlay, time slider, wind arrows, spot pins, "+ Add spot" pin mode (a pin fixed at the map centre, `#nws-center-pin`; the map moves under it, a tap pans to the tapped point; the bottom button zooms in until zoom `PIN_MIN_ZOOM` 12, then reads "Add spot here", `addSpotAtPin()`), place search. Map zooms to 17 but layers hide past `NWS_LAYER_MAX_ZOOM` (11) and in pin mode (`nwsLayerHidden()`) | ~2640–3100 |
 | Add/edit spot modal (new spots pre-fill offshore dirs from the shoreline via `guessOffshoreDirs()`; never overwrite saved or built-in dirs, they're hand-tuned), settings, SW registration | end of file |
 
 ## External data (all called straight from the browser, no keys except the app's own Synoptic public token, `MESOWEST_TOKEN`; the private API key that generates it is never in the repo)

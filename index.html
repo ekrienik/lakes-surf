@@ -321,6 +321,14 @@
   .modal details > summary { cursor: pointer; color: var(--accent); font-size: 13px; font-weight: 600; padding: 12px 0 0; }
   #nws-drop-pin-btn { position: absolute; top: 10px; right: 10px; z-index: 500; box-shadow: 0 2px 10px rgba(0,0,0,0.4); }
   #nws-drop-pin-btn.active { background: var(--r-1); color: #fff; border: 1px solid var(--r-1); }
+  /* Pin mode: a pin fixed at the map centre (tip on the centre point); the map moves under it */
+  #nws-center-pin { position: absolute; left: 50%; top: 50%; width: 30px; height: 45px; transform: translate(-50%, -100%);
+    z-index: 600; pointer-events: none; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
+  #nws-center-pin svg { display: block; width: 100%; height: 100%; }
+  #nws-pin-bar { position: absolute; left: 10px; right: 10px; bottom: 26px; z-index: 600; display: flex; justify-content: center; pointer-events: none; }
+  #nws-pin-bar[hidden], #nws-center-pin[hidden] { display: none; }
+  #nws-pin-bar .btn { pointer-events: auto; box-shadow: 0 2px 10px rgba(0,0,0,0.45); padding: 10px 22px; font-size: 15px; }
+  #nws-pin-bar .btn.ghost { background: var(--bg-2); }
   #nws-map-loading { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 500; background: rgba(4,36,58,0.85); color: var(--fg); font-size: 11px; padding: 4px 10px; border-radius: 999px; display: none; pointer-events: none; }
   #nws-map-controls { margin-top: 10px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
   #nws-layer-row { display: flex; gap: 6px; margin-bottom: 8px; }
@@ -607,6 +615,8 @@
     <div id="nws-map-wrap">
       <div id="nws-map"></div>
       <button id="nws-drop-pin-btn" class="btn small" onclick="toggleNwsDropPinMode()">+ Add spot</button>
+      <div id="nws-center-pin" hidden><svg viewBox="0 0 24 36" aria-hidden="true"><path d="M12 35C12 35 1 20.5 1 12a11 11 0 0 1 22 0c0 8.5-11 23-11 23z" fill="#e5484d" stroke="#fff" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="#fff"/></svg></div>
+      <div id="nws-pin-bar" hidden><button class="btn" id="nws-pin-add" onclick="addSpotAtPin()">Add spot here</button></div>
       <div id="nws-map-loading">Loading forecast…</div>
     </div>
     <div id="nws-map-controls">
@@ -3200,7 +3210,7 @@ function nwsShowFrame() {
     nwsPrefetchToken++; // stop warming NOAA frames for a view that's no longer drawn
     if (nwsOverlay) { nwsOverlay.remove(); nwsOverlay = null; }
     const loading = document.getElementById('nws-map-loading');
-    loading.textContent = nwsDropPinMode ? 'Zoom in and tap where you surf'
+    loading.textContent = nwsDropPinMode ? 'Move the map under the pin'
       : `Zoom out to see ${nwsLayer === 'waveheight' ? 'waves' : nwsLayer === 'windgust' ? 'gusts' : 'wind'}`;
     loading.style.display = 'block';
     updateWindArrows(); // hides the wind/wave field (windRedraw)
@@ -3786,24 +3796,14 @@ async function initNwsMapIfNeeded() {
       maxZoom: 18, attribution: '© OpenStreetMap · NOAA NDFD · Open-Meteo'
     }).addTo(nwsMap);
     nwsMap.fitBounds([[41.5, -88.0], [46.1, -84.7]]); // Lake Michigan, same as Spot Map
-    // Tap-to-drop after pressing "+ Add spot"; long-press / right-click also works.
-    // In pin mode the drop waits a moment: a double-tap (to zoom in, as the
-    // hint suggests) fires a click first, which mustn't drop a pin.
-    let pinTapTimer = null;
+    // "+ Add spot" drops a pin at the centre; the map moves under it, and a tap
+    // brings the tapped point to the pin. Long-press / right-click adds a spot
+    // right there.
     nwsMap.on('click', e => {
-      if (!nwsDropPinMode) {
-        if (popupOpen) nwsMap.closePopup(); else mapTapReadout(e.latlng);
-        return;
-      }
-      clearTimeout(pinTapTimer);
-      pinTapTimer = setTimeout(() => {
-        if (!nwsDropPinMode) return;
-        toggleNwsDropPinMode();
-        nwsMapPause();
-        showAddSpotModal({ lat: e.latlng.lat.toFixed(4), lon: e.latlng.lng.toFixed(4), name: '' });
-      }, 350);
+      if (nwsDropPinMode) { nwsMap.panTo(e.latlng); return; }
+      if (popupOpen) nwsMap.closePopup(); else mapTapReadout(e.latlng);
     });
-    nwsMap.on('dblclick', () => clearTimeout(pinTapTimer));
+    nwsMap.on('zoomend', nwsPinBarUpdate);
     nwsMap.on('contextmenu', e => {
       if (nwsDropPinMode) toggleNwsDropPinMode();
       nwsMapPause();
@@ -4032,11 +4032,30 @@ function toggleNwsDropPinMode() {
   }
   const mapEl = document.getElementById('nws-map');
   if (mapEl) mapEl.classList.toggle('pin-mode', nwsDropPinMode);
+  document.getElementById('nws-center-pin').hidden = !nwsDropPinMode;
+  document.getElementById('nws-pin-bar').hidden = !nwsDropPinMode;
+  nwsPinBarUpdate();
   if (!nwsMap) return;
   // Pin mode hides the wave/wind layer (nwsShowFrame) so the shoreline shows
   if (nwsDropPinMode) nwsMapPause();
   nwsShowFrame();
   nwsUpdateLegend();
+}
+// Zoomed out, the centre pin covers kilometres of shore: the button zooms in
+// on the pin first, and adds the spot once the view is close
+const PIN_MIN_ZOOM = 12;
+function nwsPinBarUpdate() {
+  const btn = document.getElementById('nws-pin-add');
+  const close = !nwsMap || nwsMap.getZoom() >= PIN_MIN_ZOOM;
+  btn.classList.toggle('ghost', !close);
+  btn.textContent = close ? 'Add spot here' : 'Zoom in on the pin';
+}
+function addSpotAtPin() {
+  if (!nwsMap) return;
+  if (nwsMap.getZoom() < PIN_MIN_ZOOM) { nwsMap.setZoom(Math.min(PIN_MIN_ZOOM, nwsMap.getZoom() + 3)); return; }
+  const c = nwsMap.getCenter();
+  if (nwsDropPinMode) toggleNwsDropPinMode();
+  showAddSpotModal({ lat: c.lat.toFixed(4), lon: c.lng.toFixed(4), name: '' });
 }
 function nwsMapSetLayer(layer) {
   if (!NWS_LAYERS[layer]) return;
