@@ -295,17 +295,27 @@
   #nws-map { width: 100%; height: 100%; min-height: 240px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #0b1622; }
   #nws-map.pin-mode { cursor: crosshair; }
   #map-search { position: relative; z-index: 1100; /* results open over Leaflet's controls (z 1000) */ display: flex; gap: 6px; margin: 0 0 8px; flex: 0 0 auto; }
-  #map-search input { flex: 1; min-width: 0; padding: 8px 12px; }
+  #map-search .search-wrap { flex: 1; min-width: 0; }
+  #map-search input { padding: 8px 36px 8px 12px; height: 100%; }
+  /* Search boxes: our own clear ✕ (the browsers' built-in one is inconsistent and tiny) */
+  .search-wrap { position: relative; display: block; }
+  .search-wrap input { padding-right: 36px; }
+  .search-wrap input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+  .search-clear { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); width: 26px; height: 26px; border-radius: 50%;
+    border: 0; background: var(--bg-2); color: var(--fg-dim); font-size: 13px; line-height: 26px; padding: 0; cursor: pointer; font-family: inherit; }
+  .search-wrap input:placeholder-shown + .search-clear { display: none; }
   #map-search .btn { padding: 0 12px; display: inline-flex; align-items: center; }
   #map-search-results { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 700; box-shadow: 0 8px 24px rgba(0,0,0,0.45); }
   .place-results { background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
   .place-results:empty { display: none; }
-  .place-results button { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--border);
-    color: var(--fg); padding: 10px 12px; font: inherit; font-size: 14px; cursor: pointer; }
-  .place-results button:first-child { border-top: 0; }
-  .place-results .t { flex: 1; min-width: 0; }
+  .place-results .pr { display: flex; align-items: center; border-top: 1px solid var(--border); }
+  .place-results .pr:first-child { border-top: 0; }
+  .place-results .pr button { background: none; border: 0; color: var(--fg); font: inherit; cursor: pointer; }
+  .place-results .pr .t { flex: 1; min-width: 0; text-align: left; padding: 10px 12px; font-size: 14px; }
   .place-results .sub { display: block; font-size: 11px; color: var(--fg-dim); margin-top: 2px; }
-  .place-results .go { flex: 0 0 auto; font-size: 12px; font-weight: 600; color: var(--accent); }
+  .place-results .pr .go { flex: 0 0 auto; margin-right: 10px; padding: 5px 12px; border: 1px solid var(--accent); border-radius: 999px;
+    font-size: 12px; font-weight: 600; color: var(--accent); }
+  .place-results .pr .go.add { background: var(--accent); color: #04243a; }
   .place-results .none { padding: 10px 12px; font-size: 13px; color: var(--fg-dim); }
   #spot-form-map { height: 170px; border-radius: 10px; border: 1px solid var(--border); overflow: hidden; background: #0b1622; }
   .modal details > summary { cursor: pointer; color: var(--accent); font-size: 13px; font-weight: 600; padding: 12px 0 0; }
@@ -589,8 +599,8 @@
 
   <section id="view-map" class="view">
     <form id="map-search" onsubmit="event.preventDefault(); mapSearch();">
-      <input type="search" id="map-search-input" placeholder="Search a beach or town" enterkeyhint="search" autocomplete="off"
-        oninput="mapSearchTyped()" onfocus="mapSearchRefocus()" />
+      <span class="search-wrap"><input type="search" id="map-search-input" placeholder="Search a beach or town" enterkeyhint="search" autocomplete="off"
+        oninput="mapSearchTyped()" onfocus="mapSearchRefocus()" /><button type="button" class="search-clear" aria-label="Clear search" onclick="clearSearchBox('map-search-input')">✕</button></span>
       <button type="submit" class="btn small" aria-label="Search"><span data-icon="search"></span></button>
       <div id="map-search-results" class="place-results" hidden></div>
     </form>
@@ -769,7 +779,7 @@
       <button class="btn small ghost" onclick="closePopularSpotsModal()" aria-label="Close" style="padding:4px 10px;">✕</button>
     </div>
     <form onsubmit="event.preventDefault(); addSearch(true);">
-      <input type="search" id="add-search-input" placeholder="Search any beach or town" enterkeyhint="search" autocomplete="off" oninput="addSearchTyped()" />
+      <span class="search-wrap"><input type="search" id="add-search-input" placeholder="Search any beach or town" enterkeyhint="search" autocomplete="off" oninput="addSearchTyped()" /><button type="button" class="search-clear" aria-label="Clear search" onclick="clearSearchBox('add-search-input')">✕</button></span>
     </form>
     <div class="muted" id="popular-heading" style="font-size:12px; font-weight:600; margin:14px 0 6px;">Popular Lake Michigan spots</div>
     <div id="popular-list"></div>
@@ -874,7 +884,7 @@ const POPULAR_SPOTS = [
   { id: 'pop_newbuffalo', name: 'New Buffalo Beach',              lat: 41.799, lon: -86.760, lake: 'Michigan', offshoreDirs: ['S','SE','E'], cam: null },
   { id: 'pop_whihala',    name: 'Whihala Beach (Whiting)',        lat: 41.688, lon: -87.492, lake: 'Michigan', offshoreDirs: ['S','SW','W'], cam: 'https://www.ipcamlive.com/whihalaboatlaunch', camLabel: 'Whihala boat launch (can’t be embedded, opens in a new tab)' }
 ];
-const FIRST_RUN_SEED = ['pop_montrose'];
+const FIRST_RUN_SEED = ['pop_montrose', 'pop_greenwood', 'pop_sheboygan'];
 const DEFAULT_UNITS = { wave: 'ft', wind: 'mph', temp: 'F' };
 
 function loadState() {
@@ -3934,10 +3944,18 @@ async function nominatimSearch(q) {
     return { title, sub: parts.filter(x => x !== title).slice(0, 3).join(', '), lat: +p.lat, lon: +p.lon, spot };
   });
 }
-// One result row; go is the action hint on the right ("Add", "Map")
-function placeRow(p, onclick, go) {
-  return `<button type="button" onclick="${onclick}"><span class="t">${escapeHtml(p.title)}<span class="sub">${escapeHtml(p.sub)}</span></span>` +
-    (go ? `<span class="go">${go}</span>` : '') + '</button>';
+// One result row: tapping the name runs onclick; go is an optional button on
+// the right ("Add", "Map") running goClick
+function placeRow(p, onclick, go, goClick = onclick) {
+  return `<div class="pr"><button type="button" class="t" onclick="${onclick}">${escapeHtml(p.title)}<span class="sub">${escapeHtml(p.sub)}</span></button>` +
+    (go ? `<button type="button" class="go${go === 'Add' ? ' add' : ''}" onclick="${goClick}">${go}</button>` : '') + '</div>';
+}
+// The ✕ in a search box: empty it, update the results, keep typing
+function clearSearchBox(id) {
+  const input = document.getElementById(id);
+  input.value = '';
+  input.dispatchEvent(new Event('input'));
+  input.focus();
 }
 // submitted: Search button / Enter (runs now, any length, falls back to Nominatim)
 async function mapSearch(submitted = true) {
@@ -3960,8 +3978,10 @@ async function mapSearch(submitted = true) {
 function mapSearchShow(q, list, searching, failed) {
   const box = document.getElementById('map-search-results');
   mapSearchResults = list;
-  const canAdd = (p) => nwsDropPinMode && (p.spot || (p.popId && !isPopularAdded(p.popId)));
-  let html = list.map((p, i) => placeRow(p, `mapSearchGo(${i})`, canAdd(p) ? 'Add' : '')).join('');
+  // Tapping a name shows it on the map; Add (beaches on the shore, popular
+  // spots not yet saved) adds it straight away
+  const canAdd = (p) => p.spot || (p.popId && !isPopularAdded(p.popId));
+  let html = list.map((p, i) => placeRow(p, `mapSearchGo(${i})`, canAdd(p) ? 'Add' : '', `mapSearchAdd(${i})`)).join('');
   if (searching) html += '<div class="none">Searching…</div>';
   else if (!list.length && failed !== undefined) // undefined: too short to look up yet
     html = `<div class="none">${failed ? 'Search failed, check your connection' : 'No places found near the Great Lakes'}</div>`;
@@ -3979,18 +3999,25 @@ function mapSearchGo(i) {
   document.getElementById('map-search-input').blur();
   // Street-level when dropping a pin; otherwise as close as the layers allow
   nwsMap.setView([+p.lat, +p.lon], nwsDropPinMode ? 15 : NWS_LAYER_MAX_ZOOM);
-  // Adding a spot and the result is a popular spot: add it as is
-  if (nwsDropPinMode && p.popId && !isPopularAdded(p.popId)) {
-    toggleNwsDropPinMode();
-    addPopularSpot(p.popId);
+  // Already adding a spot: a name with an Add button adds it too
+  if (nwsDropPinMode && (p.spot || (p.popId && !isPopularAdded(p.popId)))) mapSearchAdd(i);
+}
+// Add: a popular spot is saved as is; a beach/park/pier opens the Add form
+function mapSearchAdd(i) {
+  const p = mapSearchResults[i];
+  if (!p) return;
+  clearTimeout(mapSearchTimer);
+  mapSearchSeq++;
+  document.getElementById('map-search-results').hidden = true;
+  document.getElementById('map-search-input').blur();
+  if (nwsDropPinMode) toggleNwsDropPinMode();
+  if (p.popId) {
+    if (!isPopularAdded(p.popId)) addPopularSpot(p.popId);
     switchView('spots');
     return;
   }
-  // ... or a beach/park/pier: straight to the form
-  if (nwsDropPinMode && p.spot) {
-    toggleNwsDropPinMode();
-    addSpotFromPlace(p);
-  }
+  nwsMap.setView([+p.lat, +p.lon], 15);
+  addSpotFromPlace(p);
 }
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#map-search')) document.getElementById('map-search-results').hidden = true;
