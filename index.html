@@ -297,13 +297,18 @@
   #map-search { position: relative; z-index: 1100; /* results open over Leaflet's controls (z 1000) */ display: flex; gap: 6px; margin: 0 0 8px; flex: 0 0 auto; }
   #map-search input { flex: 1; min-width: 0; padding: 8px 12px; }
   #map-search .btn { padding: 0 12px; display: inline-flex; align-items: center; }
-  #map-search-results { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 700; background: var(--bg-2);
-    border: 1px solid var(--border); border-radius: 10px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.45); }
-  #map-search-results button { display: block; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--border);
+  #map-search-results { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 700; box-shadow: 0 8px 24px rgba(0,0,0,0.45); }
+  .place-results { background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .place-results:empty { display: none; }
+  .place-results button { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--border);
     color: var(--fg); padding: 10px 12px; font: inherit; font-size: 14px; cursor: pointer; }
-  #map-search-results button:first-child { border-top: 0; }
-  #map-search-results .sub { display: block; font-size: 11px; color: var(--fg-dim); margin-top: 2px; }
-  #map-search-results .none { padding: 10px 12px; font-size: 13px; color: var(--fg-dim); }
+  .place-results button:first-child { border-top: 0; }
+  .place-results .t { flex: 1; min-width: 0; }
+  .place-results .sub { display: block; font-size: 11px; color: var(--fg-dim); margin-top: 2px; }
+  .place-results .go { flex: 0 0 auto; font-size: 12px; font-weight: 600; color: var(--accent); }
+  .place-results .none { padding: 10px 12px; font-size: 13px; color: var(--fg-dim); }
+  #spot-form-map { height: 170px; border-radius: 10px; border: 1px solid var(--border); overflow: hidden; background: #0b1622; }
+  .modal details > summary { cursor: pointer; color: var(--accent); font-size: 13px; font-weight: 600; padding: 12px 0 0; }
   #nws-drop-pin-btn { position: absolute; top: 10px; right: 10px; z-index: 500; box-shadow: 0 2px 10px rgba(0,0,0,0.4); }
   #nws-drop-pin-btn.active { background: var(--r-1); color: #fff; border: 1px solid var(--r-1); }
   #nws-map-loading { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 500; background: rgba(4,36,58,0.85); color: var(--fg); font-size: 11px; padding: 4px 10px; border-radius: 999px; display: none; pointer-events: none; }
@@ -492,8 +497,7 @@
       <h3 style="margin:0 0 8px;">Getting started</h3>
       <ul style="margin:0; padding-left:18px; font-size:13px; line-height:1.6;">
         <li id="tip-install" hidden></li>
-        <li>Tap <span class="inline-icn" data-icon="plus"></span> (top right) to add popular beaches.</li>
-        <li>Tap <span class="inline-icn" data-icon="search"></span> to find your own beach on the map and add it.</li>
+        <li>Tap <span class="inline-icn" data-icon="plus"></span> (top right) to add a spot: pick a popular beach or search for your own.</li>
         <li>Tap a spot card for live conditions, the hourly forecast, cams and water quality.</li>
         <li>Each day's color is its best rating, from <b>Epic</b> to <b>Poor</b>; tap a day to open its forecast. Tap <span class="inline-icn" data-icon="pencil"></span> to reorder or delete spots.</li>
         <li>Change units and ratings in <b>Settings</b>.</li>
@@ -503,9 +507,8 @@
     <div id="spots-list"></div>
     <div id="spots-empty" class="empty" style="display:none;">
       <h2>No saved spots yet</h2>
-      <p>Browse the popular Lake Michigan breaks, or find your beach on the map and add it.</p>
-      <button class="btn" onclick="openPopularSpotsModal()">★ Browse popular spots</button>
-      <div style="margin-top:10px;"><button class="btn ghost" onclick="startAddSpotOnMap()">+ Add a spot from the map</button></div>
+      <p>Pick a popular Lake Michigan break, or search for your own beach.</p>
+      <button class="btn" onclick="openPopularSpotsModal()">+ Add a spot</button>
     </div>
   </section>
 
@@ -589,7 +592,7 @@
       <input type="search" id="map-search-input" placeholder="Search a beach or town" enterkeyhint="search" autocomplete="off"
         oninput="mapSearchTyped()" onfocus="mapSearchRefocus()" />
       <button type="submit" class="btn small" aria-label="Search"><span data-icon="search"></span></button>
-      <div id="map-search-results" hidden></div>
+      <div id="map-search-results" class="place-results" hidden></div>
     </form>
     <div id="nws-map-wrap">
       <div id="nws-map"></div>
@@ -707,26 +710,34 @@
 <div class="modal-bg" id="modal-spot">
   <div class="modal">
     <h2 id="modal-title">Add spot</h2>
-    <p class="muted" id="spot-modal-sub" style="margin: 0 0 8px; display:none;"></p>
     <label>Name</label>
     <input type="text" id="spot-name" placeholder="e.g., Sheboygan North" />
-    <div class="grid2">
-      <div>
-        <label>Latitude</label>
-        <input type="number" id="spot-lat" step="0.0001" placeholder="43.7508" oninput="autoFillDirs()" />
+    <label>Location</label>
+    <div id="spot-form-map"></div>
+    <p class="muted" id="spot-map-note" style="margin:4px 0 0; font-size:12px;"></p>
+    <details id="spot-coords-box">
+      <summary>Edit coordinates</summary>
+      <div class="grid2">
+        <div>
+          <label>Latitude</label>
+          <input type="number" id="spot-lat" step="0.0001" placeholder="43.7508" oninput="spotCoordsTyped()" />
+        </div>
+        <div>
+          <label>Longitude</label>
+          <input type="number" id="spot-lon" step="0.0001" placeholder="-87.7145" oninput="spotCoordsTyped()" />
+        </div>
       </div>
-      <div>
-        <label>Longitude</label>
-        <input type="number" id="spot-lon" step="0.0001" placeholder="-87.7145" oninput="autoFillDirs()" />
-      </div>
-    </div>
+    </details>
     <label>Offshore wind directions (best for this spot)</label>
     <p class="muted" style="margin:0;">Pick the directions wind should come <b>from</b> for clean surf. Tap to toggle.</p>
     <div class="dir-grid" id="spot-dirs"></div>
     <p class="muted" id="spot-dirs-note" style="margin:6px 0 0; font-size:12px;" hidden>Pre-selected from the shoreline: wind blowing off the land. Lake days are often best just past cross-shore, so adjust to taste.</p>
-    <label>Live cam URL (optional)</label>
-    <input type="text" id="spot-cam" placeholder="https://www.youtube.com/watch?v=..." />
-    <p class="muted" style="margin:4px 0 0; font-size:11px;">YouTube URLs embed automatically. Other sites open in a new tab.</p>
+    <details id="spot-more-box">
+      <summary>More options</summary>
+      <label>Live cam URL (optional)</label>
+      <input type="text" id="spot-cam" placeholder="https://www.youtube.com/watch?v=..." />
+      <p class="muted" style="margin:4px 0 0; font-size:11px;">YouTube URLs embed automatically. Other sites open in a new tab.</p>
+    </details>
     <div class="row between" style="margin-top:18px;">
       <button class="btn ghost" onclick="closeSpotModal()">Cancel</button>
       <div>
@@ -753,13 +764,18 @@
 
 <div class="modal-bg" id="modal-popular">
   <div class="modal">
-    <div class="row between" style="margin: -4px 0 4px;">
-      <h2 style="margin:0;">Popular Lake Michigan spots</h2>
+    <div class="row between" style="margin: -4px 0 8px;">
+      <h2 style="margin:0;">Add a spot</h2>
       <button class="btn small ghost" onclick="closePopularSpotsModal()" aria-label="Close" style="padding:4px 10px;">✕</button>
     </div>
-    <p class="muted" style="margin:0 0 10px;">Tap Add to save a spot, or tap ✓ Added to remove it. You can edit thresholds and offshore directions afterwards.</p>
+    <form onsubmit="event.preventDefault(); addSearch(true);">
+      <input type="search" id="add-search-input" placeholder="Search any beach or town" enterkeyhint="search" autocomplete="off" oninput="addSearchTyped()" />
+    </form>
+    <div class="muted" id="popular-heading" style="font-size:12px; font-weight:600; margin:14px 0 6px;">Popular Lake Michigan spots</div>
     <div id="popular-list"></div>
-    <p style="margin:12px 0 0; font-size:13px;">Don't see your break? <a href="#" style="color:var(--accent); font-weight:600;" onclick="event.preventDefault(); closePopularSpotsModal(); startAddSpotOnMap();">Find it on the map →</a></p>
+    <div class="muted" id="add-places-heading" style="font-size:12px; font-weight:600; margin:14px 0 6px;" hidden>Other beaches and places</div>
+    <div id="add-search-places" class="place-results"></div>
+    <p style="margin:12px 0 0; font-size:13px;">Can't find it? <a href="#" style="color:var(--accent); font-weight:600;" onclick="event.preventDefault(); closePopularSpotsModal(); startAddSpotOnMap();">Drop a pin on the map →</a></p>
     <div class="row between" style="margin-top:14px;">
       <button class="btn ghost" onclick="closePopularSpotsModal()">Close</button>
     </div>
@@ -1157,15 +1173,11 @@ function switchView(name) {
   action.innerHTML = '';
   if (name === 'spots') {
     if (!editingSpots) {
-      // + adds from the popular spots list; 🔍 finds your own beach on the map
-      const popBtn = document.createElement('button');
-      popBtn.className = 'btn ghost icon-btn'; popBtn.innerHTML = icon('plus'); popBtn.title = 'Add a popular spot'; popBtn.setAttribute('aria-label', 'Add a popular spot'); popBtn.style.marginRight = '6px';
-      popBtn.onclick = () => openPopularSpotsModal();
-      action.appendChild(popBtn);
-      const searchBtn = document.createElement('button');
-      searchBtn.className = 'btn ghost icon-btn'; searchBtn.innerHTML = icon('search'); searchBtn.title = 'Find a beach on the map'; searchBtn.setAttribute('aria-label', 'Find a beach on the map'); searchBtn.style.marginRight = '6px';
-      searchBtn.onclick = startAddSpotOnMap;
-      action.appendChild(searchBtn);
+      // + opens the Add sheet: popular spots plus a search for any beach
+      const addBtn = document.createElement('button');
+      addBtn.className = 'btn ghost icon-btn'; addBtn.innerHTML = icon('plus'); addBtn.title = 'Add a spot'; addBtn.setAttribute('aria-label', 'Add a spot'); addBtn.style.marginRight = '6px';
+      addBtn.onclick = () => openPopularSpotsModal();
+      action.appendChild(addBtn);
       const editBtn = document.createElement('button');
       editBtn.className = 'btn ghost icon-btn'; editBtn.innerHTML = icon('pencil'); editBtn.title = 'Edit spots'; editBtn.setAttribute('aria-label', 'Edit spots');
       editBtn.onclick = toggleEditingSpots;
@@ -1179,9 +1191,8 @@ function switchView(name) {
   }
 }
 
-// The + button: find the beach on the Map tab and drop a pin there (search,
-// street-level zoom, suggested name, offshore forecast point). Exact
-// coordinates can still be typed in the form the pin opens.
+// "Drop a pin on the map" (Add sheet): the Map tab in pin mode, search focused
+// (street-level zoom, suggested name, offshore forecast point)
 function startAddSpotOnMap() {
   switchView('map'); // creates the map synchronously on first visit
   if (!nwsDropPinMode) toggleNwsDropPinMode();
@@ -3833,18 +3844,22 @@ function mapSearchRefocus() {
   const box = document.getElementById('map-search-results');
   if (document.getElementById('map-search-input').value.trim() && box.innerHTML) box.hidden = false;
 }
-// Saved and built-in spots with a word starting with the text (no network)
+// A word of the name starts with the typed text ("mont" → Montrose, not Promontory)
+function nameMatches(name, q) {
+  const n = name.toLowerCase(), ql = q.toLowerCase();
+  return n.startsWith(ql) || n.includes(' ' + ql) || n.includes('(' + ql) || n.includes('/' + ql);
+}
+// Saved and built-in spots matching the text (no network)
 function mapSearchLocal(q) {
-  const ql = q.toLowerCase(), seen = new Set(), out = [];
-  if (ql.length < 2) return out;
-  const add = (s, sub) => {
-    const name = s.name.toLowerCase();
-    if (seen.has(s.name) || !(name.startsWith(ql) || name.includes(' ' + ql) || name.includes('(' + ql))) return;
+  const seen = new Set(), out = [];
+  if (q.length < 2) return out;
+  const add = (s, sub, popId) => {
+    if (seen.has(s.name) || !nameMatches(s.name, q)) return;
     seen.add(s.name);
-    out.push({ title: s.name, sub, lat: s.lat, lon: s.lon });
+    out.push({ title: s.name, sub, lat: s.lat, lon: s.lon, popId });
   };
   state.spots.forEach(s => add(s, 'Your spot'));
-  POPULAR_SPOTS.forEach(s => add(s, 'Popular spot · Lake ' + s.lake));
+  POPULAR_SPOTS.forEach(s => add(s, 'Popular spot · Lake ' + s.lake, s.id));
   return out.slice(0, 3);
 }
 // Surf-relevant places first; roads, transit, shops, schools etc. are dropped
@@ -3853,28 +3868,55 @@ function photonRank(p) {
   if ((k === 'natural' && v === 'beach') || (k === 'leisure' && v === 'beach_resort')) return 0;
   if ((k === 'leisure' && ['park', 'marina', 'slipway', 'nature_reserve'].includes(v)) ||
       (k === 'man_made' && ['pier', 'breakwater', 'lighthouse', 'groyne'].includes(v)) ||
+      (k === 'natural' && ['cape', 'coastline'].includes(v)) ||
       (k === 'boundary' && ['protected_area', 'national_park'].includes(v))) return 1;
   if (k === 'place' && ['city', 'town', 'village', 'hamlet', 'suburb', 'neighbourhood', 'quarter', 'locality', 'island', 'islet'].includes(v)) return 2;
-  if (k === 'natural' && ['bay', 'cape', 'peninsula', 'water', 'coastline', 'strait'].includes(v)) return 2;
+  if (k === 'natural' && ['bay', 'peninsula', 'water', 'strait'].includes(v)) return 2;
   if (k === 'tourism' && ['attraction', 'viewpoint', 'camp_site'].includes(v)) return 3;
   if ((k === 'place' && ['county', 'state', 'region'].includes(v)) ||
       (k === 'boundary' && v === 'administrative')) return 4;
   return -1;
 }
-async function photonSearch(q) {
-  const c = nwsMap ? nwsMap.getCenter() : { lat: 43, lng: -84 };
+// Excluded on Photon's side, so streets and shops don't crowd out the parks
+const PHOTON_EXCLUDE = ['highway', 'amenity', 'building', 'shop', 'railway', 'public_transport', 'office', 'healthcare',
+  'craft', 'landuse', 'information', 'historic', 'aeroway', 'power', 'waterway'].map(k => '&osm_tag=!' + k).join('');
+// Great Lakes water within km of the point (8 bearings, 0.5 km steps)
+function nearGreatLake(lat, lon, km = 4) {
+  if (!greatLakesRings) return false;
+  if (inGreatLakes(lon, lat)) return true;
+  const kmLat = 1 / 111, kmLon = 1 / (111 * Math.cos(lat * Math.PI / 180));
+  for (let d = 0.5; d <= km; d += 0.5)
+    for (let b = 0; b < 360; b += 45) {
+      const r = b * Math.PI / 180;
+      if (inGreatLakes(lon + Math.sin(r) * d * kmLon, lat + Math.cos(r) * d * kmLat)) return true;
+    }
+  return false;
+}
+// center: results nearer it rank higher; default the middle of the saved
+// spots (Lake Michigan when there are none)
+async function photonSearch(q, center) {
+  const sp = state.spots.length ? state.spots : [{ lat: 43.5, lon: -87 }];
+  const c = center || { lat: sp.reduce((a, s) => a + s.lat, 0) / sp.length, lng: sp.reduce((a, s) => a + s.lon, 0) / sp.length };
   const [w, n, e, s] = GREAT_LAKES_VIEWBOX.split(',');
-  const r = await fetch(`${PHOTON}?q=${encodeURIComponent(q)}&limit=15&lang=en&bbox=${w},${s},${e},${n}` +
-    `&lat=${c.lat.toFixed(2)}&lon=${c.lng.toFixed(2)}`);
+  const r = await fetch(`${PHOTON}?q=${encodeURIComponent(q)}&limit=20&lang=en&bbox=${w},${s},${e},${n}` +
+    `&lat=${c.lat.toFixed(2)}&lon=${c.lng.toFixed(2)}${PHOTON_EXCLUDE}`);
   if (!r.ok) throw new Error('photon ' + r.status);
+  const features = (await r.json()).features;
+  await greatLakesReady;
   const seen = new Set();
-  return (await r.json()).features
+  return features
     .map((f, i) => ({ f, p: f.properties, i, rank: photonRank(f.properties) }))
     .filter(x => x.rank >= 0 && x.p.name)
-    .sort((a, b) => a.rank - b.rank || a.i - b.i)
-    .map(({ f, p }) => {
+    .map(x => ({ ...x, lat: x.f.geometry.coordinates[1], lon: x.f.geometry.coordinates[0] }))
+    .map(x => ({ ...x, near: nearGreatLake(x.lat, x.lon) }))
+    // Lakeshore places first (inland Montrose, MI after Chicago's), then
+    // counties and states last; otherwise Photon's relevance order
+    .sort((a, b) => (b.near - a.near) || (a.rank === 4) - (b.rank === 4) || a.i - b.i)
+    .map(({ p, rank, lat, lon }) => {
       const sub = [...new Set([p.city, p.county, p.state].filter(x => x && x !== p.name))].slice(0, 2).join(', ');
-      return { title: p.name, sub, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] };
+      // spot: a beach, park, pier etc. on the shore that can become a spot as
+      // is; anything else opens the map there to drop the pin
+      return { title: p.name, sub, lat, lon, spot: rank <= 1 && nearGreatLake(lat, lon, 2.5) };
     })
     .filter(x => !seen.has(x.title + '|' + x.sub) && seen.add(x.title + '|' + x.sub));
 }
@@ -3887,8 +3929,15 @@ async function nominatimSearch(q) {
   return (await r.json()).map((p, i) => ({ p, i })).sort((a, b) => broad(a.p) - broad(b.p) || a.i - b.i).map(({ p }) => {
     const parts = p.display_name.split(', ');
     const title = p.name || parts[0];
-    return { title, sub: parts.filter(x => x !== title).slice(0, 3).join(', '), lat: +p.lat, lon: +p.lon };
+    const spot = ['beach', 'beach_resort', 'park', 'marina', 'pier', 'breakwater', 'slipway', 'nature_reserve'].includes(p.type) &&
+      nearGreatLake(+p.lat, +p.lon, 2.5);
+    return { title, sub: parts.filter(x => x !== title).slice(0, 3).join(', '), lat: +p.lat, lon: +p.lon, spot };
   });
+}
+// One result row; go is the action hint on the right ("Add", "Map")
+function placeRow(p, onclick, go) {
+  return `<button type="button" onclick="${onclick}"><span class="t">${escapeHtml(p.title)}<span class="sub">${escapeHtml(p.sub)}</span></span>` +
+    (go ? `<span class="go">${go}</span>` : '') + '</button>';
 }
 // submitted: Search button / Enter (runs now, any length, falls back to Nominatim)
 async function mapSearch(submitted = true) {
@@ -3899,18 +3948,20 @@ async function mapSearch(submitted = true) {
   const local = mapSearchLocal(q);
   mapSearchShow(q, local, true);
   let places = null;
-  try { places = await photonSearch(q); } catch (e) {
+  try { places = await photonSearch(q, nwsMap && nwsMap.getCenter()); } catch (e) {
     if (submitted) { try { places = await nominatimSearch(q); } catch (e2) {} }
   }
   if (seq !== mapSearchSeq) return; // newer text replaced this search
   const names = new Set(local.map(x => x.title));
-  mapSearchShow(q, local.concat((places || []).filter(x => !names.has(x.title))).slice(0, 8), false, places === null);
+  const failed = places === null;
+  places = (places || []).filter(x => !names.has(x.title) && !nearPopularSpot(x));
+  mapSearchShow(q, local.concat(places).slice(0, 8), false, failed);
 }
 function mapSearchShow(q, list, searching, failed) {
   const box = document.getElementById('map-search-results');
   mapSearchResults = list;
-  let html = list.map((p, i) =>
-    `<button type="button" onclick="mapSearchGo(${i})">${escapeHtml(p.title)}<span class="sub">${escapeHtml(p.sub)}</span></button>`).join('');
+  const canAdd = (p) => nwsDropPinMode && (p.spot || (p.popId && !isPopularAdded(p.popId)));
+  let html = list.map((p, i) => placeRow(p, `mapSearchGo(${i})`, canAdd(p) ? 'Add' : '')).join('');
   if (searching) html += '<div class="none">Searching…</div>';
   else if (!list.length && failed !== undefined) // undefined: too short to look up yet
     html = `<div class="none">${failed ? 'Search failed, check your connection' : 'No places found near the Great Lakes'}</div>`;
@@ -3928,6 +3979,18 @@ function mapSearchGo(i) {
   document.getElementById('map-search-input').blur();
   // Street-level when dropping a pin; otherwise as close as the layers allow
   nwsMap.setView([+p.lat, +p.lon], nwsDropPinMode ? 15 : NWS_LAYER_MAX_ZOOM);
+  // Adding a spot and the result is a popular spot: add it as is
+  if (nwsDropPinMode && p.popId && !isPopularAdded(p.popId)) {
+    toggleNwsDropPinMode();
+    addPopularSpot(p.popId);
+    switchView('spots');
+    return;
+  }
+  // ... or a beach/park/pier: straight to the form
+  if (nwsDropPinMode && p.spot) {
+    toggleNwsDropPinMode();
+    addSpotFromPlace(p);
+  }
 }
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#map-search')) document.getElementById('map-search-results').hidden = true;
@@ -4118,24 +4181,20 @@ function showAddSpotModal(prefill) {
   document.getElementById('spot-lat').value = (prefill && prefill.lat != null) ? prefill.lat : '';
   document.getElementById('spot-lon').value = (prefill && prefill.lon != null) ? prefill.lon : '';
   document.getElementById('spot-cam').value = '';
-  // Subtitle hint when coords are pre-filled (e.g., from map)
-  const sub = document.getElementById('spot-modal-sub');
-  if (prefill && prefill.lat != null && prefill.lon != null) {
-    sub.textContent = `Adding spot at ${parseFloat(prefill.lat).toFixed(4)}, ${parseFloat(prefill.lon).toFixed(4)} — name it whatever you like.`;
-    sub.style.display = '';
-  } else {
-    sub.textContent = '';
-    sub.style.display = 'none';
-  }
+  document.getElementById('spot-more-box').open = false;
+  const hasPin = prefill && prefill.lat != null && prefill.lon != null;
+  document.getElementById('spot-coords-box').open = !hasPin;
   dirsTouched = false;
   renderDirGrid([]);
   autoFillDirs();
   nameLookup++; // drop any lookup still running for an earlier pin
   document.getElementById('spot-name').placeholder = SPOT_NAME_PLACEHOLDER;
-  if (prefill && prefill.lat != null && prefill.lon != null && !prefill.name) fillSuggestedName(prefill.lat, prefill.lon);
+  if (hasPin && !prefill.name) fillSuggestedName(prefill.lat, prefill.lon);
   document.getElementById('modal-spot').classList.add('open');
-  // Auto-focus the name field after the modal animates in
-  setTimeout(() => {
+  spotFormMapShow();
+  // A name to type: focus it after the modal animates in (a search result
+  // arrives named, and the keyboard would only cover the map)
+  if (!(prefill && prefill.name)) setTimeout(() => {
     const el = document.getElementById('spot-name');
     if (el) { el.focus(); el.select && el.select(); }
   }, 120);
@@ -4151,9 +4210,60 @@ function editCurrentSpot() {
   document.getElementById('spot-lat').value = spot.lat;
   document.getElementById('spot-lon').value = spot.lon;
   document.getElementById('spot-cam').value = spot.cam || '';
+  document.getElementById('spot-more-box').open = !!spot.cam;
+  document.getElementById('spot-coords-box').open = false;
   renderDirGrid(spot.offshoreDirs || []);
   document.getElementById('spot-dirs-note').hidden = true;
   document.getElementById('modal-spot').classList.add('open');
+  spotFormMapShow();
+}
+// Small map in the spot form: the pin can be dragged, or the map tapped, to
+// move the spot; the coordinate boxes (under "Edit coordinates") follow it.
+let spotFormMap = null, spotFormPin = null;
+function spotFormMapShow() {
+  if (!spotFormMap) {
+    spotFormMap = L.map('spot-form-map', { attributionControl: false, scrollWheelZoom: false, maxZoom: 18 });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(spotFormMap);
+    spotFormMap.on('click', e => spotFormMovePin(e.latlng.lat, e.latlng.lng));
+  }
+  const lat = parseFloat(document.getElementById('spot-lat').value);
+  const lon = parseFloat(document.getElementById('spot-lon').value);
+  const has = !isNaN(lat) && !isNaN(lon);
+  if (has) spotFormPlacePin(lat, lon);
+  else if (spotFormPin) { spotFormPin.remove(); spotFormPin = null; }
+  spotFormMapNote();
+  // Leaflet can't size itself until the modal is showing
+  setTimeout(() => {
+    spotFormMap.invalidateSize();
+    if (has) spotFormMap.setView([lat, lon], 14, { animate: false });
+    else spotFormMap.fitBounds([[41.5, -88.0], [46.1, -84.7]], { animate: false });
+  }, 30);
+}
+function spotFormPlacePin(lat, lon) {
+  if (spotFormPin) { spotFormPin.setLatLng([lat, lon]); return; }
+  spotFormPin = L.marker([lat, lon], { draggable: true, autoPan: true }).addTo(spotFormMap);
+  spotFormPin.on('dragend', () => { const p = spotFormPin.getLatLng(); spotFormMovePin(p.lat, p.lng); });
+}
+function spotFormMovePin(lat, lon) {
+  spotFormPlacePin(lat, lon);
+  document.getElementById('spot-lat').value = lat.toFixed(4);
+  document.getElementById('spot-lon').value = lon.toFixed(4);
+  spotFormMapNote();
+  autoFillDirs();
+}
+function spotCoordsTyped() {
+  autoFillDirs();
+  const lat = parseFloat(document.getElementById('spot-lat').value);
+  const lon = parseFloat(document.getElementById('spot-lon').value);
+  if (isNaN(lat) || isNaN(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return;
+  spotFormPlacePin(lat, lon);
+  spotFormMap.panTo([lat, lon]);
+  spotFormMapNote();
+}
+function spotFormMapNote() {
+  document.getElementById('spot-map-note').textContent = spotFormPin
+    ? 'Drag the pin or tap the map to fine-tune. Waves are forecast just offshore.'
+    : 'Tap the map where you surf.';
 }
 function renderDirGrid(selected) {
   const g = document.getElementById('spot-dirs');
@@ -4565,19 +4675,96 @@ function clearAll() {
    Popular spots library
    ============================================ */
 
-function openPopularSpotsModal() { renderPopularList(); document.getElementById('modal-popular').classList.add('open'); }
-function closePopularSpotsModal() { document.getElementById('modal-popular').classList.remove('open'); }
+// The Add sheet (+): popular spots, filtered by the search box, plus any other
+// beach from the place search (photonSearch). A beach/park/pier result opens
+// the Add form directly; a town opens the map there to drop a pin.
+function openPopularSpotsModal() {
+  document.getElementById('add-search-input').value = '';
+  addSearchShow('');
+  renderPopularList();
+  document.getElementById('modal-popular').classList.add('open');
+}
+function closePopularSpotsModal() {
+  clearTimeout(addSearchTimer); addSearchSeq++;
+  document.getElementById('modal-popular').classList.remove('open');
+}
+let addSearchTimer = 0, addSearchSeq = 0, addSearchResults = [];
+function addSearchTyped() {
+  clearTimeout(addSearchTimer);
+  addSearchSeq++;
+  const q = document.getElementById('add-search-input').value.trim();
+  renderPopularList();
+  if (q.length < 3) { addSearchShow(''); return; }
+  addSearchShow('<div class="none">Searching other beaches…</div>');
+  addSearchTimer = setTimeout(() => addSearch(false), 300);
+}
+// submitted: Enter (runs now, any length, falls back to Nominatim)
+async function addSearch(submitted) {
+  clearTimeout(addSearchTimer);
+  const q = document.getElementById('add-search-input').value.trim();
+  if (!q) return;
+  const seq = ++addSearchSeq;
+  addSearchShow('<div class="none">Searching other beaches…</div>');
+  let places = null;
+  try { places = await photonSearch(q); } catch (e) {
+    if (submitted) { try { places = await nominatimSearch(q); } catch (e2) {} }
+  }
+  if (seq !== addSearchSeq) return; // newer text replaced this search
+  if (!places) { addSearchShow('<div class="none">Search failed, check your connection</div>'); return; }
+  addSearchResults = places.filter(x => !nearPopularSpot(x)).slice(0, 6);
+  addSearchShow(addSearchResults.length
+    ? addSearchResults.map((p, i) => placeRow(p, `addSearchGo(${i})`, p.spot ? 'Add' : 'Map')).join('')
+    : (document.querySelector('#popular-list .card') ? '' : '<div class="none">No places found near the Great Lakes</div>'));
+}
+function addSearchShow(html) {
+  document.getElementById('add-search-places').innerHTML = html;
+  document.getElementById('add-places-heading').hidden = !html;
+}
+// A searched beach that's really a popular spot (listed with its hand-set
+// directions) shows only as the popular spot
+function nearPopularSpot(x) {
+  return x.spot && POPULAR_SPOTS.some(p => haversineMiles(p.lat, p.lon, x.lat, x.lon) < 1);
+}
+// A searched beach/park/pier straight into the Add form. A big park's centre
+// can sit well inland, so a place more than ~300 m from the water moves to the
+// nearest lake edge (outline accurate to ~500 m; the form's map shows the
+// real shore to fine-tune against).
+function addSpotFromPlace(p) {
+  let lat = +p.lat, lon = +p.lon;
+  if (!nearGreatLake(lat, lon, 0.3)) {
+    const kmLat = 1 / 111, kmLon = 1 / (111 * Math.cos(lat * Math.PI / 180));
+    search: for (let d = 0.1; d <= 4; d += 0.1)
+      for (let b = 0; b < 360; b += 10) {
+        const r = b * Math.PI / 180, la = lat + Math.cos(r) * d * kmLat, lo = lon + Math.sin(r) * d * kmLon;
+        if (inGreatLakes(lo, la)) { lat = la; lon = lo; break search; }
+      }
+  }
+  showAddSpotModal({ lat: lat.toFixed(4), lon: lon.toFixed(4), name: p.title });
+}
+function addSearchGo(i) {
+  const p = addSearchResults[i];
+  if (!p) return;
+  closePopularSpotsModal();
+  if (p.spot) { addSpotFromPlace(p); return; }
+  // A town: its centre is inland, so let the user pick the beach on the map
+  switchView('map');
+  if (!nwsDropPinMode) toggleNwsDropPinMode();
+  nwsMap.setView([p.lat, p.lon], 14);
+}
 function renderPopularList() {
   const list = document.getElementById('popular-list');
-  list.innerHTML = POPULAR_SPOTS.map(p => {
+  const q = document.getElementById('add-search-input').value.trim();
+  const shown = q ? POPULAR_SPOTS.filter(p => nameMatches(p.name, q) || nameMatches('Lake ' + p.lake, q)) : POPULAR_SPOTS;
+  document.getElementById('popular-heading').textContent = q ? 'Popular spots' : 'Popular Lake Michigan spots';
+  document.getElementById('popular-heading').hidden = !shown.length;
+  list.innerHTML = shown.map(p => {
     const added = isPopularAdded(p.id);
     return `
       <div class="card" style="padding:12px; margin-bottom:8px;">
         <div class="row between">
           <div style="flex:1; min-width:0;">
             <div style="font-weight:600;">${escapeHtml(p.name)}</div>
-            <div class="coords">Lake ${escapeHtml(p.lake)} · ${p.lat.toFixed(3)}, ${p.lon.toFixed(3)}</div>
-            <div class="muted" style="font-size:11px; margin-top:2px;">Offshore: ${p.offshoreDirs.join(' · ')}</div>
+            <div class="muted" style="font-size:11px; margin-top:2px;">Lake ${escapeHtml(p.lake)} · offshore ${p.offshoreDirs.join(' · ')}</div>
           </div>
           ${added
             ? `<button class="btn small pop-added" data-pop-remove="${p.id}" style="margin-left:8px;" aria-label="Remove ${escapeHtml(p.name)}" title="Tap to remove">✓ Added</button>`
