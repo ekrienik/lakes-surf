@@ -586,7 +586,8 @@
 
   <section id="view-map" class="view">
     <form id="map-search" onsubmit="event.preventDefault(); mapSearch();">
-      <input type="search" id="map-search-input" placeholder="Search a beach or town" enterkeyhint="search" autocomplete="off" />
+      <input type="search" id="map-search-input" placeholder="Search a beach or town" enterkeyhint="search" autocomplete="off"
+        oninput="mapSearchTyped()" onfocus="mapSearchRefocus()" />
       <button type="submit" class="btn small" aria-label="Search"><span data-icon="search"></span></button>
       <div id="map-search-results" hidden></div>
     </form>
@@ -3811,42 +3812,118 @@ async function initNwsMapIfNeeded() {
   // grids load on demand in nwsShowFrame() when their layer is shown.
   loadAllSpotMapForecasts().then(() => updateSpotMapMarkers());
 }
-// Map search: OpenStreetMap (Nominatim) places within the Great Lakes region.
-// Runs on Search/Enter only; Nominatim's usage policy forbids search-as-you-type.
+// Map search, as you type: the user's and built-in spots match instantly, then
+// OpenStreetMap places from Photon (komoot's public geocoder, made for
+// search-as-you-type, fair use) within the Great Lakes region. Nominatim's
+// usage policy forbids search-as-you-type, so it's only the fallback when
+// Photon fails on an explicit Search/Enter.
 const GREAT_LAKES_VIEWBOX = '-92.6,49.2,-75.4,40.9';
-async function mapSearch() {
-  const input = document.getElementById('map-search-input');
+const PHOTON = 'https://photon.komoot.io/api/';
+let mapSearchResults = [];
+let mapSearchTimer = 0, mapSearchSeq = 0;
+function mapSearchTyped() {
+  clearTimeout(mapSearchTimer);
+  const q = document.getElementById('map-search-input').value.trim();
+  mapSearchSeq++; // drop any lookup still in flight for older text
+  if (!q) { document.getElementById('map-search-results').hidden = true; return; }
+  mapSearchShow(q, mapSearchLocal(q), q.length >= 3);
+  if (q.length >= 3) mapSearchTimer = setTimeout(() => mapSearch(false), 300);
+}
+function mapSearchRefocus() {
   const box = document.getElementById('map-search-results');
-  const q = input.value.trim();
-  if (!q) { box.hidden = true; return; }
-  box.innerHTML = '<div class="none">Searching…</div>';
-  box.hidden = false;
-  let list = null;
-  try {
-    const r = await fetch(`${NOMINATIM}/search?format=jsonv2&q=${encodeURIComponent(q)}&viewbox=${GREAT_LAKES_VIEWBOX}&bounded=1&limit=6`);
-    if (r.ok) list = await r.json();
-  } catch (e) { list = null; }
-  if (input.value.trim() !== q) return; // a newer search replaced this one
-  if (!list || !list.length) {
-    box.innerHTML = `<div class="none">${list ? 'No places found near the Great Lakes' : 'Search failed, check your connection'}</div>`;
-    return;
-  }
+  if (document.getElementById('map-search-input').value.trim() && box.innerHTML) box.hidden = false;
+}
+// Saved and built-in spots with a word starting with the text (no network)
+function mapSearchLocal(q) {
+  const ql = q.toLowerCase(), seen = new Set(), out = [];
+  if (ql.length < 2) return out;
+  const add = (s, sub) => {
+    const name = s.name.toLowerCase();
+    if (seen.has(s.name) || !(name.startsWith(ql) || name.includes(' ' + ql) || name.includes('(' + ql))) return;
+    seen.add(s.name);
+    out.push({ title: s.name, sub, lat: s.lat, lon: s.lon });
+  };
+  state.spots.forEach(s => add(s, 'Your spot'));
+  POPULAR_SPOTS.forEach(s => add(s, 'Popular spot · Lake ' + s.lake));
+  return out.slice(0, 3);
+}
+// Surf-relevant places first; roads, transit, shops, schools etc. are dropped
+function photonRank(p) {
+  const k = p.osm_key, v = p.osm_value;
+  if ((k === 'natural' && v === 'beach') || (k === 'leisure' && v === 'beach_resort')) return 0;
+  if ((k === 'leisure' && ['park', 'marina', 'slipway', 'nature_reserve'].includes(v)) ||
+      (k === 'man_made' && ['pier', 'breakwater', 'lighthouse', 'groyne'].includes(v)) ||
+      (k === 'boundary' && ['protected_area', 'national_park'].includes(v))) return 1;
+  if (k === 'place' && ['city', 'town', 'village', 'hamlet', 'suburb', 'neighbourhood', 'quarter', 'locality', 'island', 'islet'].includes(v)) return 2;
+  if (k === 'natural' && ['bay', 'cape', 'peninsula', 'water', 'coastline', 'strait'].includes(v)) return 2;
+  if (k === 'tourism' && ['attraction', 'viewpoint', 'camp_site'].includes(v)) return 3;
+  if ((k === 'place' && ['county', 'state', 'region'].includes(v)) ||
+      (k === 'boundary' && v === 'administrative')) return 4;
+  return -1;
+}
+async function photonSearch(q) {
+  const c = nwsMap ? nwsMap.getCenter() : { lat: 43, lng: -84 };
+  const [w, n, e, s] = GREAT_LAKES_VIEWBOX.split(',');
+  const r = await fetch(`${PHOTON}?q=${encodeURIComponent(q)}&limit=15&lang=en&bbox=${w},${s},${e},${n}` +
+    `&lat=${c.lat.toFixed(2)}&lon=${c.lng.toFixed(2)}`);
+  if (!r.ok) throw new Error('photon ' + r.status);
+  const seen = new Set();
+  return (await r.json()).features
+    .map((f, i) => ({ f, p: f.properties, i, rank: photonRank(f.properties) }))
+    .filter(x => x.rank >= 0 && x.p.name)
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .map(({ f, p }) => {
+      const sub = [...new Set([p.city, p.county, p.state].filter(x => x && x !== p.name))].slice(0, 2).join(', ');
+      return { title: p.name, sub, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] };
+    })
+    .filter(x => !seen.has(x.title + '|' + x.sub) && seen.add(x.title + '|' + x.sub));
+}
+async function nominatimSearch(q) {
+  const r = await fetch(`${NOMINATIM}/search?format=jsonv2&q=${encodeURIComponent(q)}&viewbox=${GREAT_LAKES_VIEWBOX}&bounded=1&limit=6`);
+  if (!r.ok) throw new Error('nominatim ' + r.status);
   // Towns and beaches before counties/states ("Sheboygan" should not land on
   // the county's inland centre); otherwise keep Nominatim's order
   const broad = (p) => ['county', 'state', 'region', 'country'].includes(p.addresstype) ? 1 : 0;
-  list = list.map((p, i) => ({ p, i })).sort((a, b) => broad(a.p) - broad(b.p) || a.i - b.i).map(x => x.p);
-  mapSearchResults = list;
-  box.innerHTML = list.map((p, i) => {
+  return (await r.json()).map((p, i) => ({ p, i })).sort((a, b) => broad(a.p) - broad(b.p) || a.i - b.i).map(({ p }) => {
     const parts = p.display_name.split(', ');
     const title = p.name || parts[0];
-    const sub = parts.filter(x => x !== title).slice(0, 3).join(', ');
-    return `<button type="button" onclick="mapSearchGo(${i})">${escapeHtml(title)}<span class="sub">${escapeHtml(sub)}</span></button>`;
-  }).join('');
+    return { title, sub: parts.filter(x => x !== title).slice(0, 3).join(', '), lat: +p.lat, lon: +p.lon };
+  });
 }
-let mapSearchResults = [];
+// submitted: Search button / Enter (runs now, any length, falls back to Nominatim)
+async function mapSearch(submitted = true) {
+  clearTimeout(mapSearchTimer);
+  const q = document.getElementById('map-search-input').value.trim();
+  if (!q) { document.getElementById('map-search-results').hidden = true; return; }
+  const seq = ++mapSearchSeq;
+  const local = mapSearchLocal(q);
+  mapSearchShow(q, local, true);
+  let places = null;
+  try { places = await photonSearch(q); } catch (e) {
+    if (submitted) { try { places = await nominatimSearch(q); } catch (e2) {} }
+  }
+  if (seq !== mapSearchSeq) return; // newer text replaced this search
+  const names = new Set(local.map(x => x.title));
+  mapSearchShow(q, local.concat((places || []).filter(x => !names.has(x.title))).slice(0, 8), false, places === null);
+}
+function mapSearchShow(q, list, searching, failed) {
+  const box = document.getElementById('map-search-results');
+  mapSearchResults = list;
+  let html = list.map((p, i) =>
+    `<button type="button" onclick="mapSearchGo(${i})">${escapeHtml(p.title)}<span class="sub">${escapeHtml(p.sub)}</span></button>`).join('');
+  if (searching) html += '<div class="none">Searching…</div>';
+  else if (!list.length && failed !== undefined) // undefined: too short to look up yet
+    html = `<div class="none">${failed ? 'Search failed, check your connection' : 'No places found near the Great Lakes'}</div>`;
+  else if (failed) html += '<div class="none">Place search failed, check your connection</div>';
+  if (!html) html = '<div class="none">Keep typing…</div>';
+  box.innerHTML = html;
+  box.hidden = false;
+}
 function mapSearchGo(i) {
   const p = mapSearchResults[i];
   if (!p || !nwsMap) return;
+  clearTimeout(mapSearchTimer);
+  mapSearchSeq++;
   document.getElementById('map-search-results').hidden = true;
   document.getElementById('map-search-input').blur();
   // Street-level when dropping a pin; otherwise as close as the layers allow
