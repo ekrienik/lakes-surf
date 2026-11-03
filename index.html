@@ -1235,7 +1235,7 @@ function renderHeader(name) {
   document.getElementById('header-sub').textContent =
     name === 'spots' ? todaysTagline()
     : name === 'map' ? 'Waves & wind · spots · 7 days'
-    : name === 'buoys' ? (live ? buoyLiveSummary() : '10-day outlook')
+    : name === 'buoys' ? (live ? buoyLiveSummary() : `${buoyIndexData ? buoyIndexData.stations.length + ' buoys · ' : ''}10-day outlook`)
     : name === 'settings' ? 'Defaults, units, backup' : '';
 
   const action = document.getElementById('header-action');
@@ -2167,7 +2167,7 @@ function makeLineChart(opts) {
     if (leftSeries.length) yLabels += `<text x="${(padding.l - 4).toFixed(0)}" y="${py}" text-anchor="end" font-size="10" fill="${leftColor}" dominant-baseline="central">${k * step}</text>`;
     if (hasRight) yLabels += `<text x="${(W - padding.r + 4).toFixed(0)}" y="${py}" text-anchor="start" font-size="10" fill="${rightColor}" dominant-baseline="central">${k * rStep}</text>`;
   }
-  // X-axis labels every 3h (no vertical gridlines)
+  // X-axis labels every 3h, each with a vertical gridline (drawn under the lines)
   let xLabels = '';
   const oneHour = 3600 * 1000;
   for (let t = Math.ceil(start / oneHour) * oneHour; t <= now; t += oneHour) {
@@ -2175,7 +2175,8 @@ function makeLineChart(opts) {
     if (d.getHours() % 3 === 0) {
       const x = xToPx(t).toFixed(1);
       const lbl = d.toLocaleTimeString([], { hour: 'numeric' });
-      xLabels += `<text x="${x}" y="${(H - 5).toFixed(0)}" text-anchor="middle" font-size="10" fill="#a3b5c7">${lbl}</text>`;
+      xLabels += `<line x1="${x}" x2="${x}" y1="${padding.t}" y2="${(H - padding.b).toFixed(0)}" stroke="#1f3850" stroke-width="0.5"/>` +
+        `<text x="${x}" y="${(H - 5).toFixed(0)}" text-anchor="middle" font-size="10" fill="#a3b5c7">${lbl}</text>`;
     }
   }
   // One path + latest-value dot per series (drawn back to front: first series on top)
@@ -2224,7 +2225,7 @@ function makeLineChart(opts) {
     W, H, padT: padding.t, padB: padding.b
   };
   // Title on the left, the highlighted reading on the right (colored per line)
-  return `<div style="margin-bottom:16px;">
+  return `<div style="margin-bottom:10px;">
     <div class="chart-head">
       <span class="section-label">${title}</span>
       <span class="chart-readout" id="${chartId}-readout"></span>
@@ -2240,7 +2241,16 @@ function makeLineChart(opts) {
         ${series.map(s => `<circle cx="0" cy="0" r="3.5" fill="${s.color}" stroke="#ffffff" stroke-width="1.2"/>`).join('')}
       </g>
     </svg>
+    ${chartKey(series.map(s => ({ name: s.name, color: s.color, dash: s.dashed ? '4 3' : null })))}
   </div>`;
+}
+// Legend row under a chart (Live and Fcst charts alike): { name, color, dash }
+// for lines, { name, color, opacity, band: true } for shaded ranges
+const CHART_AMBER = '#f0b030';
+function chartKey(items) {
+  return `<div class="muted" style="display:flex; flex-wrap:wrap; gap:2px 10px; font-size:11px; margin-top:2px;">${items.map(k => k.band
+    ? `<span><i style="display:inline-block;width:12px;height:9px;background:${k.color};opacity:${k.opacity};vertical-align:middle;"></i> ${k.name}</span>`
+    : `<span><i style="display:inline-block;width:14px;vertical-align:middle;border-top:${k.dash ? `2px ${k.dash.startsWith('2') ? 'dotted' : 'dashed'}` : '3px solid'} ${k.color};"></i> ${k.name}</span>`).join('')}</div>`;
 }
 let lineChartSeq = 0;
 let chartWidth = Math.min(600, window.innerWidth - 60);
@@ -2381,7 +2391,7 @@ async function renderLiveCharts(spot, live) {
 // The Live tab's two 24h charts, from timeseries in ft / mph (charted in the
 // user's units); also the Buoys tab's Live card. ts: waves (+ its own wind),
 // windTs: wind (null when none).
-function liveChartsHtml({ ts, windTs, width, height, waveFrom = '', windFrom = '', compact = false }) {
+function liveChartsHtml({ ts, windTs, width, height = 120, waveFrom = '', windFrom = '', compact = false }) {
   const hasVals = (arr) => Array.isArray(arr) && arr.some(v => v != null && !isNaN(parseFloat(v)));
   const num = (v) => (v == null || v === '' || isNaN(parseFloat(v))) ? null : parseFloat(v);
   const waveUnit = waveParts(0).u;
@@ -2389,16 +2399,16 @@ function liveChartsHtml({ ts, windTs, width, height, waveFrom = '', windFrom = '
   // Second series in each chart is amber: period on its own right-hand axis
   // (drawn in steps: buoys report whole seconds), gusts dashed on the wind axis
   const waveChart = ts && hasVals(ts.waveHeight)
-    ? makeLineChart({ title: 'Waves', times: ts.times, dirs: ts.waveDirection, dirsLabel: compact ? false : 'Wave direction', width, height, series: [
+    ? makeLineChart({ title: `Waves (${waveUnit})`, times: ts.times, dirs: ts.waveDirection, dirsLabel: compact ? false : 'Wave direction', width, height, series: [
         { name: 'Height', unit: waveUnit, values: ts.waveHeight.map(v => num(v) == null ? null : parseFloat(waveParts(obsFtToM(v)).v)), color: '#4ec3ff', axis: 'left' },
-        { name: 'Period', unit: 's', values: ts.wavePeriod, color: '#f0b030', axis: 'right', step: true }
+        { name: 'Period (s)', unit: 's', values: ts.wavePeriod, color: CHART_AMBER, axis: 'right', step: true }
       ] }) + waveFrom
     : `<div class="section-label">Waves</div><div class="empty-note">No buoy wave data in the last 24 hours (buoys are pulled for the winter).</div>`;
   const windVals = (arr) => (arr || []).map(v => num(v) == null ? null : windParts(obsMphToKmh(v)).v);
   const windChart = windTs
-    ? makeLineChart({ title: 'Wind', times: windTs.times, dirs: windTs.windDirection, dirsLabel: compact ? false : 'Wind direction', width, height, series: [
+    ? makeLineChart({ title: `Wind (${windUnit})`, times: windTs.times, dirs: windTs.windDirection, dirsLabel: compact ? false : 'Wind direction', width, height, series: [
         { name: 'Wind', unit: windUnit, values: windVals(windTs.windSpeed), color: '#4ec3ff', axis: 'left' },
-        { name: 'Gust', unit: windUnit, values: windVals(windTs.windGust), color: '#f0b030', axis: 'left', dashed: true }
+        { name: 'Gust', unit: windUnit, values: windVals(windTs.windGust), color: CHART_AMBER, axis: 'left', dashed: true }
       ] }) + windFrom
     : `<div class="section-label">Wind</div><div class="empty-note">No wind data in the last 24 hours.</div>`;
   return waveChart + windChart;
@@ -4327,7 +4337,7 @@ const ensureBuoyIndex = () => {
   return buoyIndexLoad;
 };
 
-let buoyIndexLoad = null, buoyMap = null, buoyMarkers = {}, buoyLoadSeq = 0;
+let buoyIndexLoad = null, buoyIndexData = null, buoyMap = null, buoyMarkers = {}, buoyLoadSeq = 0;
 // "SOUTH MICHIGAN - 43NM East…" → "South Michigan - 43NM East…"
 const tidyBuoyName = (n) => n.replace(/\b[A-Z]{3,}\b/g, w => w[0] + w.slice(1).toLowerCase());
 // Distances from the first saved spot (or Chicago with none)
@@ -4343,7 +4353,12 @@ async function initBuoyView() {
     document.getElementById('buoy-charts').innerHTML = '<div class="empty-note">Outlook unavailable right now. Check your connection, or try again later.</div>';
     return;
   }
+  buoyIndexData = index;
   if (!Object.keys(buoyMarkers).length) buildBuoyMarkers(index);
+  // Live's list gives the shared name, position and status colors (cached)
+  if (!buoyLiveList) { try { buoyLiveList = await loadBuoyLive(); } catch (e) {} }
+  colorBuoyMarkers();
+  if (document.getElementById('view-buoys').classList.contains('active')) renderHeader('buoys'); // the count
   // The shared buoy if GLERL forecasts it; otherwise the one nearest it (or
   // the spots) that it does, without changing the shared one
   const live = (buoyLiveList || []).find(b => b.id === state.buoyId);
@@ -4355,20 +4370,38 @@ async function initBuoyView() {
 // Tap a buoy on the Fcst map to pick it
 function buildBuoyMarkers(index) {
   for (const s of index.stations) {
-    buoyMarkers[s.id] = L.circleMarker([s.lat, s.lon], { radius: 6, weight: 1.5, color: '#04243a', fillColor: '#8aa3b8', fillOpacity: 1 })
-      .bindTooltip(`${s.id} · ${escapeHtml(tidyBuoyName(s.name))}`, { direction: 'top' })
+    buoyMarkers[s.id] = L.circleMarker([s.lat, s.lon], { radius: 6, weight: 1.5, color: '#04243a', fillColor: BUOY_COLORS.out, fillOpacity: 1 })
+      .bindTooltip(escapeHtml(tidyBuoyName(buoyInfo(s).name)), { direction: 'top' })
       .on('click', () => buoySelect(s.id))
       .addTo(buoyMap);
   }
   return index;
 }
-async function buoySelect(id, save = true, note = '') {
-  if (save) setBuoyId(id);
-  for (const [k, m] of Object.entries(buoyMarkers)) {
+// Live's entry for a buoy, so both views use the same name and position
+// (GLERL's differ slightly); GLERL's own when Live hasn't loaded
+const buoyInfo = (s) => (buoyLiveList || []).find(b => b.id === s.id) || s;
+// Fcst dots in Live's status colors (in / quiet / out); positions and names
+// follow Live too
+function colorBuoyMarkers() {
+  for (const [id, m] of Object.entries(buoyMarkers)) {
+    const b = (buoyLiveList || []).find(x => x.id === id);
+    if (!b) continue;
+    m.setStyle({ fillColor: BUOY_COLORS[b.status] });
+    m.setLatLng([b.lat, b.lon]);
+    m.setTooltipContent(escapeHtml(tidyBuoyName(b.name)));
+  }
+}
+// Selected buoy: a bigger dot with a white ring, on both maps
+const markBuoySelected = (markers, id) => {
+  for (const [k, m] of Object.entries(markers)) {
     const on = k === id;
-    m.setStyle(on ? { radius: 8, color: '#ffffff', weight: 2.5, fillColor: '#4ec3ff' } : { radius: 6, color: '#04243a', weight: 1.5, fillColor: '#8aa3b8' });
+    m.setStyle(on ? { radius: 8, color: '#ffffff', weight: 2.5 } : { radius: 6, color: '#04243a', weight: 1.5 });
     if (on) m.bringToFront();
   }
+};
+async function buoySelect(id, save = true, note = '') {
+  if (save) setBuoyId(id);
+  markBuoySelected(buoyMarkers, id);
   const host = document.getElementById('buoy-charts');
   const seq = ++buoyLoadSeq;
   host.innerHTML = '<div class="muted" style="font-size:12px;">Loading outlook…</div>';
@@ -4383,9 +4416,9 @@ async function buoySelect(id, save = true, note = '') {
 }
 function renderBuoyCharts(d, note = '') {
   const host = document.getElementById('buoy-charts');
-  const home = buoyHome();
-  const title = `<div class="buoy-title"><b>${escapeHtml(tidyBuoyName(d.name))}</b>` +
-    `<span class="muted" style="font-size:12px;">${Math.round(haversineMiles(home.lat, home.lon, d.lat, d.lon))} mi</span></div>` +
+  const home = buoyHome(), b = buoyInfo(d);
+  const title = `<div class="buoy-title"><b>${escapeHtml(tidyBuoyName(b.name))}</b>` +
+    `<span class="muted" style="font-size:12px;">${Math.round(haversineMiles(home.lat, home.lon, b.lat, b.lon))} mi</span></div>` +
     (note ? `<div class="muted" style="font-size:11px; margin:-2px 0 4px;">${escapeHtml(note)}</div>` : '');
   if (host.clientWidth > 0) chartWidth = host.clientWidth - 24;
   const times = Array.from({ length: d.n }, (_, i) => (d.t0 + i * d.step) * 1000);
@@ -4398,19 +4431,20 @@ function renderBuoyCharts(d, note = '') {
   const wind = state.units.wind;
   const kf = wind === 'kt' ? 0.868976 : wind === 'mph' ? 1 : 1.609344, ku = wind === 'kt' || wind === 'mph' ? wind : 'km/h';
   const w = d.wave, k = d.wind;
+  // Same scheme as the Live charts: blue for the main line, amber for the second
   const waveChart = buoyChart({
-    title: 'Wave height', unit: wu, times: ts, decimals: 1, height: 150,
+    title: 'Waves', unit: wu, times: ts, decimals: 1, height: 120,
     bands: [{ lo: cut(w.p10, wf), hi: cut(w.p90, wf), color: '#4ec3ff', opacity: 0.16, name: 'Possible' },
             { lo: cut(w.p25, wf), hi: cut(w.p75, wf), color: '#4ec3ff', opacity: 0.4, name: 'Likely', likely: true }],
-    lines: [{ vals: cut(w.avg, wf), color: '#4ec3ff', width: 2.2, name: 'Avg' },
-            { vals: cut(w.ww3, wf), color: '#f5b14c', width: 1.5, dash: '5 3', name: 'WW3' },
+    lines: [{ vals: cut(w.avg, wf), color: '#4ec3ff', width: 2, name: 'Avg' },
+            { vals: cut(w.ww3, wf), color: CHART_AMBER, width: 1.5, dash: '4 3', name: 'WW3' },
             { vals: cut(w.xgb, wf), color: '#e8f1f8', width: 1.5, dash: '2 3', name: 'XGBoost' }]
   });
   const windChart = k && k.avg ? buoyChart({
     title: 'Wind', unit: ku, times: ts, decimals: 0, height: 120,
     bands: [],
-    lines: [{ vals: cut(k.avg, kf), color: '#ff9f5a', width: 2.2, name: 'Ensemble avg' },
-            { vals: cut(k.hrrr, kf), color: '#e8f1f8', width: 1.5, dash: '2 3', name: 'HRRR+GFS' }]
+    lines: [{ vals: cut(k.avg, kf), color: '#4ec3ff', width: 2, name: 'Ensemble avg' },
+            { vals: cut(k.hrrr, kf), color: CHART_AMBER, width: 1.5, dash: '4 3', name: 'HRRR+GFS' }]
   }) : '';
   const run = new Date(d.init * 1000);
   const old = Date.now() - run.getTime() > 36 * 3600e3;
@@ -4478,14 +4512,14 @@ function buoyChart({ title, unit, times, bands, lines, decimals, height = 150 })
       pts: times.map((t, i) => l.vals[i] == null ? null : { t, v: l.vals[i], i, x: x(t), y: y(l.vals[i]) }).filter(Boolean) })),
     readout: (p) => {
       const when = new Date(p.t).toLocaleString([], { weekday: 'short', hour: 'numeric' });
-      const extra = band && band.lo[p.i] != null ? ` <span class="muted">likely ${fmt(band.lo[p.i])}–${fmt(band.hi[p.i])}</span>`
+      const extra = band && band.lo[p.i] != null ? ` <span class="muted">· likely ${fmt(band.lo[p.i])}–${fmt(band.hi[p.i])}</span>`
         : shown[1] && shown[1].vals[p.i] != null ? ` <span style="color:${shown[1].color};">· ${shown[1].name} ${fmt(shown[1].vals[p.i])}</span>` : '';
       return `<span style="color:${shown[0].color};">${fmt(p.v)} ${unit}</span>${extra} <span class="muted">· ${when}</span>`;
     }
   };
-  const key = [...bands.filter(b => b.lo).map(b => `<span><i style="display:inline-block;width:12px;height:9px;background:${b.color};opacity:${Math.min(1, b.opacity * 1.6)};vertical-align:middle;"></i> ${b.name}</span>`),
-    ...shown.map(l => `<span><i style="display:inline-block;width:14px;vertical-align:middle;border-top:${l.dash ? `2px ${l.dash.startsWith('2') ? 'dotted' : 'dashed'}` : '3px solid'} ${l.color};"></i> ${l.name}</span>`)].join('');
-  return `<div style="margin-bottom:8px;">
+  const key = chartKey([...bands.filter(b => b.lo).map(b => ({ name: b.name, color: b.color, opacity: Math.min(1, b.opacity * 1.6), band: true })),
+    ...shown.map(l => ({ name: l.name, color: l.color, dash: l.dash }))]);
+  return `<div style="margin-bottom:10px;">
     <div class="chart-head"><span class="section-label">${title} (${unit})</span><span class="chart-readout" id="${chartId}-readout"></span></div>
     <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="line-chart" data-chart-id="${chartId}" style="width:100%; height:${H}px; touch-action:pan-y; cursor:crosshair;">
       ${svg}
@@ -4494,7 +4528,7 @@ function buoyChart({ title, unit, times, bands, lines, decimals, height = 150 })
         ${shown.map(l => `<circle cx="0" cy="0" r="3.5" fill="${l.color}" stroke="#ffffff" stroke-width="1.2"/>`).join('')}
       </g>
     </svg>
-    <div class="muted" style="display:flex; flex-wrap:wrap; gap:2px 10px; font-size:11px; margin-top:2px;">${key}</div>
+    ${key}
   </div>`;
 }
 
@@ -4578,11 +4612,7 @@ async function buoyLiveSelect(id, save = true) {
   const b = (buoyLiveList || []).find(x => x.id === id);
   if (!b) return;
   if (save) setBuoyId(id);
-  for (const [k, m] of Object.entries(buoyLiveMarkers)) {
-    const on = k === id;
-    m.setStyle(on ? { radius: 8, color: '#ffffff', weight: 2.5 } : { radius: 6, color: '#04243a', weight: 1.5 });
-    if (on) m.bringToFront();
-  }
+  markBuoySelected(buoyLiveMarkers, id);
   const seq = ++buoyLiveSeq;
   buoyLiveLast = { b, ts: null, loading: b.status !== 'out' };
   renderBuoyLiveCard();
@@ -4605,15 +4635,19 @@ function renderBuoyLiveCard() {
   const water = b.status !== 'out' && b.waterF != null && !isNaN(b.waterF) ? ` · ${fmtTemp((b.waterF - 32) * 5 / 9)} water` : '';
   const title = `<div class="buoy-title"><b>${escapeHtml(tidyBuoyName(b.name))}</b>` +
     `<span class="muted" style="font-size:12px;">${mi} mi${water} · <span style="color:${BUOY_COLORS[b.status]};">● ${status}</span></span></div>`;
+  // One-line footer, like Fcst's: when it last reported, and NOAA's page for it
+  const ndbc = `<a href="https://www.ndbc.noaa.gov/station_page.php?station=${b.id}" target="_blank" rel="noopener" style="color:var(--accent);">NDBC ↗</a>`;
   if (b.status === 'out') {
     const when = b.end ? new Date(b.end).toLocaleDateString([], { month: 'short', day: 'numeric' }) : null;
-    card.innerHTML = title + `<div class="empty-note" style="padding:12px 0;">Out of the water${when ? ` · last report ${when}` : ''}.</div>`;
+    card.innerHTML = title + `<div class="empty-note" style="padding:12px 0;">Out of the water${when ? ` · last report ${when}` : ''}.</div>` +
+      `<div class="muted buoy-src">${ndbc}</div>`;
     return;
   }
   if (loading) { card.innerHTML = title + '<div class="muted" style="font-size:12px; padding:8px 0;">Loading 24h charts…</div>'; return; }
   if (card.clientWidth > 0) chartWidth = card.clientWidth - 24;
   const hasWind = ts && Array.isArray(ts.windSpeed) && ts.windSpeed.some(v => v != null && !isNaN(parseFloat(v)));
-  card.innerHTML = title + liveChartsHtml({ ts, windTs: hasWind ? ts : null, width: chartWidth, height: 110, compact: true });
+  card.innerHTML = title + liveChartsHtml({ ts, windTs: hasWind ? ts : null, width: chartWidth, compact: true }) +
+    `<div class="muted buoy-src">Updated ${new Date(b.last).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ${ndbc}</div>`;
   attachChartReadouts(card);
   card.querySelectorAll('svg.line-chart').forEach(svg => chartShowAt(svg, Infinity));
 }
