@@ -293,13 +293,16 @@
   #view-map.active { display: flex; flex-direction: column; height: calc(100vh - 170px - var(--safe-top) - var(--safe-bot)); }
   #nws-map-wrap { position: relative; flex: 1 1 auto; min-height: 240px; }
   /* Buoys tab: one screen, same height as the Map tab; the map takes what the
-     card leaves (down to a minimum), so on small phones it shrinks first */
+     card leaves (down to a minimum), so on small phones it shrinks first.
+     min-height, not height: when the card still doesn't fit, the view grows and
+     the page scrolls under the sticky header. A fixed height let the charts
+     spill past <body>, and scrolling to them pushed the header off screen. */
   :root { --buoy-in: #34c77b; --buoy-quiet: #e8a33d; --buoy-out: #8a96a3; }
-  #view-buoys.active { display: flex; flex-direction: column; height: calc(100vh - 170px - var(--safe-top) - var(--safe-bot)); }
+  #view-buoys.active { display: flex; flex-direction: column; min-height: calc(100vh - 170px - var(--safe-top) - var(--safe-bot)); }
   #buoy-live, #buoy-view { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 0; }
   #buoy-live[hidden], #buoy-view[hidden] { display: none; }
-  .buoy-map-wrap { position: relative; flex: 1 1 170px; min-height: 80px; }
-  .buoy-map-wrap.fc { flex-basis: 120px; min-height: 80px; }
+  /* isolation keeps Leaflet's high z-index panes under the sticky header when scrolled */
+  .buoy-map-wrap { position: relative; flex: 1 1 0; min-height: 80px; isolation: isolate; }
   .buoy-map { position: absolute; inset: 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #0b1622; }
   #buoy-live-card, #buoy-charts { flex: 0 0 auto; margin: 0; padding: 10px 12px; }
   .buoy-key { position: absolute; right: 8px; bottom: 8px; z-index: 500; display: flex; gap: 8px; padding: 3px 8px; border-radius: 8px;
