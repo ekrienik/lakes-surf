@@ -292,17 +292,28 @@
   /* Map tab (NOAA NDFD heat map + spots) */
   #view-map.active { display: flex; flex-direction: column; height: calc(100vh - 170px - var(--safe-top) - var(--safe-bot)); }
   #nws-map-wrap { position: relative; flex: 1 1 auto; min-height: 240px; }
-  /* Buoys view (header switch): the forecast map's parts hide, the page scrolls */
-  #view-map.active.buoys-mode { display: block; height: auto; }
-  #view-map.buoys-mode > :not(#buoy-view) { display: none; }
-  #buoy-view { padding-bottom: 8px; }
-  #buoy-map { height: 190px; margin: 8px 0 10px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #0b1622; }
-  #buoy-source { font-size: 11px; text-align: center; margin-top: 8px; line-height: 1.5; }
+  /* Buoys tab: one screen, same height as the Map tab; the map takes what the
+     card leaves (down to a minimum), so on small phones it shrinks first */
+  :root { --buoy-in: #34c77b; --buoy-quiet: #e8a33d; --buoy-out: #8a96a3; }
+  #view-buoys.active { display: flex; flex-direction: column; height: calc(100vh - 170px - var(--safe-top) - var(--safe-bot)); }
+  #buoy-live, #buoy-view { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 0; }
+  #buoy-live[hidden], #buoy-view[hidden] { display: none; }
+  .buoy-map-wrap { position: relative; flex: 1 1 170px; min-height: 80px; }
+  .buoy-map-wrap.fc { flex-basis: 120px; min-height: 80px; }
+  .buoy-map { position: absolute; inset: 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #0b1622; }
+  #buoy-live-card, #buoy-charts { flex: 0 0 auto; margin: 0; padding: 10px 12px; }
+  .buoy-key { position: absolute; right: 8px; bottom: 8px; z-index: 500; display: flex; gap: 8px; padding: 3px 8px; border-radius: 8px;
+    background: rgba(7,18,29,0.85); font-size: 11px; color: var(--fg-dim); pointer-events: none; }
+  .buoy-key i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 3px; }
+  #buoy-select { position: absolute; top: 8px; left: 8px; right: 8px; width: auto; z-index: 500; padding: 6px 10px; font-size: 14px;
+    background: rgba(7,18,29,0.9); }
+  .buoy-title { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; align-items: baseline; margin-bottom: 4px; }
+  .buoy-title b { font-size: 14px; font-weight: 600; }
+  .buoy-src { font-size: 11px; text-align: center; margin-top: 2px; line-height: 1.4; }
   .map-switch { display: flex; border: 1px solid var(--accent); border-radius: 10px; overflow: hidden; height: 38px; }
   .map-switch button { display: flex; align-items: center; gap: 5px; padding: 0 11px; background: none; border: 0; color: var(--accent);
     font: inherit; font-size: 13px; cursor: pointer; }
   .map-switch button.on { background: var(--accent); color: #04243a; font-weight: 600; }
-  .map-switch .icn { width: 16px; height: 16px; }
   #nws-map { width: 100%; height: 100%; min-height: 240px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #0b1622; }
   #nws-map.pin-mode { cursor: crosshair; }
   #map-search { position: relative; z-index: 1100; /* results open over Leaflet's controls (z 1000) */ display: flex; gap: 6px; margin: 0 0 8px; flex: 0 0 auto; }
@@ -657,12 +668,24 @@
       </div>
       <div class="muted" id="nws-source-line" style="font-size:11px; text-align:center; margin-top:6px;">Heat map: NOAA NDFD via digital.weather.gov · <a href="https://www.weather.gov/greatlakes/" target="_blank" rel="noopener" style="color:var(--accent);">weather.gov/greatlakes ↗</a></div>
     </div>
-    <!-- Buoys (header switch): GLERL's experimental 10-day ensemble outlook per buoy -->
+  </section>
+
+  <!-- Buoys tab, header switch Live | Forecast; both fit one screen, the maps shrink first -->
+  <section id="view-buoys" class="view">
+    <div id="buoy-live">
+      <div class="buoy-map-wrap">
+        <div id="buoy-live-map" class="buoy-map"></div>
+        <div class="buoy-key"><span><i style="background:var(--buoy-in)"></i>In</span><span><i style="background:var(--buoy-quiet)"></i>Quiet</span><span><i style="background:var(--buoy-out)"></i>Out</span></div>
+      </div>
+      <div id="buoy-live-card" class="card chart-card"><div class="muted" style="font-size:12px;">Loading buoys…</div></div>
+    </div>
+    <!-- GLERL's experimental 10-day ensemble outlook per buoy -->
     <div id="buoy-view" hidden>
-      <select id="buoy-select" aria-label="Buoy" onchange="buoySelect(this.value)"></select>
-      <div id="buoy-map"></div>
+      <div class="buoy-map-wrap fc">
+        <div id="buoy-map" class="buoy-map"></div>
+        <select id="buoy-select" aria-label="Buoy" onchange="buoySelect(this.value)"></select>
+      </div>
       <div id="buoy-charts" class="card chart-card"><div class="muted" style="font-size:12px;">Loading outlook…</div></div>
-      <div class="muted" id="buoy-source"></div>
     </div>
   </section>
 
@@ -739,6 +762,9 @@
   </button>
   <button data-view="map" onclick="switchView('map')">
     <svg class="icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 18.5l-3 -1.5l-6 3v-13l6 -3l6 3l6 -3v7.5"/><path d="M9 4v13"/><path d="M15 7v5.5"/><path d="M21.121 20.121a3 3 0 1 0 -4.242 0c.418 .419 1.125 1.045 2.121 1.879c1.051 -.89 1.759 -1.516 2.121 -1.879z"/><path d="M19 18v.01"/></svg><span>Map</span>
+  </button>
+  <button data-view="buoys" onclick="switchView('buoys')">
+    <svg class="icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v3"/><path d="M9 6h6l2.5 10h-11z"/><path d="M7.7 11h8.6"/><path d="M3 20c1.5 0 1.5 -1 3 -1s1.5 1 3 1s1.5 -1 3 -1s1.5 1 3 1s1.5 -1 3 -1s1.5 1 3 1"/></svg><span>Buoys</span>
   </button>
   <button data-view="settings" onclick="switchView('settings')">
     <svg class="icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/></svg><span>Settings</span>
@@ -852,9 +878,7 @@ const ICONS = {
   plus: '<path d="M12 5l0 14"/><path d="M5 12l14 0"/>',
   pencil: '<path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"/><path d="M13.5 6.5l4 4"/>',
   chevronRight: '<path d="M9 6l6 6l-6 6"/>',
-  share: '<path d="M8 9h-1a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-8a2 2 0 0 0 -2 -2h-1"/><path d="M12 14v-11"/><path d="M9 6l3 -3l3 3"/>',
-  map: '<path d="M3 7l6 -3l6 3l6 -3v13l-6 3l-6 -3l-6 3v-13"/><path d="M9 4v13"/><path d="M15 7v13"/>',
-  chart: '<path d="M4 19l16 0"/><path d="M4 15l4 -6l4 2l4 -5l4 4l0 5l-16 0"/><path d="M4 12l3 -4l4 2l5 -6l4 4"/>'
+  share: '<path d="M8 9h-1a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-8a2 2 0 0 0 -2 -2h-1"/><path d="M12 14v-11"/><path d="M9 6l3 -3l3 3"/>'
 };
 function icon(name, size = 20) {
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
@@ -1187,12 +1211,13 @@ function switchView(name) {
   document.querySelectorAll('nav.tabbar button').forEach(b => b.classList.toggle('active', b.dataset.view === name));
   const view = document.getElementById('view-' + name);
   if (view) view.classList.add('active');
-  if (name === 'map' || name === 'settings') gcEvent('tab/' + name, name === 'map' ? 'Map tab' : 'Settings tab');
+  if (name === 'map' || name === 'settings' || name === 'buoys') gcEvent('tab/' + name, name[0].toUpperCase() + name.slice(1) + ' tab');
   viewRenderedAt = Date.now();
   document.getElementById('header-back').hidden = name !== 'forecast';
 
   if (name === 'spots') renderSpots();
-  if (name === 'map') applyMapView(); // starts the forecast map or the Buoys view
+  if (name === 'buoys') applyBuoyMode();
+  if (name === 'map') initNwsMapIfNeeded();
   else {
     nwsMapPause();
     if (nwsDropPinMode) toggleNwsDropPinMode(); // leaving the map cancels a pin drop
@@ -1200,29 +1225,31 @@ function switchView(name) {
   if (name === 'settings') renderSettings();
   renderHeader(name);
 }
-// Header title, subtitle and buttons for a tab (re-run when the Map tab's
-// view or pin mode changes)
+// Header title, subtitle and buttons for a tab (re-run when the Buoys tab's
+// view or its buoy count changes)
 function renderHeader(name) {
-  const buoys = name === 'map' && mapView() === 'buoys';
+  const live = buoyMode() === 'live';
   document.getElementById('header-title').textContent =
     name === 'spots' ? 'Lakes Surf'
-    : name === 'map' ? (buoys ? 'Buoys' : 'Map')
+    : name === 'map' ? 'Map'
+    : name === 'buoys' ? 'Buoys'
     : name === 'settings' ? 'Settings' : 'Forecast';
 
   document.getElementById('header-sub').textContent =
     name === 'spots' ? todaysTagline()
-    : name === 'map' ? (buoys ? '10-day outlook' : 'Waves & wind · spots · 7 days')
+    : name === 'map' ? 'Waves & wind · spots · 7 days'
+    : name === 'buoys' ? (live ? buoyLiveSummary() : '10-day outlook')
     : name === 'settings' ? 'Defaults, units, backup' : '';
 
   const action = document.getElementById('header-action');
   action.innerHTML = '';
-  // Map | Buoys switch; hidden while dropping a pin, which needs the map
-  if (name === 'map' && !nwsDropPinMode) {
+  // Live | Forecast switch
+  if (name === 'buoys') {
     const sw = document.createElement('div');
-    sw.className = 'map-switch'; sw.setAttribute('role', 'group'); sw.setAttribute('aria-label', 'Map view');
-    sw.innerHTML = `<button type="button" data-v="map" class="${buoys ? '' : 'on'}" aria-pressed="${!buoys}">${icon('map', 16)}Map</button>` +
-      `<button type="button" data-v="buoys" class="${buoys ? 'on' : ''}" aria-pressed="${buoys}">${icon('chart', 16)}Buoys</button>`;
-    sw.querySelectorAll('button').forEach(b => b.onclick = () => setMapView(b.dataset.v));
+    sw.className = 'map-switch'; sw.setAttribute('role', 'group'); sw.setAttribute('aria-label', 'Buoy view');
+    sw.innerHTML = `<button type="button" data-v="live" class="${live ? 'on' : ''}" aria-pressed="${live}">Live</button>` +
+      `<button type="button" data-v="forecast" class="${live ? '' : 'on'}" aria-pressed="${!live}">Forecast</button>`;
+    sw.querySelectorAll('button').forEach(b => b.onclick = () => setBuoyMode(b.dataset.v));
     action.appendChild(sw);
   }
   if (name === 'spots') {
@@ -2185,7 +2212,8 @@ function makeLineChart(opts) {
       const pct = (xToPx(t) / W * 100).toFixed(2);
       arrows += `<span style="position:absolute; left:${pct}%; top:0; transform:translateX(-50%); color:#a3b5c7;">${dirArrow(best.d, 11)}</span>`;
     }
-    if (arrows) dirRow = `<div class="dir-row-label">${opts.dirsLabel || 'Direction'}</div><div style="position:relative; height:14px; line-height:14px;">${arrows}</div>`;
+    if (arrows) dirRow = (opts.dirsLabel === false ? '' : `<div class="dir-row-label">${opts.dirsLabel || 'Direction'}</div>`) +
+      `<div style="position:relative; height:14px; line-height:14px;">${arrows}</div>`;
   }
 
   // Touch / hover readout: stash the plotted points so a tap on the chart can
@@ -2340,39 +2368,43 @@ async function renderLiveCharts(spot, live) {
   }
   // The user may have moved to another spot while the timeseries loaded
   if (currentSpotId !== spot.id) return;
-  // Timeseries arrive in ft / mph; chart them in the user's units.
-  const num = (v) => (v == null || v === '' || isNaN(parseFloat(v))) ? null : parseFloat(v);
-  const waveUnit = waveParts(0).u;
-  const windUnit = windParts(0).u;
   for (const k of Object.keys(lineChartData)) delete lineChartData[k];
   // Chart at the card's real inner width (host is 0 wide while the Live tab is
   // hidden, e.g. on a background refresh — then reuse the last width).
   if (host.clientWidth > 0) chartWidth = host.clientWidth - 30;
-  const width = chartWidth;
   const from = (st) => st ? `<div class="chart-src">From ${escapeHtml(shortName(st.NAME || st.STID || 'Station'))}${st.distMiles != null ? ` · ${st.distMiles < 1 ? '&lt;1' : st.distMiles.toFixed(0)} mi` : ''}</div>` : '';
-  // Second series in each chart is amber: period on its own right-hand axis
-  // (drawn in steps: buoys report whole seconds), gusts dashed on the wind axis
-  const waveChart = ts && hasVals(ts.waveHeight)
-    ? makeLineChart({ title: 'Waves', times: ts.times, dirs: ts.waveDirection, dirsLabel: 'Wave direction', width, series: [
-        { name: 'Height', unit: waveUnit, values: ts.waveHeight.map(v => num(v) == null ? null : parseFloat(waveParts(obsFtToM(v)).v)), color: '#4ec3ff', axis: 'left' },
-        { name: 'Period', unit: 's', values: ts.wavePeriod, color: '#f0b030', axis: 'right', step: true }
-      ] }) + from(live.waveStation || live.station)
-    : `<div class="section-label">Waves</div><div class="empty-note">No buoy wave data in the last 24 hours (buoys are pulled for the winter).</div>`;
-  const windVals = (arr) => (arr || []).map(v => num(v) == null ? null : windParts(obsMphToKmh(v)).v);
-  const windChart = windTs
-    ? makeLineChart({ title: 'Wind', times: windTs.times, dirs: windTs.windDirection, dirsLabel: 'Wind direction', width, series: [
-        { name: 'Wind', unit: windUnit, values: windVals(windTs.windSpeed), color: '#4ec3ff', axis: 'left' },
-        { name: 'Gust', unit: windUnit, values: windVals(windTs.windGust), color: '#f0b030', axis: 'left', dashed: true }
-      ] }) + from(windSt)
-    : `<div class="section-label">Wind</div><div class="empty-note">No wind data in the last 24 hours.</div>`;
   host.innerHTML = `<div class="card chart-card">
-    ${waveChart}
-    ${windChart}
+    ${liveChartsHtml({ ts, windTs, width: chartWidth, waveFrom: from(live.waveStation || live.station), windFrom: from(windSt) })}
     <div class="muted" style="font-size:11px; margin-top:2px;">Tap or drag on a chart to read a value.</div>
   </div>`;
   attachChartReadouts(host);
   // Start each chart on its most recent reading
   host.querySelectorAll('svg.line-chart').forEach(svg => chartShowAt(svg, Infinity));
+}
+// The Live tab's two 24h charts, from timeseries in ft / mph (charted in the
+// user's units); also the Buoys tab's Live card. ts: waves (+ its own wind),
+// windTs: wind (null when none).
+function liveChartsHtml({ ts, windTs, width, height, waveFrom = '', windFrom = '', compact = false }) {
+  const hasVals = (arr) => Array.isArray(arr) && arr.some(v => v != null && !isNaN(parseFloat(v)));
+  const num = (v) => (v == null || v === '' || isNaN(parseFloat(v))) ? null : parseFloat(v);
+  const waveUnit = waveParts(0).u;
+  const windUnit = windParts(0).u;
+  // Second series in each chart is amber: period on its own right-hand axis
+  // (drawn in steps: buoys report whole seconds), gusts dashed on the wind axis
+  const waveChart = ts && hasVals(ts.waveHeight)
+    ? makeLineChart({ title: 'Waves', times: ts.times, dirs: ts.waveDirection, dirsLabel: compact ? false : 'Wave direction', width, height, series: [
+        { name: 'Height', unit: waveUnit, values: ts.waveHeight.map(v => num(v) == null ? null : parseFloat(waveParts(obsFtToM(v)).v)), color: '#4ec3ff', axis: 'left' },
+        { name: 'Period', unit: 's', values: ts.wavePeriod, color: '#f0b030', axis: 'right', step: true }
+      ] }) + waveFrom
+    : `<div class="section-label">Waves</div><div class="empty-note">No buoy wave data in the last 24 hours (buoys are pulled for the winter).</div>`;
+  const windVals = (arr) => (arr || []).map(v => num(v) == null ? null : windParts(obsMphToKmh(v)).v);
+  const windChart = windTs
+    ? makeLineChart({ title: 'Wind', times: windTs.times, dirs: windTs.windDirection, dirsLabel: compact ? false : 'Wind direction', width, height, series: [
+        { name: 'Wind', unit: windUnit, values: windVals(windTs.windSpeed), color: '#4ec3ff', axis: 'left' },
+        { name: 'Gust', unit: windUnit, values: windVals(windTs.windGust), color: '#f0b030', axis: 'left', dashed: true }
+      ] }) + windFrom
+    : `<div class="section-label">Wind</div><div class="empty-note">No wind data in the last 24 hours.</div>`;
+  return waveChart + windChart;
 }
 
 
@@ -3733,8 +3765,7 @@ function windStep() {
 function windStartAnim() {
   if (windAnim) return;
   const loop = () => {
-    const mapEl = document.getElementById('view-map');
-    const mapActive = mapEl.classList.contains('active') && !mapEl.classList.contains('buoys-mode');
+    const mapActive = document.getElementById('view-map').classList.contains('active');
     if (!mapActive || !isLocalLayer() || document.hidden || !windField) { windAnim = null; return; }
     windStep();
     windAnim = requestAnimationFrame(loop);
@@ -4061,10 +4092,6 @@ document.addEventListener('click', (e) => {
 
 function toggleNwsDropPinMode() {
   nwsDropPinMode = !nwsDropPinMode;
-  // Dropping a pin needs the forecast map; the header's Map | Buoys switch
-  // hides meanwhile
-  if (nwsDropPinMode && mapView() === 'buoys') { state.mapView = 'map'; saveState(); applyMapView(); }
-  if (document.getElementById('view-map').classList.contains('active')) renderHeader('map');
   const btn = document.getElementById('nws-drop-pin-btn');
   if (btn) {
     btn.textContent = nwsDropPinMode ? '✕ Cancel' : '+ Add spot';
@@ -4252,32 +4279,56 @@ function updateSpotMapMarkers() {
 }
 
 /* ============================================================================
-   Map tab → Buoys: GLERL's experimental 10-day ensemble wave outlook
+   Buoys tab: Live (every Great Lakes buoy, in or out of the water) and
+   Forecast (GLERL's experimental 10-day ensemble wave outlook)
    ============================================================================ */
 
-// NOAA GLERL's point-based ensemble wave forecast for its 24 Great Lakes
-// buoys. GLERL's site doesn't allow cross-site fetches, so a GitHub Actions
-// job (.github/scripts/glerl-outlook.mjs) trims it twice a day onto this
-// repo's `data` branch. Waves come in feet, wind in mph; hourly from t0.
+// Forecast: NOAA GLERL's point-based ensemble wave forecast for its 24 Great
+// Lakes buoys. GLERL's site doesn't allow cross-site fetches, so a GitHub
+// Actions job (.github/scripts/glerl-outlook.mjs) trims it twice a day onto
+// this repo's `data` branch. Waves come in feet, wind in mph; hourly from t0.
 const BUOY_DATA = 'https://raw.githubusercontent.com/ekrienik/lakes-surf/data/glerl/';
 const BUOY_PAGE = 'https://www.glerl.noaa.gov/emf/waves/WW3/?pg=xgb';
-const mapView = () => state.mapView === 'buoys' ? 'buoys' : 'map';
-function setMapView(v) {
-  if (v === mapView()) return;
-  state.mapView = v; saveState();
-  applyMapView();
-  renderHeader('map');
+const buoyMode = () => state.buoyMode === 'forecast' ? 'forecast' : 'live';
+function setBuoyMode(v) {
+  if (v === buoyMode()) return;
+  state.buoyMode = v; saveState();
+  applyBuoyMode();
+  renderHeader('buoys');
 }
-// Show the forecast map or the Buoys view (and start whichever is showing)
-function applyMapView() {
-  const el = document.getElementById('view-map');
-  const buoys = mapView() === 'buoys';
-  el.classList.toggle('buoys-mode', buoys);
-  document.getElementById('buoy-view').hidden = !buoys;
-  if (!el.classList.contains('active')) return;
-  if (buoys) { nwsMapPause(); initBuoyView(); }
-  else initNwsMapIfNeeded();
+// Show Live or Forecast, and (re)load whichever is showing
+function applyBuoyMode() {
+  const live = buoyMode() === 'live';
+  document.getElementById('buoy-live').hidden = !live;
+  document.getElementById('buoy-view').hidden = live;
+  if (!document.getElementById('view-buoys').classList.contains('active')) return;
+  if (live) initBuoyLive(); else initBuoyView();
 }
+// One selected buoy for both views (its 45xxx id)
+function setBuoyId(id) { state.buoyId = id; saveState(); }
+const buoyBaseMap = (elId, zoomControl = true) => {
+  const m = L.map(elId, { attributionControl: false, scrollWheelZoom: false, maxZoom: 12, zoomControl, zoomSnap: 0.25 });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 12 }).addTo(m);
+  m.setView([45, -84], 5);
+  // The map gets whatever height the card leaves, which changes as charts
+  // load: keep all five lakes framed until the user pans or zooms it
+  m.on('dragstart', () => { m.userMoved = true; });
+  m.on('zoomstart', () => { if (!m.framing) m.userMoved = true; });
+  new ResizeObserver(() => {
+    m.invalidateSize();
+    if (m.userMoved || !m.getSize().y) return;
+    m.framing = true;
+    m.fitBounds([[41.4, -92.1], [48.9, -76.1]], { animate: false });
+    m.framing = false;
+  }).observe(m.getContainer());
+  return m;
+};
+const buoyMapResize = (m) => setTimeout(() => m.invalidateSize(), 30); // after the tab was hidden
+const ensureBuoyIndex = () => {
+  if (!buoyIndexLoad) buoyIndexLoad = fetchJsonCached(BUOY_DATA + 'index.json', 30 * 60 * 1000)
+    .catch(e => { buoyIndexLoad = null; throw e; }); // try again next time
+  return buoyIndexLoad;
+};
 
 let buoyIndexLoad = null, buoyMap = null, buoyMarkers = {}, buoyLoadSeq = 0;
 // "SOUTH MICHIGAN - 43NM East…" → "South Michigan - 43NM East…"
@@ -4288,23 +4339,20 @@ function buoyHome() {
   return s ? { lat: s.lat, lon: s.lon } : { lat: 41.97, lon: -87.63 };
 }
 async function initBuoyView() {
-  if (!buoyMap) {
-    buoyMap = L.map('buoy-map', { attributionControl: false, scrollWheelZoom: false, maxZoom: 12 });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 12 }).addTo(buoyMap);
-    buoyMap.fitBounds([[41.4, -92.1], [48.9, -76.1]], { animate: false });
-  }
-  setTimeout(() => buoyMap.invalidateSize(), 30); // sized while hidden
-  if (!buoyIndexLoad) buoyIndexLoad = fetchJsonCached(BUOY_DATA + 'index.json', 30 * 60 * 1000).then(buildBuoyPicker);
+  if (!buoyMap) buoyMap = buoyBaseMap('buoy-map', false); // the picker sits where the zoom buttons would
+  buoyMapResize(buoyMap);
   let index;
-  try { index = await buoyIndexLoad; } catch (e) {
-    buoyIndexLoad = null; // try again next time
+  try { index = await ensureBuoyIndex(); } catch (e) {
     document.getElementById('buoy-charts').innerHTML = '<div class="empty-note">Outlook unavailable right now. Check your connection, or try again later.</div>';
     return;
   }
+  if (!Object.keys(buoyMarkers).length) buildBuoyPicker(index);
+  // The shared buoy if GLERL forecasts it; otherwise the nearest that it does
+  // (without changing the shared one)
   const home = buoyHome();
   const nearest = [...index.stations].sort((a, b) => haversineMiles(home.lat, home.lon, a.lat, a.lon) - haversineMiles(home.lat, home.lon, b.lat, b.lon))[0];
-  const id = index.stations.some(s => s.id === state.buoyId) ? state.buoyId : nearest.id;
-  if (id !== buoyShownId) buoySelect(id);
+  const has = index.stations.some(s => s.id === state.buoyId);
+  buoySelect(has ? state.buoyId : nearest.id, has);
 }
 function buildBuoyPicker(index) {
   const home = buoyHome();
@@ -4320,10 +4368,8 @@ function buildBuoyPicker(index) {
   }
   return index;
 }
-let buoyShownId = null;
-async function buoySelect(id) {
-  state.buoyId = id; saveState();
-  buoyShownId = id;
+async function buoySelect(id, save = true) {
+  if (save) setBuoyId(id);
   document.getElementById('buoy-select').value = id;
   for (const [k, m] of Object.entries(buoyMarkers)) {
     const on = k === id;
@@ -4338,13 +4384,13 @@ async function buoySelect(id) {
   if (seq !== buoyLoadSeq) return; // another buoy picked meanwhile
   if (!d || !d.wave) {
     host.innerHTML = '<div class="empty-note">Outlook unavailable for this buoy right now.</div>';
-    document.getElementById('buoy-source').innerHTML = '';
     return;
   }
   renderBuoyCharts(d);
 }
 function renderBuoyCharts(d) {
   const host = document.getElementById('buoy-charts');
+  if (host.clientWidth > 0) chartWidth = host.clientWidth - 24;
   const times = Array.from({ length: d.n }, (_, i) => (d.t0 + i * d.step) * 1000);
   // From the current hour on (the run starts up to ~14 h before it's posted)
   const i0 = Math.max(0, times.findIndex(t => t >= Date.now() - 3600e3));
@@ -4356,35 +4402,34 @@ function renderBuoyCharts(d) {
   const kf = wind === 'kt' ? 0.868976 : wind === 'mph' ? 1 : 1.609344, ku = wind === 'kt' || wind === 'mph' ? wind : 'km/h';
   const w = d.wave, k = d.wind;
   const waveChart = buoyChart({
-    title: 'Wave height', unit: wu, times: ts, decimals: 1,
-    bands: [{ lo: cut(w.p10, wf), hi: cut(w.p90, wf), color: '#4ec3ff', opacity: 0.16, name: 'Possible (10–90%)' },
-            { lo: cut(w.p25, wf), hi: cut(w.p75, wf), color: '#4ec3ff', opacity: 0.4, name: 'Likely (25–75%)' }],
-    lines: [{ vals: cut(w.avg, wf), color: '#4ec3ff', width: 2.2, name: 'Average' },
+    title: 'Wave height', unit: wu, times: ts, decimals: 1, height: 150,
+    bands: [{ lo: cut(w.p10, wf), hi: cut(w.p90, wf), color: '#4ec3ff', opacity: 0.16, name: 'Possible' },
+            { lo: cut(w.p25, wf), hi: cut(w.p75, wf), color: '#4ec3ff', opacity: 0.4, name: 'Likely', likely: true }],
+    lines: [{ vals: cut(w.avg, wf), color: '#4ec3ff', width: 2.2, name: 'Avg' },
             { vals: cut(w.ww3, wf), color: '#f5b14c', width: 1.5, dash: '5 3', name: 'WW3' },
             { vals: cut(w.xgb, wf), color: '#e8f1f8', width: 1.5, dash: '2 3', name: 'XGBoost' }]
   });
   const windChart = k && k.avg ? buoyChart({
-    title: 'Wind', unit: ku, times: ts, decimals: 0,
+    title: 'Wind', unit: ku, times: ts, decimals: 0, height: 120,
     bands: [],
-    lines: [{ vals: cut(k.avg, kf), color: '#ff9f5a', width: 2.2, name: 'Ensemble average' },
+    lines: [{ vals: cut(k.avg, kf), color: '#ff9f5a', width: 2.2, name: 'Ensemble avg' },
             { vals: cut(k.hrrr, kf), color: '#e8f1f8', width: 1.5, dash: '2 3', name: 'HRRR+GFS' }]
   }) : '';
-  host.innerHTML = waveChart + windChart;
+  const run = new Date(d.init * 1000);
+  const old = Date.now() - run.getTime() > 36 * 3600e3;
+  host.innerHTML = waveChart + windChart +
+    `<div class="muted buoy-src">${old ? '<span style="color:var(--r-2);">This run is over a day old; GLERL may be having problems.</span><br>' : ''}` +
+    `Run ${run.toLocaleString([], { weekday: 'short', hour: 'numeric' })} · experimental, no ice · ` +
+    `<a href="${BUOY_PAGE}${encodeURIComponent(d.id)}" target="_blank" rel="noopener" style="color:var(--accent);">GLERL ↗</a></div>`;
   attachChartReadouts(host);
   // Start each readout at the current hour
   host.querySelectorAll('svg.line-chart').forEach(svg => chartShowAt(svg, 0));
-  const run = new Date(d.init * 1000);
-  const old = Date.now() - run.getTime() > 36 * 3600e3;
-  document.getElementById('buoy-source').innerHTML =
-    `${old ? '<span style="color:var(--r-2);">This run is over a day old, so GLERL may be having problems.</span><br>' : ''}` +
-    `Run started ${run.toLocaleString([], { weekday: 'short', hour: 'numeric' })} · updates twice a day. ` +
-    `Experimental: ice isn't modelled. <a href="${BUOY_PAGE}${encodeURIComponent(d.id)}" target="_blank" rel="noopener" style="color:var(--accent);">Full chart at NOAA GLERL ↗</a>`;
 }
 // A 10-day chart: shaded bands (lo–hi), lines on top, one gridline per day.
 // Uses the Live charts' touch readout (lineChartData / attachChartReadouts),
 // with its own wording; the first line leads the readout.
-function buoyChart({ title, unit, times, bands, lines, decimals }) {
-  const W = chartWidth, H = 150, pad = { l: 28, r: 8, t: 8, b: 18 };
+function buoyChart({ title, unit, times, bands, lines, decimals, height = 150 }) {
+  const W = chartWidth, H = height, pad = { l: 28, r: 8, t: 8, b: 18 };
   const plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
   const t0 = times[0], t1 = times[times.length - 1];
   const all = [...bands.flatMap(b => b.hi || []), ...lines.flatMap(l => l.vals || [])].filter(v => v != null);
@@ -4429,7 +4474,7 @@ function buoyChart({ title, unit, times, bands, lines, decimals }) {
   const shown = lines.filter(l => l.vals && l.vals.some(v => v != null));
   const chartId = 'lc_' + (++lineChartSeq);
   const fmt = (v) => v.toFixed(decimals);
-  const band = bands.find(b => b.name.startsWith('Likely'));
+  const band = bands.find(b => b.likely);
   lineChartData[chartId] = {
     W, H, padT: pad.t, padB: pad.b,
     series: shown.map(l => ({ unit, name: l.name, color: l.color,
@@ -4443,7 +4488,7 @@ function buoyChart({ title, unit, times, bands, lines, decimals }) {
   };
   const key = [...bands.filter(b => b.lo).map(b => `<span><i style="display:inline-block;width:12px;height:9px;background:${b.color};opacity:${Math.min(1, b.opacity * 1.6)};vertical-align:middle;"></i> ${b.name}</span>`),
     ...shown.map(l => `<span><i style="display:inline-block;width:14px;vertical-align:middle;border-top:${l.dash ? `2px ${l.dash.startsWith('2') ? 'dotted' : 'dashed'}` : '3px solid'} ${l.color};"></i> ${l.name}</span>`)].join('');
-  return `<div style="margin-bottom:16px;">
+  return `<div style="margin-bottom:8px;">
     <div class="chart-head"><span class="section-label">${title} (${unit})</span><span class="chart-readout" id="${chartId}-readout"></span></div>
     <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="line-chart" data-chart-id="${chartId}" style="width:100%; height:${H}px; touch-action:pan-y; cursor:crosshair;">
       ${svg}
@@ -4452,8 +4497,133 @@ function buoyChart({ title, unit, times, bands, lines, decimals }) {
         ${shown.map(l => `<circle cx="0" cy="0" r="3.5" fill="${l.color}" stroke="#ffffff" stroke-width="1.2"/>`).join('')}
       </g>
     </svg>
-    <div class="muted" style="display:flex; flex-wrap:wrap; gap:4px 12px; font-size:11px; margin-top:4px;">${key}</div>
+    <div class="muted" style="display:flex; flex-wrap:wrap; gap:2px 10px; font-size:11px; margin-top:2px;">${key}</div>
   </div>`;
+}
+
+// Live: every Great Lakes buoy, from Synoptic. The station directory (wave
+// stations, including buoys pulled for the season) gives positions and last
+// report dates; one latest request shows who's reporting. In = a reading in
+// the last 3 h, Quiet = 3 h to 3 days, Out = nothing for 3+ days.
+const BUOY_COLORS = { in: '#34c77b', quiet: '#e8a33d', out: '#8a96a3' };
+const GREAT_LAKES_BBOX = '-92.6,40.9,-75.4,49.2';
+let buoyLiveMap = null, buoyLiveMarkers = {}, buoyLiveList = null, buoyLiveSeq = 0, buoyLiveLast = null;
+async function loadBuoyLive() {
+  const meta = await fetchJsonCached(`${MESOWEST_BASE}/metadata?token=${MESOWEST_TOKEN}&bbox=${GREAT_LAKES_BBOX}&vars=wave_height&status=active`, 12 * 3600e3);
+  // Buoys are 45xxx; most are listed twice (45174 and NDBC45174): merge them
+  const idOf = (stid) => { const m = /^(?:NDBC)?(45\d{3})$/.exec(stid || ''); return m && m[1]; };
+  const byId = new Map();
+  for (const s of meta.STATION || []) {
+    const id = idOf(s.STID);
+    if (!id) continue; // shore stations: no wave readings in practice
+    const b = byId.get(id) || { id, lat: +s.LATITUDE, lon: +s.LONGITUDE, name: '', end: 0, stids: [], last: 0 };
+    b.stids.push(s.STID);
+    if (!b.name || /^Buoy \d/.test(b.name)) b.name = s.NAME; // NDBC's listing has the real name
+    b.end = Math.max(b.end, Date.parse((s.PERIOD_OF_RECORD || {}).end || '') || 0);
+    byId.set(id, b);
+  }
+  const all = [...byId.values()];
+  const latest = await fetchJsonCached(`${MESOWEST_BASE}/latest?token=${MESOWEST_TOKEN}&stid=${all.flatMap(b => b.stids).join(',')}&within=4320&units=english`, 5 * 60e3);
+  for (const s of latest.STATION || []) {
+    const b = byId.get(idOf(s.STID));
+    if (!b) continue;
+    const o = s.OBSERVATIONS || {};
+    for (const v of Object.values(o)) b.last = Math.max(b.last, Date.parse(v && v.date_time) || 0);
+    // NDBC's listing has wave direction and period: the richer one to chart
+    if (o.mean_wave_direction_value_1 || o.dominant_wave_period_value_1) b.chartStid = s.STID;
+    const wt = o.water_temp_value_1, wtAt = wt && Date.parse(wt.date_time);
+    if (wt && !(b.waterAt > wtAt)) { b.waterF = parseFloat(wt.value); b.waterAt = wtAt; }
+  }
+  const now = Date.now();
+  for (const b of all) {
+    b.status = !b.last ? 'out' : now - b.last <= 3 * 3600e3 ? 'in' : 'quiet';
+    if (!b.chartStid) b.chartStid = b.stids.find(x => !x.startsWith('NDBC')) || b.stids[0];
+  }
+  return all;
+}
+function buoyLiveSummary() {
+  if (!buoyLiveList) return 'Live readings';
+  const n = (st) => buoyLiveList.filter(b => b.status === st).length;
+  return n('quiet') ? `${n('in')} in · ${n('quiet')} quiet · ${n('out')} out` : `${n('in')} in the water · ${n('out')} out`;
+}
+async function initBuoyLive() {
+  if (!buoyLiveMap) buoyLiveMap = buoyBaseMap('buoy-live-map');
+  buoyMapResize(buoyLiveMap);
+  const seq = ++buoyLiveSeq;
+  let list = null;
+  try { list = await loadBuoyLive(); } catch (e) {}
+  if (seq !== buoyLiveSeq) return;
+  const card = document.getElementById('buoy-live-card');
+  if (!list || !list.length) {
+    card.innerHTML = '<div class="empty-note">Buoy readings unavailable right now. Check your connection, or try again later.</div>';
+    return;
+  }
+  buoyLiveList = list;
+  if (document.getElementById('view-buoys').classList.contains('active')) renderHeader('buoys'); // the count
+  for (const m of Object.values(buoyLiveMarkers)) m.remove();
+  buoyLiveMarkers = {};
+  // Out first so the reporting buoys draw on top
+  const order = { out: 0, quiet: 1, in: 2 };
+  for (const b of [...list].sort((a, c) => order[a.status] - order[c.status])) {
+    buoyLiveMarkers[b.id] = L.circleMarker([b.lat, b.lon], { radius: 6, weight: 1.5, color: '#04243a', fillColor: BUOY_COLORS[b.status], fillOpacity: 1 })
+      .bindTooltip(escapeHtml(tidyBuoyName(b.name)), { direction: 'top' })
+      .on('click', () => buoyLiveSelect(b.id))
+      .addTo(buoyLiveMap);
+  }
+  // The shared buoy, else the nearest one in the water (without changing the shared one)
+  const home = buoyHome();
+  const dist = (b) => haversineMiles(home.lat, home.lon, b.lat, b.lon);
+  const shared = list.find(b => b.id === state.buoyId);
+  const pick = shared || [...list].sort((a, c) => (a.status !== 'in') - (c.status !== 'in') || dist(a) - dist(c))[0];
+  buoyLiveSelect(pick.id, !!shared);
+}
+async function buoyLiveSelect(id, save = true) {
+  const b = (buoyLiveList || []).find(x => x.id === id);
+  if (!b) return;
+  if (save) setBuoyId(id);
+  for (const [k, m] of Object.entries(buoyLiveMarkers)) {
+    const on = k === id;
+    m.setStyle(on ? { radius: 8, color: '#ffffff', weight: 2.5 } : { radius: 6, color: '#04243a', weight: 1.5 });
+    if (on) m.bringToFront();
+  }
+  const seq = ++buoyLiveSeq;
+  buoyLiveLast = { b, ts: null, loading: b.status !== 'out' };
+  renderBuoyLiveCard();
+  if (b.status === 'out') return;
+  const ts = await fetchWaveTimeseries(b.chartStid, 24);
+  if (seq !== buoyLiveSeq) return; // another buoy picked meanwhile
+  buoyLiveLast = { b, ts, loading: false };
+  renderBuoyLiveCard();
+}
+// The selected buoy's card: name line, the spot Live tab's two 24h charts,
+// and a link to its 10-day forecast when GLERL makes one
+async function renderBuoyLiveCard() {
+  const card = document.getElementById('buoy-live-card');
+  const { b, ts, loading } = buoyLiveLast || {};
+  if (!b) return;
+  const home = buoyHome();
+  const mi = Math.round(haversineMiles(home.lat, home.lon, b.lat, b.lon));
+  const ago = (t) => { const m = Math.round((Date.now() - t) / 60e3); return m < 60 ? `${m} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
+  const status = b.status === 'out' ? 'out' : b.status === 'quiet' ? `quiet, last ${ago(b.last)}` : ago(b.last);
+  const water = b.status !== 'out' && b.waterF != null && !isNaN(b.waterF) ? ` · ${fmtTemp((b.waterF - 32) * 5 / 9)} water` : '';
+  const title = `<div class="buoy-title"><b>${escapeHtml(tidyBuoyName(b.name))}</b>` +
+    `<span class="muted" style="font-size:12px;">${mi} mi${water} · <span style="color:${BUOY_COLORS[b.status]};">● ${status}</span></span></div>`;
+  let index = null;
+  try { index = await ensureBuoyIndex(); } catch (e) {}
+  if (buoyLiveLast.b !== b) return;
+  const fc = index && index.stations.some(s => s.id === b.id)
+    ? `<button class="btn ghost small" style="width:100%; margin-top:2px;" onclick="setBuoyId('${b.id}'); setBuoyMode('forecast')">10-day forecast for this buoy →</button>` : '';
+  if (b.status === 'out') {
+    const when = b.end ? new Date(b.end).toLocaleDateString([], { month: 'short', day: 'numeric' }) : null;
+    card.innerHTML = title + `<div class="empty-note" style="padding:12px 0;">Out of the water${when ? ` · last report ${when}` : ''}.</div>` + fc;
+    return;
+  }
+  if (loading) { card.innerHTML = title + '<div class="muted" style="font-size:12px; padding:8px 0;">Loading 24h charts…</div>'; return; }
+  if (card.clientWidth > 0) chartWidth = card.clientWidth - 24;
+  const hasWind = ts && Array.isArray(ts.windSpeed) && ts.windSpeed.some(v => v != null && !isNaN(parseFloat(v)));
+  card.innerHTML = title + liveChartsHtml({ ts, windTs: hasWind ? ts : null, width: chartWidth, height: 110, compact: true }) + fc;
+  attachChartReadouts(card);
+  card.querySelectorAll('svg.line-chart').forEach(svg => chartShowAt(svg, Infinity));
 }
 
 /* ============================================================================
@@ -5160,6 +5330,8 @@ function refreshStaleView() {
     openForecast(currentSpotId);
   } else if (name === 'map') {
     initNwsMapIfNeeded(); // reloads the time list and spot forecasts once stale
+  } else if (name === 'buoys') {
+    applyBuoyMode();
   } else if (name === 'spots') {
     renderSpots();
   }
