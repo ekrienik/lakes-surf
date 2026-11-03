@@ -2262,7 +2262,7 @@ const lineChartData = {};
 // latest reading) and show their values in the chart's title row.
 function chartShowAt(svg, x) {
   const d = lineChartData[svg.dataset.chartId];
-  if (!d || !d.series.length) return;
+  if (!d || !d.series.length || !d.series[0].pts.length) return null;
   const nearest = (pts) => pts.reduce((b, p) => Math.abs(p.x - x) < Math.abs(b.x - x) ? p : b, pts[0]);
   // The cursor snaps to the first series' reading; others show their value at that time
   const lead = x === Infinity ? d.series[0].pts[d.series[0].pts.length - 1] : nearest(d.series[0].pts);
@@ -2281,7 +2281,7 @@ function chartShowAt(svg, x) {
     });
   }
   const out = document.getElementById(svg.dataset.chartId + '-readout');
-  if (out && d.readout) { out.innerHTML = d.readout(lead); return; } // chart's own wording (buoyChart)
+  if (out && d.readout) { out.innerHTML = d.readout(lead); return lead; } // chart's own wording (buoyChart)
   if (out) {
     const when = new Date(lead.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     const fmt = (v) => Number.isInteger(v) ? v : v.toFixed(1);
@@ -2296,6 +2296,14 @@ function chartShowAt(svg, x) {
     }
     out.innerHTML = `${vals} <span class="muted">· ${when}</span>`;
   }
+  return lead;
+}
+// Move a chart's cursor to the reading nearest time `t` (ms)
+function chartShowAtTime(svg, t) {
+  const d = lineChartData[svg.dataset.chartId];
+  if (!d || !d.series.length || !d.series[0].pts.length) return;
+  const p = d.series[0].pts.reduce((b, q) => Math.abs(q.t - t) < Math.abs(b.t - t) ? q : b);
+  chartShowAt(svg, p.x);
 }
 // Tap / drag / hover on a chart to read the nearest value. Attached once per
 // host container; charts re-rendered into it keep working because the
@@ -2307,7 +2315,9 @@ function attachChartReadouts(host) {
     const d = lineChartData[svg.dataset.chartId];
     if (!d) return;
     const rect = svg.getBoundingClientRect();
-    chartShowAt(svg, (clientX - rect.left) / rect.width * d.W);
+    const lead = chartShowAt(svg, (clientX - rect.left) / rect.width * d.W);
+    // The card's other charts follow to the same time
+    if (lead) host.querySelectorAll('svg.line-chart').forEach(o => { if (o !== svg) chartShowAtTime(o, lead.t); });
   };
   const chartFor = (el) => {
     // SVG children don't always have .closest on older mobile browsers
