@@ -292,6 +292,17 @@
   /* Map tab (NOAA NDFD heat map + spots) */
   #view-map.active { display: flex; flex-direction: column; height: calc(100vh - 170px - var(--safe-top) - var(--safe-bot)); }
   #nws-map-wrap { position: relative; flex: 1 1 auto; min-height: 240px; }
+  /* Buoys view (header switch): the forecast map's parts hide, the page scrolls */
+  #view-map.active.buoys-mode { display: block; height: auto; }
+  #view-map.buoys-mode > :not(#buoy-view) { display: none; }
+  #buoy-view { padding-bottom: 8px; }
+  #buoy-map { height: 190px; margin: 8px 0 10px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #0b1622; }
+  #buoy-source { font-size: 11px; text-align: center; margin-top: 8px; line-height: 1.5; }
+  .map-switch { display: flex; border: 1px solid var(--accent); border-radius: 10px; overflow: hidden; height: 38px; }
+  .map-switch button { display: flex; align-items: center; gap: 5px; padding: 0 11px; background: none; border: 0; color: var(--accent);
+    font: inherit; font-size: 13px; cursor: pointer; }
+  .map-switch button.on { background: var(--accent); color: #04243a; font-weight: 600; }
+  .map-switch .icn { width: 16px; height: 16px; }
   #nws-map { width: 100%; height: 100%; min-height: 240px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #0b1622; }
   #nws-map.pin-mode { cursor: crosshair; }
   #map-search { position: relative; z-index: 1100; /* results open over Leaflet's controls (z 1000) */ display: flex; gap: 6px; margin: 0 0 8px; flex: 0 0 auto; }
@@ -646,6 +657,13 @@
       </div>
       <div class="muted" id="nws-source-line" style="font-size:11px; text-align:center; margin-top:6px;">Heat map: NOAA NDFD via digital.weather.gov · <a href="https://www.weather.gov/greatlakes/" target="_blank" rel="noopener" style="color:var(--accent);">weather.gov/greatlakes ↗</a></div>
     </div>
+    <!-- Buoys (header switch): GLERL's experimental 10-day ensemble outlook per buoy -->
+    <div id="buoy-view" hidden>
+      <select id="buoy-select" aria-label="Buoy" onchange="buoySelect(this.value)"></select>
+      <div id="buoy-map"></div>
+      <div id="buoy-charts" class="card chart-card"><div class="muted" style="font-size:12px;">Loading outlook…</div></div>
+      <div class="muted" id="buoy-source"></div>
+    </div>
   </section>
 
   <section id="view-settings" class="view">
@@ -834,7 +852,9 @@ const ICONS = {
   plus: '<path d="M12 5l0 14"/><path d="M5 12l14 0"/>',
   pencil: '<path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"/><path d="M13.5 6.5l4 4"/>',
   chevronRight: '<path d="M9 6l6 6l-6 6"/>',
-  share: '<path d="M8 9h-1a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-8a2 2 0 0 0 -2 -2h-1"/><path d="M12 14v-11"/><path d="M9 6l3 -3l3 3"/>'
+  share: '<path d="M8 9h-1a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-8a2 2 0 0 0 -2 -2h-1"/><path d="M12 14v-11"/><path d="M9 6l3 -3l3 3"/>',
+  map: '<path d="M3 7l6 -3l6 3l6 -3v13l-6 3l-6 -3l-6 3v-13"/><path d="M9 4v13"/><path d="M15 7v13"/>',
+  chart: '<path d="M4 19l16 0"/><path d="M4 15l4 -6l4 2l4 -5l4 4l0 5l-16 0"/><path d="M4 12l3 -4l4 2l5 -6l4 4"/>'
 };
 function icon(name, size = 20) {
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
@@ -1172,25 +1192,39 @@ function switchView(name) {
   document.getElementById('header-back').hidden = name !== 'forecast';
 
   if (name === 'spots') renderSpots();
-  if (name === 'map') initNwsMapIfNeeded();
+  if (name === 'map') applyMapView(); // starts the forecast map or the Buoys view
   else {
     nwsMapPause();
     if (nwsDropPinMode) toggleNwsDropPinMode(); // leaving the map cancels a pin drop
   }
   if (name === 'settings') renderSettings();
-
+  renderHeader(name);
+}
+// Header title, subtitle and buttons for a tab (re-run when the Map tab's
+// view or pin mode changes)
+function renderHeader(name) {
+  const buoys = name === 'map' && mapView() === 'buoys';
   document.getElementById('header-title').textContent =
     name === 'spots' ? 'Lakes Surf'
-    : name === 'map' ? 'Map'
+    : name === 'map' ? (buoys ? 'Buoys' : 'Map')
     : name === 'settings' ? 'Settings' : 'Forecast';
 
   document.getElementById('header-sub').textContent =
     name === 'spots' ? todaysTagline()
-    : name === 'map' ? 'Waves & wind · spots · 7 days'
+    : name === 'map' ? (buoys ? '10-day outlook' : 'Waves & wind · spots · 7 days')
     : name === 'settings' ? 'Defaults, units, backup' : '';
 
   const action = document.getElementById('header-action');
   action.innerHTML = '';
+  // Map | Buoys switch; hidden while dropping a pin, which needs the map
+  if (name === 'map' && !nwsDropPinMode) {
+    const sw = document.createElement('div');
+    sw.className = 'map-switch'; sw.setAttribute('role', 'group'); sw.setAttribute('aria-label', 'Map view');
+    sw.innerHTML = `<button type="button" data-v="map" class="${buoys ? '' : 'on'}" aria-pressed="${!buoys}">${icon('map', 16)}Map</button>` +
+      `<button type="button" data-v="buoys" class="${buoys ? 'on' : ''}" aria-pressed="${buoys}">${icon('chart', 16)}Buoys</button>`;
+    sw.querySelectorAll('button').forEach(b => b.onclick = () => setMapView(b.dataset.v));
+    action.appendChild(sw);
+  }
   if (name === 'spots') {
     if (!editingSpots) {
       // + opens the Add sheet: popular spots plus a search for any beach
@@ -2209,6 +2243,7 @@ function chartShowAt(svg, x) {
     });
   }
   const out = document.getElementById(svg.dataset.chartId + '-readout');
+  if (out && d.readout) { out.innerHTML = d.readout(lead); return; } // chart's own wording (buoyChart)
   if (out) {
     const when = new Date(lead.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     const fmt = (v) => Number.isInteger(v) ? v : v.toFixed(1);
@@ -3698,7 +3733,8 @@ function windStep() {
 function windStartAnim() {
   if (windAnim) return;
   const loop = () => {
-    const mapActive = document.getElementById('view-map').classList.contains('active');
+    const mapEl = document.getElementById('view-map');
+    const mapActive = mapEl.classList.contains('active') && !mapEl.classList.contains('buoys-mode');
     if (!mapActive || !isLocalLayer() || document.hidden || !windField) { windAnim = null; return; }
     windStep();
     windAnim = requestAnimationFrame(loop);
@@ -4025,6 +4061,10 @@ document.addEventListener('click', (e) => {
 
 function toggleNwsDropPinMode() {
   nwsDropPinMode = !nwsDropPinMode;
+  // Dropping a pin needs the forecast map; the header's Map | Buoys switch
+  // hides meanwhile
+  if (nwsDropPinMode && mapView() === 'buoys') { state.mapView = 'map'; saveState(); applyMapView(); }
+  if (document.getElementById('view-map').classList.contains('active')) renderHeader('map');
   const btn = document.getElementById('nws-drop-pin-btn');
   if (btn) {
     btn.textContent = nwsDropPinMode ? '✕ Cancel' : '+ Add spot';
@@ -4209,6 +4249,211 @@ function updateSpotMapMarkers() {
   for (const key of Object.keys(spotMapMarkers)) {
     if (!seen.has(key)) { nwsMap.removeLayer(spotMapMarkers[key]); delete spotMapMarkers[key]; }
   }
+}
+
+/* ============================================================================
+   Map tab → Buoys: GLERL's experimental 10-day ensemble wave outlook
+   ============================================================================ */
+
+// NOAA GLERL's point-based ensemble wave forecast for its 24 Great Lakes
+// buoys. GLERL's site doesn't allow cross-site fetches, so a GitHub Actions
+// job (.github/scripts/glerl-outlook.mjs) trims it twice a day onto this
+// repo's `data` branch. Waves come in feet, wind in mph; hourly from t0.
+const BUOY_DATA = 'https://raw.githubusercontent.com/ekrienik/lakes-surf/data/glerl/';
+const BUOY_PAGE = 'https://www.glerl.noaa.gov/emf/waves/WW3/?pg=xgb';
+const mapView = () => state.mapView === 'buoys' ? 'buoys' : 'map';
+function setMapView(v) {
+  if (v === mapView()) return;
+  state.mapView = v; saveState();
+  applyMapView();
+  renderHeader('map');
+}
+// Show the forecast map or the Buoys view (and start whichever is showing)
+function applyMapView() {
+  const el = document.getElementById('view-map');
+  const buoys = mapView() === 'buoys';
+  el.classList.toggle('buoys-mode', buoys);
+  document.getElementById('buoy-view').hidden = !buoys;
+  if (!el.classList.contains('active')) return;
+  if (buoys) { nwsMapPause(); initBuoyView(); }
+  else initNwsMapIfNeeded();
+}
+
+let buoyIndexLoad = null, buoyMap = null, buoyMarkers = {}, buoyLoadSeq = 0;
+// "SOUTH MICHIGAN - 43NM East…" → "South Michigan - 43NM East…"
+const tidyBuoyName = (n) => n.replace(/\b[A-Z]{3,}\b/g, w => w[0] + w.slice(1).toLowerCase());
+// Distances from the first saved spot (or Chicago with none)
+function buoyHome() {
+  const s = state.spots[0];
+  return s ? { lat: s.lat, lon: s.lon } : { lat: 41.97, lon: -87.63 };
+}
+async function initBuoyView() {
+  if (!buoyMap) {
+    buoyMap = L.map('buoy-map', { attributionControl: false, scrollWheelZoom: false, maxZoom: 12 });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 12 }).addTo(buoyMap);
+    buoyMap.fitBounds([[41.4, -92.1], [48.9, -76.1]], { animate: false });
+  }
+  setTimeout(() => buoyMap.invalidateSize(), 30); // sized while hidden
+  if (!buoyIndexLoad) buoyIndexLoad = fetchJsonCached(BUOY_DATA + 'index.json', 30 * 60 * 1000).then(buildBuoyPicker);
+  let index;
+  try { index = await buoyIndexLoad; } catch (e) {
+    buoyIndexLoad = null; // try again next time
+    document.getElementById('buoy-charts').innerHTML = '<div class="empty-note">Outlook unavailable right now. Check your connection, or try again later.</div>';
+    return;
+  }
+  const home = buoyHome();
+  const nearest = [...index.stations].sort((a, b) => haversineMiles(home.lat, home.lon, a.lat, a.lon) - haversineMiles(home.lat, home.lon, b.lat, b.lon))[0];
+  const id = index.stations.some(s => s.id === state.buoyId) ? state.buoyId : nearest.id;
+  if (id !== buoyShownId) buoySelect(id);
+}
+function buildBuoyPicker(index) {
+  const home = buoyHome();
+  const dist = (s) => haversineMiles(home.lat, home.lon, s.lat, s.lon);
+  const sorted = [...index.stations].sort((a, b) => dist(a) - dist(b));
+  document.getElementById('buoy-select').innerHTML = sorted.map(s =>
+    `<option value="${s.id}">${escapeHtml(tidyBuoyName(s.name))} · ${Math.round(dist(s))} mi</option>`).join('');
+  for (const s of index.stations) {
+    buoyMarkers[s.id] = L.circleMarker([s.lat, s.lon], { radius: 6, weight: 1.5, color: '#04243a', fillColor: '#8aa3b8', fillOpacity: 1 })
+      .bindTooltip(`${s.id} · ${escapeHtml(tidyBuoyName(s.name))}`, { direction: 'top' })
+      .on('click', () => buoySelect(s.id))
+      .addTo(buoyMap);
+  }
+  return index;
+}
+let buoyShownId = null;
+async function buoySelect(id) {
+  state.buoyId = id; saveState();
+  buoyShownId = id;
+  document.getElementById('buoy-select').value = id;
+  for (const [k, m] of Object.entries(buoyMarkers)) {
+    const on = k === id;
+    m.setStyle(on ? { radius: 8, color: '#ffffff', weight: 2.5, fillColor: '#4ec3ff' } : { radius: 6, color: '#04243a', weight: 1.5, fillColor: '#8aa3b8' });
+    if (on) m.bringToFront();
+  }
+  const host = document.getElementById('buoy-charts');
+  const seq = ++buoyLoadSeq;
+  host.innerHTML = '<div class="muted" style="font-size:12px;">Loading outlook…</div>';
+  let d;
+  try { d = await fetchJsonCached(BUOY_DATA + id + '.json', 30 * 60 * 1000); } catch (e) { d = null; }
+  if (seq !== buoyLoadSeq) return; // another buoy picked meanwhile
+  if (!d || !d.wave) {
+    host.innerHTML = '<div class="empty-note">Outlook unavailable for this buoy right now.</div>';
+    document.getElementById('buoy-source').innerHTML = '';
+    return;
+  }
+  renderBuoyCharts(d);
+}
+function renderBuoyCharts(d) {
+  const host = document.getElementById('buoy-charts');
+  const times = Array.from({ length: d.n }, (_, i) => (d.t0 + i * d.step) * 1000);
+  // From the current hour on (the run starts up to ~14 h before it's posted)
+  const i0 = Math.max(0, times.findIndex(t => t >= Date.now() - 3600e3));
+  const ts = times.slice(i0);
+  const cut = (a, f) => a ? a.slice(i0).map(v => v == null ? null : v * f) : null;
+  const metric = state.units.wave === 'm';
+  const wf = metric ? 0.3048 : 1, wu = metric ? 'm' : 'ft';
+  const wind = state.units.wind;
+  const kf = wind === 'kt' ? 0.868976 : wind === 'mph' ? 1 : 1.609344, ku = wind === 'kt' || wind === 'mph' ? wind : 'km/h';
+  const w = d.wave, k = d.wind;
+  const waveChart = buoyChart({
+    title: 'Wave height', unit: wu, times: ts, decimals: 1,
+    bands: [{ lo: cut(w.p10, wf), hi: cut(w.p90, wf), color: '#4ec3ff', opacity: 0.16, name: 'Possible (10–90%)' },
+            { lo: cut(w.p25, wf), hi: cut(w.p75, wf), color: '#4ec3ff', opacity: 0.4, name: 'Likely (25–75%)' }],
+    lines: [{ vals: cut(w.avg, wf), color: '#4ec3ff', width: 2.2, name: 'Average' },
+            { vals: cut(w.ww3, wf), color: '#f5b14c', width: 1.5, dash: '5 3', name: 'WW3' },
+            { vals: cut(w.xgb, wf), color: '#e8f1f8', width: 1.5, dash: '2 3', name: 'XGBoost' }]
+  });
+  const windChart = k && k.avg ? buoyChart({
+    title: 'Wind', unit: ku, times: ts, decimals: 0,
+    bands: [],
+    lines: [{ vals: cut(k.avg, kf), color: '#ff9f5a', width: 2.2, name: 'Ensemble average' },
+            { vals: cut(k.hrrr, kf), color: '#e8f1f8', width: 1.5, dash: '2 3', name: 'HRRR+GFS' }]
+  }) : '';
+  host.innerHTML = waveChart + windChart;
+  attachChartReadouts(host);
+  // Start each readout at the current hour
+  host.querySelectorAll('svg.line-chart').forEach(svg => chartShowAt(svg, 0));
+  const run = new Date(d.init * 1000);
+  const old = Date.now() - run.getTime() > 36 * 3600e3;
+  document.getElementById('buoy-source').innerHTML =
+    `${old ? '<span style="color:var(--r-2);">This run is over a day old, so GLERL may be having problems.</span><br>' : ''}` +
+    `Run started ${run.toLocaleString([], { weekday: 'short', hour: 'numeric' })} · updates twice a day. ` +
+    `Experimental: ice isn't modelled. <a href="${BUOY_PAGE}${encodeURIComponent(d.id)}" target="_blank" rel="noopener" style="color:var(--accent);">Full chart at NOAA GLERL ↗</a>`;
+}
+// A 10-day chart: shaded bands (lo–hi), lines on top, one gridline per day.
+// Uses the Live charts' touch readout (lineChartData / attachChartReadouts),
+// with its own wording; the first line leads the readout.
+function buoyChart({ title, unit, times, bands, lines, decimals }) {
+  const W = chartWidth, H = 150, pad = { l: 28, r: 8, t: 8, b: 18 };
+  const plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
+  const t0 = times[0], t1 = times[times.length - 1];
+  const all = [...bands.flatMap(b => b.hi || []), ...lines.flatMap(l => l.vals || [])].filter(v => v != null);
+  const max = Math.max(1, ...all);
+  const step = [0.5, 1, 2, 5, 10, 20, 50].find(s => max / s <= 4) || 100;
+  const yMax = Math.ceil(max / step) * step;
+  const x = (t) => pad.l + (t - t0) / (t1 - t0) * plotW;
+  const y = (v) => pad.t + plotH - v / yMax * plotH;
+  let svg = '';
+  for (let v = 0; v <= yMax + 1e-9; v += step) {
+    svg += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="#1f3850" stroke-width="0.5"/>` +
+      `<text x="${pad.l - 4}" y="${y(v).toFixed(1)}" text-anchor="end" font-size="10" fill="#a3b5c7" dominant-baseline="central">${+v.toFixed(1)}</text>`;
+  }
+  // Midnight gridlines, weekday under each day's middle
+  const day = new Date(t0); day.setHours(24, 0, 0, 0);
+  for (let t = day.getTime() - 864e5; t < t1; t += 864e5) {
+    if (t > t0) svg += `<line x1="${x(t).toFixed(1)}" x2="${x(t).toFixed(1)}" y1="${pad.t}" y2="${pad.t + plotH}" stroke="#1f3850" stroke-width="0.5"/>`;
+    const mid = t + 432e5;
+    if (mid > t0 + 3 * 3600e3 && mid < t1 - 3 * 3600e3)
+      svg += `<text x="${x(mid).toFixed(1)}" y="${H - 5}" text-anchor="middle" font-size="10" fill="#a3b5c7">${new Date(mid).toLocaleDateString([], { weekday: 'short' })}</text>`;
+  }
+  // Paths broken wherever a value is missing (WW3 ends at day 3, XGBoost at day 5)
+  const segments = (ok) => {
+    const segs = []; let cur = [];
+    times.forEach((t, i) => { if (ok(i)) cur.push(i); else if (cur.length) { segs.push(cur); cur = []; } });
+    if (cur.length) segs.push(cur);
+    return segs;
+  };
+  for (const b of bands) {
+    if (!b.lo || !b.hi) continue;
+    for (const s of segments(i => b.lo[i] != null && b.hi[i] != null)) {
+      const top = s.map(i => `${x(times[i]).toFixed(1)},${y(b.hi[i]).toFixed(1)}`);
+      const bot = s.slice().reverse().map(i => `${x(times[i]).toFixed(1)},${y(b.lo[i]).toFixed(1)}`);
+      svg += `<path d="M${top.join('L')}L${bot.join('L')}Z" fill="${b.color}" fill-opacity="${b.opacity}"/>`;
+    }
+  }
+  for (const l of [...lines].reverse()) {
+    if (!l.vals) continue;
+    for (const s of segments(i => l.vals[i] != null))
+      svg += `<path d="M${s.map(i => `${x(times[i]).toFixed(1)},${y(l.vals[i]).toFixed(1)}`).join('L')}" fill="none" stroke="${l.color}" stroke-width="${l.width}"${l.dash ? ` stroke-dasharray="${l.dash}"` : ''}/>`;
+  }
+  const shown = lines.filter(l => l.vals && l.vals.some(v => v != null));
+  const chartId = 'lc_' + (++lineChartSeq);
+  const fmt = (v) => v.toFixed(decimals);
+  const band = bands.find(b => b.name.startsWith('Likely'));
+  lineChartData[chartId] = {
+    W, H, padT: pad.t, padB: pad.b,
+    series: shown.map(l => ({ unit, name: l.name, color: l.color,
+      pts: times.map((t, i) => l.vals[i] == null ? null : { t, v: l.vals[i], i, x: x(t), y: y(l.vals[i]) }).filter(Boolean) })),
+    readout: (p) => {
+      const when = new Date(p.t).toLocaleString([], { weekday: 'short', hour: 'numeric' });
+      const extra = band && band.lo[p.i] != null ? ` <span class="muted">likely ${fmt(band.lo[p.i])}–${fmt(band.hi[p.i])}</span>`
+        : shown[1] && shown[1].vals[p.i] != null ? ` <span style="color:${shown[1].color};">· ${shown[1].name} ${fmt(shown[1].vals[p.i])}</span>` : '';
+      return `<span style="color:${shown[0].color};">${fmt(p.v)} ${unit}</span>${extra} <span class="muted">· ${when}</span>`;
+    }
+  };
+  const key = [...bands.filter(b => b.lo).map(b => `<span><i style="display:inline-block;width:12px;height:9px;background:${b.color};opacity:${Math.min(1, b.opacity * 1.6)};vertical-align:middle;"></i> ${b.name}</span>`),
+    ...shown.map(l => `<span><i style="display:inline-block;width:14px;vertical-align:middle;border-top:${l.dash ? `2px ${l.dash.startsWith('2') ? 'dotted' : 'dashed'}` : '3px solid'} ${l.color};"></i> ${l.name}</span>`)].join('');
+  return `<div style="margin-bottom:16px;">
+    <div class="chart-head"><span class="section-label">${title} (${unit})</span><span class="chart-readout" id="${chartId}-readout"></span></div>
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="line-chart" data-chart-id="${chartId}" style="width:100%; height:${H}px; touch-action:pan-y; cursor:crosshair;">
+      ${svg}
+      <g class="chart-cursor" style="display:none;">
+        <line x1="0" y1="${pad.t}" x2="0" y2="${pad.t + plotH}" stroke="#ffffff" stroke-width="0.8" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>
+        ${shown.map(l => `<circle cx="0" cy="0" r="3.5" fill="${l.color}" stroke="#ffffff" stroke-width="1.2"/>`).join('')}
+      </g>
+    </svg>
+    <div class="muted" style="display:flex; flex-wrap:wrap; gap:4px 12px; font-size:11px; margin-top:4px;">${key}</div>
+  </div>`;
 }
 
 /* ============================================================================
