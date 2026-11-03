@@ -305,13 +305,11 @@
   .buoy-key { position: absolute; right: 8px; bottom: 8px; z-index: 500; display: flex; gap: 8px; padding: 3px 8px; border-radius: 8px;
     background: rgba(7,18,29,0.85); font-size: 11px; color: var(--fg-dim); pointer-events: none; }
   .buoy-key i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 3px; }
-  #buoy-select { position: absolute; top: 8px; left: 8px; right: 8px; width: auto; z-index: 500; padding: 6px 10px; font-size: 14px;
-    background: rgba(7,18,29,0.9); }
   .buoy-title { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; align-items: baseline; margin-bottom: 4px; }
   .buoy-title b { font-size: 14px; font-weight: 600; }
   .buoy-src { font-size: 11px; text-align: center; margin-top: 2px; line-height: 1.4; }
   .map-switch { display: flex; border: 1px solid var(--accent); border-radius: 10px; overflow: hidden; height: 38px; }
-  .map-switch button { display: flex; align-items: center; gap: 5px; padding: 0 11px; background: none; border: 0; color: var(--accent);
+  .map-switch button { display: flex; align-items: center; justify-content: center; min-width: 52px; padding: 0 11px; background: none; border: 0; color: var(--accent);
     font: inherit; font-size: 13px; cursor: pointer; }
   .map-switch button.on { background: var(--accent); color: #04243a; font-weight: 600; }
   #nws-map { width: 100%; height: 100%; min-height: 240px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #0b1622; }
@@ -683,7 +681,6 @@
     <div id="buoy-view" hidden>
       <div class="buoy-map-wrap fc">
         <div id="buoy-map" class="buoy-map"></div>
-        <select id="buoy-select" aria-label="Buoy" onchange="buoySelect(this.value)"></select>
       </div>
       <div id="buoy-charts" class="card chart-card"><div class="muted" style="font-size:12px;">Loading outlook…</div></div>
     </div>
@@ -1248,7 +1245,7 @@ function renderHeader(name) {
     const sw = document.createElement('div');
     sw.className = 'map-switch'; sw.setAttribute('role', 'group'); sw.setAttribute('aria-label', 'Buoy view');
     sw.innerHTML = `<button type="button" data-v="live" class="${live ? 'on' : ''}" aria-pressed="${live}">Live</button>` +
-      `<button type="button" data-v="forecast" class="${live ? '' : 'on'}" aria-pressed="${!live}">Forecast</button>`;
+      `<button type="button" data-v="forecast" class="${live ? '' : 'on'}" aria-pressed="${!live}" aria-label="Forecast">Fcst</button>`;
     sw.querySelectorAll('button').forEach(b => b.onclick = () => setBuoyMode(b.dataset.v));
     action.appendChild(sw);
   }
@@ -4306,8 +4303,8 @@ function applyBuoyMode() {
 }
 // One selected buoy for both views (its 45xxx id)
 function setBuoyId(id) { state.buoyId = id; saveState(); }
-const buoyBaseMap = (elId, zoomControl = true) => {
-  const m = L.map(elId, { attributionControl: false, scrollWheelZoom: false, maxZoom: 12, zoomControl, zoomSnap: 0.25 });
+const buoyBaseMap = (elId) => {
+  const m = L.map(elId, { attributionControl: false, scrollWheelZoom: false, maxZoom: 12, zoomSnap: 0.25 });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 12 }).addTo(m);
   m.setView([45, -84], 5);
   // The map gets whatever height the card leaves, which changes as charts
@@ -4339,27 +4336,24 @@ function buoyHome() {
   return s ? { lat: s.lat, lon: s.lon } : { lat: 41.97, lon: -87.63 };
 }
 async function initBuoyView() {
-  if (!buoyMap) buoyMap = buoyBaseMap('buoy-map', false); // the picker sits where the zoom buttons would
+  if (!buoyMap) buoyMap = buoyBaseMap('buoy-map');
   buoyMapResize(buoyMap);
   let index;
   try { index = await ensureBuoyIndex(); } catch (e) {
     document.getElementById('buoy-charts').innerHTML = '<div class="empty-note">Outlook unavailable right now. Check your connection, or try again later.</div>';
     return;
   }
-  if (!Object.keys(buoyMarkers).length) buildBuoyPicker(index);
-  // The shared buoy if GLERL forecasts it; otherwise the nearest that it does
-  // (without changing the shared one)
-  const home = buoyHome();
-  const nearest = [...index.stations].sort((a, b) => haversineMiles(home.lat, home.lon, a.lat, a.lon) - haversineMiles(home.lat, home.lon, b.lat, b.lon))[0];
+  if (!Object.keys(buoyMarkers).length) buildBuoyMarkers(index);
+  // The shared buoy if GLERL forecasts it; otherwise the one nearest it (or
+  // the spots) that it does, without changing the shared one
+  const live = (buoyLiveList || []).find(b => b.id === state.buoyId);
+  const from = live || buoyHome();
+  const nearest = [...index.stations].sort((a, b) => haversineMiles(from.lat, from.lon, a.lat, a.lon) - haversineMiles(from.lat, from.lon, b.lat, b.lon))[0];
   const has = index.stations.some(s => s.id === state.buoyId);
-  buoySelect(has ? state.buoyId : nearest.id, has);
+  buoySelect(has ? state.buoyId : nearest.id, has, !has && live ? `No forecast for ${tidyBuoyName(live.name)}; showing the nearest buoy that has one.` : '');
 }
-function buildBuoyPicker(index) {
-  const home = buoyHome();
-  const dist = (s) => haversineMiles(home.lat, home.lon, s.lat, s.lon);
-  const sorted = [...index.stations].sort((a, b) => dist(a) - dist(b));
-  document.getElementById('buoy-select').innerHTML = sorted.map(s =>
-    `<option value="${s.id}">${escapeHtml(tidyBuoyName(s.name))} · ${Math.round(dist(s))} mi</option>`).join('');
+// Tap a buoy on the Fcst map to pick it
+function buildBuoyMarkers(index) {
   for (const s of index.stations) {
     buoyMarkers[s.id] = L.circleMarker([s.lat, s.lon], { radius: 6, weight: 1.5, color: '#04243a', fillColor: '#8aa3b8', fillOpacity: 1 })
       .bindTooltip(`${s.id} · ${escapeHtml(tidyBuoyName(s.name))}`, { direction: 'top' })
@@ -4368,9 +4362,8 @@ function buildBuoyPicker(index) {
   }
   return index;
 }
-async function buoySelect(id, save = true) {
+async function buoySelect(id, save = true, note = '') {
   if (save) setBuoyId(id);
-  document.getElementById('buoy-select').value = id;
   for (const [k, m] of Object.entries(buoyMarkers)) {
     const on = k === id;
     m.setStyle(on ? { radius: 8, color: '#ffffff', weight: 2.5, fillColor: '#4ec3ff' } : { radius: 6, color: '#04243a', weight: 1.5, fillColor: '#8aa3b8' });
@@ -4386,10 +4379,14 @@ async function buoySelect(id, save = true) {
     host.innerHTML = '<div class="empty-note">Outlook unavailable for this buoy right now.</div>';
     return;
   }
-  renderBuoyCharts(d);
+  renderBuoyCharts(d, note);
 }
-function renderBuoyCharts(d) {
+function renderBuoyCharts(d, note = '') {
   const host = document.getElementById('buoy-charts');
+  const home = buoyHome();
+  const title = `<div class="buoy-title"><b>${escapeHtml(tidyBuoyName(d.name))}</b>` +
+    `<span class="muted" style="font-size:12px;">${Math.round(haversineMiles(home.lat, home.lon, d.lat, d.lon))} mi</span></div>` +
+    (note ? `<div class="muted" style="font-size:11px; margin:-2px 0 4px;">${escapeHtml(note)}</div>` : '');
   if (host.clientWidth > 0) chartWidth = host.clientWidth - 24;
   const times = Array.from({ length: d.n }, (_, i) => (d.t0 + i * d.step) * 1000);
   // From the current hour on (the run starts up to ~14 h before it's posted)
@@ -4417,7 +4414,7 @@ function renderBuoyCharts(d) {
   }) : '';
   const run = new Date(d.init * 1000);
   const old = Date.now() - run.getTime() > 36 * 3600e3;
-  host.innerHTML = waveChart + windChart +
+  host.innerHTML = title + waveChart + windChart +
     `<div class="muted buoy-src">${old ? '<span style="color:var(--r-2);">This run is over a day old; GLERL may be having problems.</span><br>' : ''}` +
     `Run ${run.toLocaleString([], { weekday: 'short', hour: 'numeric' })} · experimental, no ice · ` +
     `<a href="${BUOY_PAGE}${encodeURIComponent(d.id)}" target="_blank" rel="noopener" style="color:var(--accent);">GLERL ↗</a></div>`;
@@ -4595,9 +4592,9 @@ async function buoyLiveSelect(id, save = true) {
   buoyLiveLast = { b, ts, loading: false };
   renderBuoyLiveCard();
 }
-// The selected buoy's card: name line, the spot Live tab's two 24h charts,
-// and a link to its 10-day forecast when GLERL makes one
-async function renderBuoyLiveCard() {
+// The selected buoy's card: name line and the spot Live tab's two 24h charts
+// (Fcst then opens on the same buoy when GLERL forecasts it)
+function renderBuoyLiveCard() {
   const card = document.getElementById('buoy-live-card');
   const { b, ts, loading } = buoyLiveLast || {};
   if (!b) return;
@@ -4608,20 +4605,15 @@ async function renderBuoyLiveCard() {
   const water = b.status !== 'out' && b.waterF != null && !isNaN(b.waterF) ? ` · ${fmtTemp((b.waterF - 32) * 5 / 9)} water` : '';
   const title = `<div class="buoy-title"><b>${escapeHtml(tidyBuoyName(b.name))}</b>` +
     `<span class="muted" style="font-size:12px;">${mi} mi${water} · <span style="color:${BUOY_COLORS[b.status]};">● ${status}</span></span></div>`;
-  let index = null;
-  try { index = await ensureBuoyIndex(); } catch (e) {}
-  if (buoyLiveLast.b !== b) return;
-  const fc = index && index.stations.some(s => s.id === b.id)
-    ? `<button class="btn ghost small" style="width:100%; margin-top:2px;" onclick="setBuoyId('${b.id}'); setBuoyMode('forecast')">10-day forecast for this buoy →</button>` : '';
   if (b.status === 'out') {
     const when = b.end ? new Date(b.end).toLocaleDateString([], { month: 'short', day: 'numeric' }) : null;
-    card.innerHTML = title + `<div class="empty-note" style="padding:12px 0;">Out of the water${when ? ` · last report ${when}` : ''}.</div>` + fc;
+    card.innerHTML = title + `<div class="empty-note" style="padding:12px 0;">Out of the water${when ? ` · last report ${when}` : ''}.</div>`;
     return;
   }
   if (loading) { card.innerHTML = title + '<div class="muted" style="font-size:12px; padding:8px 0;">Loading 24h charts…</div>'; return; }
   if (card.clientWidth > 0) chartWidth = card.clientWidth - 24;
   const hasWind = ts && Array.isArray(ts.windSpeed) && ts.windSpeed.some(v => v != null && !isNaN(parseFloat(v)));
-  card.innerHTML = title + liveChartsHtml({ ts, windTs: hasWind ? ts : null, width: chartWidth, height: 110, compact: true }) + fc;
+  card.innerHTML = title + liveChartsHtml({ ts, windTs: hasWind ? ts : null, width: chartWidth, height: 110, compact: true });
   attachChartReadouts(card);
   card.querySelectorAll('svg.line-chart').forEach(svg => chartShowAt(svg, Infinity));
 }
