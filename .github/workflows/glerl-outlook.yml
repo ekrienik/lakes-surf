@@ -1,0 +1,45 @@
+# Map tab → Buoys: refreshes the GLERL ensemble wave outlook on the `data`
+# branch (see .github/scripts/glerl-outlook.mjs). GLERL posts its 00Z and 12Z
+# runs at about 01:30 and 13:30 UTC; the later slots catch late runs.
+name: GLERL buoy outlook
+
+on:
+  schedule:
+    - cron: '50 1,3,13,15 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/glerl-outlook.yml
+      - .github/scripts/glerl-outlook.mjs
+
+permissions:
+  contents: write
+
+concurrency:
+  group: glerl-outlook
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build outlook files
+        run: node .github/scripts/glerl-outlook.mjs out
+      - name: Publish to the data branch
+        working-directory: out
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # One commit, force-pushed, so the branch never grows
+          git init -q -b data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "GLERL outlook $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" data
