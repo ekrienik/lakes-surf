@@ -4453,7 +4453,8 @@ function renderBuoyCharts(d, note = '') {
     title: 'Wind', unit: ku, times: ts, decimals: 0, height: 120,
     bands: [],
     lines: [{ vals: cut(k.avg, kf), color: '#4ec3ff', width: 2, name: 'Ensemble avg' },
-            { vals: cut(k.hrrr, kf), color: CHART_AMBER, width: 1.5, dash: '4 3', name: 'HRRR+GFS' }]
+            { vals: cut(k.hrrr, kf), color: CHART_AMBER, width: 1.5, dash: '4 3', name: 'HRRR+GFS' }],
+    dirs: cut(k.dir, 1)
   }) : '';
   const run = new Date(d.init * 1000);
   const old = Date.now() - run.getTime() > 36 * 3600e3;
@@ -4468,7 +4469,7 @@ function renderBuoyCharts(d, note = '') {
 // A 10-day chart: shaded bands (lo–hi), lines on top, one gridline per day.
 // Uses the Live charts' touch readout (lineChartData / attachChartReadouts),
 // with its own wording; the first line leads the readout.
-function buoyChart({ title, unit, times, bands, lines, decimals, height = 150 }) {
+function buoyChart({ title, unit, times, bands, lines, decimals, height = 150, dirs = null }) {
   const W = chartWidth, H = height, pad = { l: 28, r: 8, t: 8, b: 18 };
   const plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
   const t0 = times[0], t1 = times[times.length - 1];
@@ -4523,13 +4524,27 @@ function buoyChart({ title, unit, times, bands, lines, decimals, height = 150 })
       const when = new Date(p.t).toLocaleString([], { weekday: 'short', hour: 'numeric' });
       const extra = band && band.lo[p.i] != null ? ` <span class="muted">· likely ${fmt(band.lo[p.i])}–${fmt(band.hi[p.i])}</span>`
         : shown[1] && shown[1].vals[p.i] != null ? ` <span style="color:${shown[1].color};">· ${shown[1].name} ${fmt(shown[1].vals[p.i])}</span>` : '';
-      return `<span style="color:${shown[0].color};">${fmt(p.v)} ${unit}</span>${extra} <span class="muted">· ${when}</span>`;
+      const dir = dirs && dirs[p.i] != null ? ` ${degToCompass(dirs[p.i])}` : '';
+      return `<span style="color:${shown[0].color};">${fmt(p.v)} ${unit}${dir}</span>${extra} <span class="muted">· ${when}</span>`;
     }
   };
+  // Direction arrows (where the wind blows to), like the Live charts' row:
+  // one at each local midnight and noon
+  let dirRow = '';
+  if (dirs && dirs.some(v => v != null)) {
+    let arrows = '';
+    times.forEach((t, i) => {
+      const hr = new Date(t).getHours();
+      if ((hr === 0 || hr === 12) && dirs[i] != null && t > t0 + 2 * 3600e3 && t < t1 - 2 * 3600e3)
+        arrows += `<span style="position:absolute; left:${(x(t) / W * 100).toFixed(2)}%; top:0; transform:translateX(-50%); color:#a3b5c7;">${dirArrow(dirs[i], 11)}</span>`;
+    });
+    if (arrows) dirRow = `<div style="position:relative; height:14px; line-height:14px;">${arrows}</div>`;
+  }
   const key = chartKey([...bands.filter(b => b.lo).map(b => ({ name: b.name, color: b.color, opacity: Math.min(1, b.opacity * 1.6), band: true })),
     ...shown.map(l => ({ name: l.name, color: l.color, dash: l.dash }))]);
   return `<div style="margin-bottom:10px;">
     <div class="chart-head"><span class="section-label">${title} (${unit})</span><span class="chart-readout" id="${chartId}-readout"></span></div>
+    ${dirRow}
     <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="line-chart" data-chart-id="${chartId}" style="width:100%; height:${H}px; touch-action:pan-y; cursor:crosshair;">
       ${svg}
       <g class="chart-cursor" style="display:none;">
