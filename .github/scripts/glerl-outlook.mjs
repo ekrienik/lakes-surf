@@ -39,6 +39,7 @@ export function trim(fig) {
   const tr = fig.data || [];
   const named = (re) => tr.find(t => re.test(t.name || ''));
   const avg = tr.find(t => t.name === 'Average');
+  const gefs = tr.find(t => t.name === 'GEFS Avg' && t.type === 'bar');
   const i90 = tr.findIndex(t => /^10.90 Pctl/.test(t.name || ''));
   const i75 = tr.findIndex(t => /^25.75 Pctl/.test(t.name || ''));
   if (!avg || i90 < 1 || i75 < 1) throw new Error('unexpected chart layout');
@@ -55,12 +56,23 @@ export function trim(fig) {
   };
   const [p10, p90] = pair(tr[i90 - 1], tr[i90]);
   const [p25, p75] = pair(tr[i75 - 1], tr[i75]);
+  // Wind direction: the ensemble wind bars carry it in their hover data as
+  // [mph, compass point] ("S", "SW", ...); saved as degrees (FROM)
+  const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+  const dirs = (t) => {
+    if (!t || !Array.isArray(t.customdata)) return null;
+    const byTime = new Map(t.x.map((x, i) => {
+      const c = t.customdata[i], k = COMPASS.indexOf(Array.isArray(c) ? String(c[1]).trim() : '');
+      return [Date.parse(x) / 1000, k < 0 ? null : k * 22.5];
+    }));
+    return times.map(s => byTime.has(s) ? byTime.get(s) : null);
+  };
   const step = times[1] - times[0];
   if (!(step > 0) || times.some((s, i) => i && s - times[i - 1] !== step)) throw new Error('uneven times');
   return {
     init: times[0], t0: times[0], step, n: times.length,
     wave: { avg: series(avg), p10, p25, p75, p90, xgb: series(named(/^XGBoost/)), ww3: series(named(/^WW3/)) },
-    wind: { avg: series(tr.find(t => t.name === 'GEFS Avg' && t.type === 'bar')), hrrr: series(named(/^HRRR\+GFS/)) }
+    wind: { avg: series(gefs), dir: dirs(gefs), hrrr: series(named(/^HRRR\+GFS/)) }
   };
 }
 
