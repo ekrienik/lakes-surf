@@ -3392,17 +3392,21 @@ function nwsUpdateTimeLabel() {
 // device), so grid responses are kept in Cache Storage for an hour, across app
 // launches, instead of being re-fetched every time the Map tab opens.
 const GRID_CACHE = 'lakes-surf-data';
+const jsonFetchedAt = new Map(); // url -> ms when that response was fetched (cached or not)
 async function fetchJsonCached(url, maxAgeMs = 60 * 60 * 1000) {
   let cache = null;
   try { cache = await caches.open(GRID_CACHE); } catch (e) {}
   if (cache) {
     const hit = await cache.match(url);
-    if (hit && Date.now() - Number(hit.headers.get('x-fetched-at') || 0) < maxAgeMs) return hit.json();
+    const at = hit ? Number(hit.headers.get('x-fetched-at') || 0) : 0;
+    if (hit && Date.now() - at < maxAgeMs) { jsonFetchedAt.set(url, at); return hit.json(); }
   }
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${new URL(url).hostname} ${r.status}`);
   const text = await r.text();
-  if (cache) cache.put(url, new Response(text, { headers: { 'content-type': 'application/json', 'x-fetched-at': String(Date.now()) } })).catch(() => {});
+  const now = Date.now();
+  jsonFetchedAt.set(url, now);
+  if (cache) cache.put(url, new Response(text, { headers: { 'content-type': 'application/json', 'x-fetched-at': String(now) } })).catch(() => {});
   return JSON.parse(text);
 }
 const WIND_GRID = { lat0: 40.5, lon0: -93.0, step: 0.5, nLat: 19, nLon: 36 }; // 40.5–49.5 N, 93–75.5 W
@@ -3424,10 +3428,10 @@ async function loadWindGrid() {
   const CHUNK = 240; // keeps each URL a sane length
   const chunks = [];
   for (let k = 0; k < pts.length; k += CHUNK) chunks.push(pts.slice(k, k + CHUNK));
-  windGridInflight = Promise.all(chunks.map(c =>
-    fetchJsonCached(`https://api.open-meteo.com/v1/forecast?latitude=${c.map(p => p[0]).join(',')}&longitude=${c.map(p => p[1]).join(',')}` +
-          `&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&forecast_days=7&wind_speed_unit=mph&timezone=UTC&timeformat=unixtime`)
-      .then(j => Array.isArray(j) ? j : [j])
+  const urls = chunks.map(c =>
+    `https://api.open-meteo.com/v1/forecast?latitude=${c.map(p => p[0]).join(',')}&longitude=${c.map(p => p[1]).join(',')}` +
+    `&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&forecast_days=7&wind_speed_unit=mph&timezone=UTC&timeformat=unixtime`);
+  windGridInflight = Promise.all(urls.map(u => fetchJsonCached(u).then(j => Array.isArray(j) ? j : [j])
   )).then(parts => {
     const all = parts.flat();
     const times = all[0].hourly.time;
@@ -3446,7 +3450,7 @@ async function loadWindGrid() {
       }
       spd.push(s); gust.push(g); u.push(uu); v.push(vv);
     }
-    windGrid = { times, spd, gust, u, v };
+    windGrid = { times, spd, gust, u, v, fetchedAt: Math.min(...urls.map(u => jsonFetchedAt.get(u) || Date.now())) };
     windGridFetchedAt = Date.now();
     windGridInflight = null;
     return windGrid;
@@ -3500,10 +3504,11 @@ async function loadWaveGrid() {
     const idx = wavePointsNearLakes(rings);
     const chunks = [];
     for (let k = 0; k < idx.length; k += 240) chunks.push(idx.slice(k, k + 240));
-    return Promise.all(chunks.map(c =>
-      fetchJsonCached(`https://marine-api.open-meteo.com/v1/marine?latitude=${c.map(k => (lat0 + Math.floor(k / nLon) * dLat).toFixed(3)).join(',')}` +
-            `&longitude=${c.map(k => (lon0 + (k % nLon) * dLon).toFixed(3)).join(',')}&hourly=wave_height,wave_direction,wave_period&forecast_days=7&timezone=UTC&timeformat=unixtime`)
-        .then(j => ({ c, j: Array.isArray(j) ? j : [j] }))
+    const urls = chunks.map(c =>
+      `https://marine-api.open-meteo.com/v1/marine?latitude=${c.map(k => (lat0 + Math.floor(k / nLon) * dLat).toFixed(3)).join(',')}` +
+      `&longitude=${c.map(k => (lon0 + (k % nLon) * dLon).toFixed(3)).join(',')}&hourly=wave_height,wave_direction,wave_period&forecast_days=7&timezone=UTC&timeformat=unixtime`);
+    return Promise.all(chunks.map((c, k) =>
+      fetchJsonCached(urls[k]).then(j => ({ c, j: Array.isArray(j) ? j : [j] }))
     )).then(parts => {
       const times = parts[0].j[0].hourly.time;
       const blank = () => times.map(() => new Float32Array(nLat * nLon).fill(NaN));
@@ -3524,7 +3529,7 @@ async function loadWaveGrid() {
           }
         }
       });
-      waveGrid = { times, hgt, per, u, v };
+      waveGrid = { times, hgt, per, u, v, fetchedAt: Math.min(...urls.map(u => jsonFetchedAt.get(u) || Date.now())) };
       waveGridFetchedAt = Date.now();
       waveGridInflight = null;
       return waveGrid;
@@ -3853,9 +3858,20 @@ function mapTapReadout(latlng) {
 function updateWindArrows() {
   const srcLine = document.getElementById('nws-source-line');
   const what = isWindLayer() ? 'Wind' : 'Waves';
-  if (srcLine) srcLine.firstChild.textContent = isLocalLayer()
+  // When the shown data was made, like the Buoys tab's "Updated"/"Run" line:
+  // NOAA = the frame's NDFD issuance; Smooth = when the grid was fetched
+  // (Open-Meteo doesn't say which model run it blended)
+  const when = (ms) => {
+    const d = new Date(ms), time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return d.toDateString() === new Date().toDateString() ? time : `${d.toLocaleDateString([], { weekday: 'short' })} ${time}`;
+  };
+  const t = nwsTimes[nwsTimeIndex], g = fieldGrid();
+  const stamp = isLocalLayer()
+    ? (g && g.fetchedAt ? `Updated ${when(g.fetchedAt)} · ` : '')
+    : (t && t.issuance ? `Issued ${when(Date.parse(t.issuance + ':00Z'))} · ` : '');
+  if (srcLine) srcLine.firstChild.textContent = stamp + (isLocalLayer()
     ? `${what}: Open-Meteo ${isWindLayer() ? '' : 'marine '}forecast (tap the map for a reading) · `
-    : `${what}: NOAA NDFD (tap the map for a reading) · `;
+    : `${what}: NOAA NDFD (tap the map for a reading) · `);
   windRedraw();
 }
 function setMapSource(src) {
