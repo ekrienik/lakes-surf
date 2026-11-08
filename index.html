@@ -1931,7 +1931,7 @@ async function renderSpots() {
         <h3 style="margin:0; flex:1;">${escapeHtml(spot.name)}</h3>
         ${editingSpots
           ? `<button class="btn small danger" onclick="event.stopPropagation(); deleteSpotFromList('${spot.id}');">Delete</button>`
-          : `<div id="now-${spot.id}"><span class="chip rNA">…</span></div>`}
+          : ''}
       </div>
       <div class="live-line" id="live-${spot.id}" style="display:none;"></div>
       <div class="day-strip" id="strip-${spot.id}">
@@ -1940,24 +1940,14 @@ async function renderSpots() {
     `;
     list.appendChild(card);
 
-    loadSpotSummary(spot).catch(err => {
-      const now = document.getElementById('now-' + spot.id);
-      if (now) now.innerHTML = '<span class="chip rNA">err</span>';
-      console.warn('forecast error', spot.name, err);
-    });
+    loadSpotSummary(spot).catch(err => console.warn('forecast error', spot.name, err));
     loadLiveForSpotCard(spot);
   }
 }
 
-// What each spot card has loaded so far: { fc: forecast hour 0, live }. The
-// badge waits on both, so it can prefer the buoy over the forecast.
-const spotCardData = new Map();
-
 async function loadSpotSummary(spot) {
   const data = await getForecast(...forecastLatLon(spot));
   const T = { ...state.defaults, ...(spot.thresholds || {}), offshoreDirs: spot.offshoreDirs || [] };
-  spotCardData.set(spot.id, { ...(spotCardData.get(spot.id) || {}), fc: data.hours[0] });
-  updateNowChip(spot);
 
   const days = groupByLocalDay(data.hours);
   const strip = document.getElementById('strip-' + spot.id);
@@ -1969,32 +1959,6 @@ async function loadSpotSummary(spot) {
       return `<div class="d" role="button" onclick="event.stopPropagation(); if (!editingSpots) openForecast('${spot.id}', ${i});"><span class="lbl">${range}</span><span class="pill r${dr.rating}"></span></div>`;
     }).join('');
   }
-}
-
-// Badge on the spot card: the buoy's wave height when there is one, else this
-// hour's forecast. The color is the rating of live waves/wind on top of the
-// forecast hour, the same way the spot page's "Right now" card rates them.
-function updateNowChip(spot) {
-  const el = document.getElementById('now-' + spot.id);
-  const d = spotCardData.get(spot.id);
-  if (!el || !d || !d.fc) return;
-  const T = { ...state.defaults, ...(spot.thresholds || {}), offshoreDirs: spot.offshoreDirs || [] };
-  const o = (d.live && d.live.obs) || {}, wo = (d.live && d.live.waveObs) || {};
-  const val = (x) => (x && x.value != null && !isNaN(parseFloat(x.value))) ? parseFloat(x.value) : null;
-  const h = { ...d.fc };
-  const waveObs = o.waveHeight ? o : (wo.waveHeight ? wo : null);
-  let text = fmtWave(d.fc.waveHeight);
-  if (waveObs && val(waveObs.waveHeight) != null) {
-    h.waveHeight = obsFtToM(waveObs.waveHeight.value);
-    h.wavePeriod = val(waveObs.wavePeriod);
-    const ht = waveParts(h.waveHeight);
-    text = `${ht.v} ${ht.u}`;
-  }
-  if (o.windSpeed && val(o.windSpeed) != null) {
-    h.windSpeed = obsMphToKmh(o.windSpeed.value);
-    if (val(o.windDirection) != null) h.windDir = val(o.windDirection);
-  }
-  el.innerHTML = `<span class="chip r${rateHour(h, T).rating}">${text}</span>`;
 }
 
 // Compact min-max wave label for the daily pill on the Spots tab.
@@ -2015,8 +1979,6 @@ function waveRangeText(hours) {
 
 async function loadLiveForSpotCard(spot) {
   const live = await getLiveForSpot(spot);
-  spotCardData.set(spot.id, { ...(spotCardData.get(spot.id) || {}), live });
-  updateNowChip(spot);
   const compact = formatLiveCompact(live, spot.offshoreDirs);
   const el = document.getElementById('live-' + spot.id);
   if (!el) return;
@@ -4969,7 +4931,6 @@ async function saveSpotModal() {
   const fcLat = fc && fc.lat != null ? fc.lat : undefined, fcLon = fc && fc.lat != null ? fc.lon : undefined;
   if (editId) {
     const spot = state.spots.find(s => s.id === editId);
-    if (moved) spotCardData.delete(editId); // its live reading belongs to the old place
     if (spot) {
       spot.name = name; spot.lat = lat; spot.lon = lon; spot.offshoreDirs = dirs;
       spot.fcLat = fcLat; spot.fcLon = fcLon;
