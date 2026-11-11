@@ -1597,7 +1597,11 @@ async function getNearestStationForSpot(lat, lon, maxMiles = 30, preferStid = nu
 // Separate lookup for the nearest wave-reporting buoy. Used when the primary
 // nearest station doesn't have wave_height (e.g. Sheboygan's nearest station
 // is a tide gauge — wave data is at Rawley Point East, ~38 mi offshore).
-async function getNearestWaveBuoyForSpot(lat, lon, maxMiles = 60) {
+// 40 mi keeps that and every built-in spot's in-season buoy, but not a buoy
+// across the lake (in winter Chicago's buoys are pulled and the nearest left is
+// the South Michigan spotter, 58 mi out, whose waves say little about Chicago).
+const WAVE_BUOY_MAX_MI = 40;
+async function getNearestWaveBuoyForSpot(lat, lon, maxMiles = WAVE_BUOY_MAX_MI) {
   const stations = await fetchAllLakeStations();
   const candidates = [];
   for (const s of stations) {
@@ -1721,7 +1725,7 @@ async function getLiveForSpot(spot) {
     // separately (broader radius) and merge in its wave/period/direction fields.
     let waveStation = null, waveObs = null;
     if (!obs || !obs.waveHeight) {
-      waveStation = await getNearestWaveBuoyForSpot(spot.lat, spot.lon, 60);
+      waveStation = await getNearestWaveBuoyForSpot(spot.lat, spot.lon);
       if (waveStation && station && waveStation.STID === station.STID) waveStation = null;
       if (waveStation) waveObs = extractObs(waveStation);
     }
