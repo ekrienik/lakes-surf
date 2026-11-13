@@ -750,7 +750,7 @@
 
     <div class="card">
       <h3 style="margin-top:0;">About</h3>
-      <p class="muted">Forecast data: NOAA <a href="https://api.weather.gov" target="_blank" rel="noopener" style="color:var(--accent)">api.weather.gov</a>. Live observations: <a href="https://synopticdata.com" target="_blank" rel="noopener" style="color:var(--accent)">Synoptic Mesowest</a>.</p>
+      <p class="muted">Forecast data: NOAA <a href="https://api.weather.gov" target="_blank" rel="noopener" style="color:var(--accent)">api.weather.gov</a>. Live observations: <a href="https://seagull.glos.org" target="_blank" rel="noopener" style="color:var(--accent)">GLOS Seagull</a> (Great Lakes Observing System).</p>
       <p class="muted">Forecasts can be wrong. Check conditions, water temp and beach rules before you paddle out.</p>
       <p class="muted">No account, no cookies. Saved spots live only on this device. We count visits anonymously (GoatCounter) to see how the app is used; nothing personal is collected, and your own spots are never sent.</p>
       <p class="muted">Found a bug, wrong data or a spot we're missing? <a href="https://docs.google.com/forms/d/e/1FAIpQLSfOGKu4AM8GqL1iYE1HAaOnQ5QbZ3pDXrYndv70S662CKwTSA/viewform" target="_blank" rel="noopener" style="color:var(--accent)">Send feedback</a></p>
@@ -852,9 +852,6 @@
 
 <script>
 const NOAA_BASE = 'https://api.weather.gov';
-const MESOWEST_BASE = 'https://api.mesowest.net/v2/stations';
-const MESOWEST_TOKEN = '023f91656dc9434ea8f1c89f810a53cd'; // Lakes Surf's own Synoptic public token
-const LAKE_MI_BBOX = '-88.5,41.4,-84.5,46.5';
 
 // NWS OMR (Open Lake Marine Report) — daily water-temp bulletin from select offices.
 // LOT covers southern Lake Michigan year-round (Chicago Shore/Crib/Michigan City always reported).
@@ -1100,7 +1097,7 @@ function windParts(kmh) {
 function tempParts(c) {
   return state.units.temp === 'F' ? { v: Math.round(c * 9/5 + 32), u: '°F' } : { v: Math.round(c), u: '°C' };
 }
-// Mesowest is requested in ft / mph / °F; convert to internal units first.
+// Live readings arrive in ft / mph / °F (see glosStation); convert to internal units first.
 const obsFtToM = (ft) => parseFloat(ft) / M_TO_FT;
 const obsMphToKmh = (mph) => parseFloat(mph) / KMH_TO_MPH;
 const obsFToC = (f) => (parseFloat(f) - 32) * 5/9;
@@ -1453,52 +1450,82 @@ function sampleAt(series, t) {
 }
 
 /* ============================================================================
-   Mesowest live observations
+   Live observations — GLOS Seagull (Great Lakes Observing System)
+   Every Great Lakes buoy and lakefront station, free and readable from the
+   browser. glos/stations.json (built hourly on the data branch by
+   .github/scripts/glos-stations.mjs) lists the stations and which GLOS
+   parameter ids carry each reading; obs-latest gives every station's newest
+   values in one ~350 KB request. Readings are reshaped into the station
+   objects the rest of the app was written for (Synoptic's: STID, NAME,
+   LATITUDE, LONGITUDE, OBSERVATIONS.<var>_value_1 = { value, date_time } in
+   ft / mph / °F), so the picking and display code below is source-agnostic.
    ============================================================================ */
+const GLOS_API = 'https://seagull-api.glos.org/api/';
+const GLOS_STATIONS = 'https://raw.githubusercontent.com/ekrienik/lakes-surf/data/glos/stations.json';
+// GLOS sends SI units (m, m/s, K); the app's observation helpers expect ft / mph / °F
+const GLOS_TO_ENGLISH = {
+  wave_height: (m) => m * M_TO_FT, wind_speed: (ms) => ms * 2.23694, wind_gust: (ms) => ms * 2.23694,
+  water_temp: (k) => (k - 273.15) * 9 / 5 + 32, air_temp: (k) => (k - 273.15) * 9 / 5 + 32
+};
+const glosValue = (v, x) => { const f = GLOS_TO_ENGLISH[v]; return Math.round((f ? f(x) : x) * 100) / 100; };
+
+let glosIndex = null;
+async function glosStations() {
+  if (glosIndex) return glosIndex;
+  const j = await fetchJsonCached(GLOS_STATIONS, 12 * 3600e3);
+  const list = j.stations || [];
+  glosIndex = { list, byD: new Map(list.map(s => [s.d, s])) };
+  // A station id can have two datasets (an old deployment): look ids up live-first
+  glosIndex.byId = new Map();
+  for (const s of list) if (!glosIndex.byId.has(s.id) || glosIndex.byId.get(s.id).out) glosIndex.byId.set(s.id, s);
+  return glosIndex;
+}
+// Every station's newest values: [{ obs_dataset_id, parameters: [{ parameter_id, observations: [{ timestamp, value }] }] }]
+const glosLatest = () => fetchJsonCached(GLOS_API + 'v2/obs-latest?collectionStatus=active', STATIONS_CACHE_MS);
+// One GLOS row → a station object; readings older than maxAgeMs are left out.
+// newest = the newest reading of any age (the Buoys tab's "last report").
+function glosStation(st, row, maxAgeMs) {
+  const byPid = new Map(row.parameters.map(p => [p.parameter_id, p.observations && p.observations[0]]));
+  const OBSERVATIONS = {};
+  let newest = 0;
+  const now = Date.now();
+  for (const [v, pid] of Object.entries(st.p)) {
+    const o = byPid.get(pid);
+    if (!o || o.value == null || isNaN(o.value)) continue;
+    const t = o.timestamp * 1000;
+    newest = Math.max(newest, t);
+    if (now - t > maxAgeMs) continue;
+    OBSERVATIONS[`${v}_value_1`] = { value: glosValue(v, o.value), date_time: new Date(t).toISOString() };
+  }
+  return { STID: st.id, NAME: st.name, LATITUDE: st.lat, LONGITUDE: st.lon, GLOS: st, OBSERVATIONS, newest };
+}
 
 let stationsCache = null;
 let stationsCacheTime = 0;
-// Live readings refresh every 5 min while the app is on screen. Every fetch
-// counts against the Synoptic token's monthly allowance, and buoys only
-// report about every 10 min anyway.
+// Live readings refresh every 5 min while the app is on screen; buoys only
+// report every 10–60 min anyway.
 const STATIONS_CACHE_MS = 5 * 60 * 1000;
 let stationsInflight = null;
-let stationsBboxKey = null; // the search area the cache and in-flight request are for
 
-// Search area for live stations: the saved spots plus 60 miles (the wave-buoy
-// reach) on every side, so a spot on any Great Lake gets live data while a
-// phone only downloads stations near its own spots (all five lakes at once is
-// ~2,300 stations, ~2 MB). Rounded outward to 0.5° so small moves keep the cache.
-function stationsBbox() {
-  if (!state.spots.length) return LAKE_MI_BBOX;
-  const lats = state.spots.map(s => s.lat), lons = state.spots.map(s => s.lon);
-  const padLat = 60 / 69;
-  const padLon = padLat / Math.cos(Math.max(...lats.map(Math.abs)) * Math.PI / 180);
-  const down = (v) => Math.floor(v * 2) / 2, up = (v) => Math.ceil(v * 2) / 2;
-  return [down(Math.min(...lons) - padLon), down(Math.min(...lats) - padLat),
-          up(Math.max(...lons) + padLon), up(Math.max(...lats) + padLat)].join(',');
-}
-
+// Every station with a reading in the last 3 h, all five lakes
 async function fetchAllLakeStations() {
-  const now = Date.now();
-  const bbox = stationsBbox();
-  if (bbox !== stationsBboxKey) { stationsCache = null; stationsInflight = null; stationsBboxKey = bbox; }
-  if (stationsCache && (now - stationsCacheTime) < STATIONS_CACHE_MS) return stationsCache;
+  if (stationsCache && (Date.now() - stationsCacheTime) < STATIONS_CACHE_MS) return stationsCache;
   if (stationsInflight) return stationsInflight;
-  const url = `${MESOWEST_BASE}/latest?bbox=${bbox}&within=180&vars=wave_height,wave_period,dominant_wave_period,mean_wave_direction,wind_speed,wind_direction,wind_gust,water_temp,T_water_temp,air_temp&varoperator=or&status=active&output=json&units=temp|F,speed|mph,height|ft&token=${MESOWEST_TOKEN}`;
-  stationsInflight = fetch(url).then(r => {
-    if (!r.ok) throw new Error('Mesowest fetch failed: ' + r.status);
-    return r.json();
-  }).then(data => {
-    const list = (data && data.STATION) ? data.STATION : [];
-    if (stationsBboxKey !== bbox) return list; // spots changed meanwhile; don't cache the old area
+  stationsInflight = Promise.all([glosStations(), glosLatest()]).then(([idx, rows]) => {
+    const list = [];
+    for (const row of rows || []) {
+      const st = idx.byD.get(row.obs_dataset_id);
+      if (!st) continue;
+      const s = glosStation(st, row, 3 * 3600e3);
+      if (Object.keys(s.OBSERVATIONS).length) list.push(s);
+    }
     stationsCache = list;
     stationsCacheTime = Date.now();
     stationsInflight = null;
-    return stationsCache;
+    return list;
   }).catch(err => {
-    if (stationsBboxKey === bbox) stationsInflight = null;
-    console.warn('Mesowest fetch error', err);
+    stationsInflight = null;
+    console.warn('GLOS live readings', err);
     return [];
   });
   return stationsInflight;
@@ -1517,7 +1544,10 @@ function haversineMiles(lat1, lon1, lat2, lon2) {
 // stronger and turned 10–30°), so they win over closer inland stations.
 // Tier-1 is NWS/FAA ASOS. Tier-2 includes RAWS, USGS, established mesonets.
 // Tier-3 is everything else (PWS, FW-prefix, MDOT road weather (162), etc.)
+// GLOS only lists buoys and lakefront stations: all tier 0. The MNET_ID tiers
+// are Synoptic's network ids, kept for a switch back (see CLAUDE.md).
 function stationTier(s) {
+  if (s.GLOS) return 0;
   const m = parseInt(s.MNET_ID, 10);
   if ([96, 122, 286].includes(m)) return 0;  // NDBC buoys + lakefront C-MAN (286 = newer NDBC listings), NOS harbor gauges
   if ([1, 153].includes(m)) return 1;        // NWS/FAA ASOS
@@ -2034,30 +2064,25 @@ function selectSubtab(name) {
 }
 
 // ── Charts: 24h wave height + dominant wave period from the buoy ──────────
+// From GLOS: series in ft / mph like the live readings. GLOS takes a start
+// date only (UTC day), so this asks from the day hoursBack+2 h ago; the charts
+// keep the last 24 h.
 async function fetchWaveTimeseries(stid, hoursBack = 24) {
   if (!stid) return null;
-  const end = new Date();
-  const start = new Date(end.getTime() - hoursBack * 3600 * 1000);
-  const fmt = (d) => {
-    const z = (n) => String(n).padStart(2, '0');
-    return d.getUTCFullYear().toString() + z(d.getUTCMonth() + 1) + z(d.getUTCDate()) + z(d.getUTCHours()) + z(d.getUTCMinutes());
-  };
-  const url = `${MESOWEST_BASE}/timeseries?stid=${encodeURIComponent(stid)}&start=${fmt(start)}&end=${fmt(end)}&vars=wave_height,wave_period,dominant_wave_period,mean_wave_direction,wind_speed,wind_direction,wind_gust&varoperator=or&units=temp|F,speed|mph,height|ft&token=${MESOWEST_TOKEN}`;
   try {
-    const r = await fetch(url);
-    if (!r.ok) return null;
-    const data = await r.json();
-    const st = data.STATION && data.STATION[0];
+    const st = (await glosStations()).byId.get(stid);
     if (!st) return null;
-    const obs = st.OBSERVATIONS || {};
-    const times = (obs.date_time || []).map(t => new Date(t));
-    const wh = obs.wave_height_set_1 || [];
-    const wp = obs.dominant_wave_period_set_1 || obs.wave_period_set_1 || [];
-    const wd = obs.mean_wave_direction_set_1 || [];
-    const ws = obs.wind_speed_set_1 || [];
-    const wdir = obs.wind_direction_set_1 || [];
-    const wg = obs.wind_gust_set_1 || [];
-    return { times, waveHeight: wh, wavePeriod: wp, waveDirection: wd, windSpeed: ws, windGust: wg, windDirection: wdir, station: st };
+    const vars = ['wave_height', 'dominant_wave_period', 'wave_period', 'mean_wave_direction', 'wind_speed', 'wind_gust', 'wind_direction'].filter(v => st.p[v]);
+    if (!vars.length) return null;
+    const day = new Date(Date.now() - (hoursBack + 2) * 3600e3).toISOString().slice(0, 10);
+    const j = await fetchJsonCached(`${GLOS_API}v2/obs?startDate=${day}&obsDatasetId=${st.d}&parameterIds=${vars.map(v => st.p[v]).join(',')}`, STATIONS_CACHE_MS);
+    const vals = (j.parameter_obs && j.parameter_obs.values) || {};
+    const times = (j.timestamps || []).map(t => new Date(t * 1000));
+    const series = (v) => (vals[st.p[v]] || []).map(x => x == null ? null : glosValue(v, x));
+    const dom = series('dominant_wave_period');
+    return { times, waveHeight: series('wave_height'), wavePeriod: dom.some(x => x != null) ? dom : series('wave_period'),
+             waveDirection: series('mean_wave_direction'), windSpeed: series('wind_speed'), windGust: series('wind_gust'),
+             windDirection: series('wind_direction'), station: { STID: st.id, NAME: st.name } };
   } catch (e) { return null; }
 }
 
@@ -4329,8 +4354,9 @@ const ensureBuoyIndex = () => {
 };
 
 let buoyIndexLoad = null, buoyIndexData = null, buoyMap = null, buoyMarkers = {}, buoyLoadSeq = 0;
-// "SOUTH MICHIGAN - 43NM East…" → "South Michigan - 43NM East…"
-const tidyBuoyName = (n) => n.replace(/\b[A-Z]{3,}\b/g, w => w[0] + w.slice(1).toLowerCase());
+// "SOUTH MICHIGAN - 43NM East…" → "South Michigan - 43NM East…"; acronyms in
+// brackets stay ("New Buffalo Spotter (USACE)")
+const tidyBuoyName = (n) => n.replace(/\b[A-Z]{3,}\b(?![^(]*\))/g, w => w[0] + w.slice(1).toLowerCase());
 // Distances from the first saved spot (or Chicago with none)
 function buoyHome() {
   const s = state.spots[0];
@@ -4538,45 +4564,32 @@ function buoyChart({ title, unit, times, bands, lines, decimals, height = 150, d
   </div>`;
 }
 
-// Live: every Great Lakes buoy, from Synoptic. The station directory (wave
-// stations, including buoys pulled for the season) gives positions and last
-// report dates; one latest request shows who's reporting. In = a reading in
-// the last 3 h, Quiet = 3 h to 3 days, Out = nothing for 3+ days.
+// Live: every Great Lakes wave buoy in GLOS (moored buoys and Spotters with a
+// wave-height reading), including those pulled for the season. In = a reading
+// in the last 3 h, Quiet = 3 h to 3 days, Out = nothing for 3+ days or GLOS
+// lists it as recovered. end = its newest reading of any age.
 const BUOY_COLORS = { in: '#34c77b', quiet: '#e8a33d', out: '#8a96a3' };
-const GREAT_LAKES_BBOX = '-92.6,40.9,-75.4,49.2';
 let buoyLiveMap = null, buoyLiveMarkers = {}, buoyLiveList = null, buoyLiveSeq = 0, buoyLiveLast = null;
 async function loadBuoyLive() {
-  const meta = await fetchJsonCached(`${MESOWEST_BASE}/metadata?token=${MESOWEST_TOKEN}&bbox=${GREAT_LAKES_BBOX}&vars=wave_height&status=active`, 12 * 3600e3);
-  // Buoys are 45xxx; most are listed twice (45174 and NDBC45174): merge them
-  const idOf = (stid) => { const m = /^(?:NDBC)?(45\d{3})$/.exec(stid || ''); return m && m[1]; };
+  const [idx, rows] = await Promise.all([glosStations(), glosLatest()]);
+  const rowOf = new Map((rows || []).map(r => [r.obs_dataset_id, r]));
   const byId = new Map();
-  for (const s of meta.STATION || []) {
-    const id = idOf(s.STID);
-    if (!id) continue; // shore stations: no wave readings in practice
-    const b = byId.get(id) || { id, lat: +s.LATITUDE, lon: +s.LONGITUDE, name: '', end: 0, stids: [], last: 0 };
-    b.stids.push(s.STID);
-    if (!b.name || /^Buoy \d/.test(b.name)) b.name = s.NAME; // NDBC's listing has the real name
-    b.end = Math.max(b.end, Date.parse((s.PERIOD_OF_RECORD || {}).end || '') || 0);
-    byId.set(id, b);
-  }
-  const all = [...byId.values()];
-  const latest = await fetchJsonCached(`${MESOWEST_BASE}/latest?token=${MESOWEST_TOKEN}&stid=${all.flatMap(b => b.stids).join(',')}&within=4320&units=english`, 5 * 60e3);
-  for (const s of latest.STATION || []) {
-    const b = byId.get(idOf(s.STID));
-    if (!b) continue;
-    const o = s.OBSERVATIONS || {};
-    for (const v of Object.values(o)) b.last = Math.max(b.last, Date.parse(v && v.date_time) || 0);
-    // NDBC's listing has wave direction and period: the richer one to chart
-    if (o.mean_wave_direction_value_1 || o.dominant_wave_period_value_1) b.chartStid = s.STID;
-    const wt = o.water_temp_value_1, wtAt = wt && Date.parse(wt.date_time);
-    if (wt && !(b.waterAt > wtAt)) { b.waterF = parseFloat(wt.value); b.waterAt = wtAt; }
-  }
   const now = Date.now();
-  for (const b of all) {
+  for (const st of idx.list) {
+    if (st.type !== 'moored_buoy' || !st.p.wave_height) continue;
+    const row = rowOf.get(st.d);
+    if (!row) continue; // retired: GLOS has no readings for it at all
+    const s = glosStation(st, row, 3 * 24 * 3600e3);
+    const o = s.OBSERVATIONS;
+    const last = st.out ? 0 : Math.max(0, ...Object.values(o).map(v => Date.parse(v.date_time)));
+    const b = { id: st.id, d: st.d, lat: st.lat, lon: st.lon, name: st.name, end: s.newest, last, chartStid: st.id,
+                waterF: o.water_temp_value_1 ? o.water_temp_value_1.value : null };
     b.status = !b.last ? 'out' : now - b.last <= 3 * 3600e3 ? 'in' : 'quiet';
-    if (!b.chartStid) b.chartStid = b.stids.find(x => !x.startsWith('NDBC')) || b.stids[0];
+    // Two datasets for one buoy (an old deployment): keep the one reporting
+    const prev = byId.get(b.id);
+    if (!prev || b.last > prev.last || (b.last === prev.last && b.end > prev.end)) byId.set(b.id, b);
   }
-  return all;
+  return [...byId.values()];
 }
 function buoyLiveSummary() {
   if (!buoyLiveList) return 'Live readings';
@@ -4641,19 +4654,19 @@ function renderBuoyLiveCard() {
   const water = b.status !== 'out' && b.waterF != null && !isNaN(b.waterF) ? ` · ${fmtTemp((b.waterF - 32) * 5 / 9)} water` : '';
   const title = `<div class="buoy-title"><b>${escapeHtml(tidyBuoyName(b.name))}</b>` +
     `<span class="muted" style="font-size:12px;">${mi} mi${water} · <span style="color:${BUOY_COLORS[b.status]};">● ${status}</span></span></div>`;
-  // One-line footer, like Fcst's: when it last reported, and NOAA's page for it
-  const ndbc = `<a href="https://www.ndbc.noaa.gov/station_page.php?station=${b.id}" target="_blank" rel="noopener" style="color:var(--accent);">NDBC ↗</a>`;
+  // One-line footer, like Fcst's: when it last reported, and GLOS's page for it
+  const glosLink = `<a href="https://seagull.glos.org/data-console/${b.d}" target="_blank" rel="noopener" style="color:var(--accent);">GLOS ↗</a>`;
   if (b.status === 'out') {
     const when = b.end ? new Date(b.end).toLocaleDateString([], { month: 'short', day: 'numeric' }) : null;
     card.innerHTML = title + `<div class="empty-note" style="padding:12px 0;">Out of the water${when ? ` · last report ${when}` : ''}.</div>` +
-      `<div class="muted buoy-src">${ndbc}</div>`;
+      `<div class="muted buoy-src">${glosLink}</div>`;
     return;
   }
   if (loading) { card.innerHTML = title + '<div class="muted" style="font-size:12px; padding:8px 0;">Loading 24h charts…</div>'; return; }
   if (card.clientWidth > 0) chartWidth = card.clientWidth - 24;
   const hasWind = ts && Array.isArray(ts.windSpeed) && ts.windSpeed.some(v => v != null && !isNaN(parseFloat(v)));
   card.innerHTML = title + liveChartsHtml({ ts, windTs: hasWind ? ts : null, width: chartWidth, compact: true }) +
-    `<div class="muted buoy-src">Updated ${new Date(b.last).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ${ndbc}</div>`;
+    `<div class="muted buoy-src">Updated ${new Date(b.last).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ${glosLink}</div>`;
   attachChartReadouts(card);
   card.querySelectorAll('svg.line-chart').forEach(svg => chartShowAt(svg, Infinity));
 }

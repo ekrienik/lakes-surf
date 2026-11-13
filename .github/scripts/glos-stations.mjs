@@ -37,6 +37,7 @@ export function build(summaries, params) {
     const site = d.deployment_site;
     if (!plat || !site || site.latitude == null || d.public === false) continue;
     if (plat.platform_type === 'sampling_location' || INLAND.test(d.platform_name || '')) continue;
+    if (/prior (platform|deployment)/i.test(d.platform_name || '')) continue; // a buoy's earlier deployment
     const event = plat.platform_event && plat.platform_event.event;
     if (event === 'decommissioned') continue;
     const ps = byPlatform.get(plat.platform_id) || [];
