@@ -1,8 +1,13 @@
-# Map tab → Buoys: refreshes the GLERL ensemble wave outlook on the `data`
-# branch (see .github/scripts/glerl-outlook.mjs). GLERL's 00Z and 12Z runs
-# post at unpredictable times (the 12Z run of 2026-11-03 appeared at 22:02 UTC),
-# so this checks hourly; :20 avoids GitHub's busy top-of-hour slots.
-name: GLERL buoy outlook
+# Refreshes the `data` branch the app reads through raw.githubusercontent.com:
+#  - glerl/: the GLERL ensemble wave outlook for Buoys → Fcst
+#    (.github/scripts/glerl-outlook.mjs). GLERL's 00Z and 12Z runs post at
+#    unpredictable times (the 12Z run of 2026-11-03 appeared at 22:02 UTC),
+#    so this checks hourly; :20 avoids GitHub's busy top-of-hour slots.
+#  - glos/: the GLOS station list behind the live readings
+#    (.github/scripts/glos-stations.mjs).
+# Each part starts from the branch's current files, so if one source is down
+# its last good files are kept while the other still updates.
+name: Data branch (GLERL outlook, GLOS stations)
 
 on:
   schedule:
@@ -13,6 +18,7 @@ on:
     paths:
       - .github/workflows/glerl-outlook.yml
       - .github/scripts/glerl-outlook.mjs
+      - .github/scripts/glos-stations.mjs
 
 permissions:
   contents: write
@@ -30,8 +36,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Build outlook files
+      - name: Start from the current data branch
+        run: |
+          git clone -q --depth 1 -b data "https://github.com/${GITHUB_REPOSITORY}.git" out || mkdir -p out
+          rm -rf out/.git
+      - name: Build GLERL outlook files
+        continue-on-error: true
         run: node .github/scripts/glerl-outlook.mjs out
+      - name: Build GLOS station list
+        continue-on-error: true
+        run: node .github/scripts/glos-stations.mjs out
       - name: Publish to the data branch
         working-directory: out
         env:
@@ -42,5 +56,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -qm "GLERL outlook $(date -u +%Y-%m-%dT%H:%MZ)"
+          git commit -qm "Data $(date -u +%Y-%m-%dT%H:%MZ)"
           git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" data
