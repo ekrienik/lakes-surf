@@ -1500,6 +1500,32 @@ function glosStation(st, row, maxAgeMs) {
   return { STID: st.id, NAME: st.name, LATITUDE: st.lat, LONGITUDE: st.lon, GLOS: st, OBSERVATIONS, newest };
 }
 
+// Lakefront wind stations GLOS doesn't carry, read from weather.gov (CORS
+// open; wind in km/h, temps in °C, ~1–2 h behind). Their reports often lack
+// wind, so each reading comes from the newest report that has it. Fetched
+// only when within 30 mi (the wind-station reach) of a saved spot.
+const NWS_LAKE_STATIONS = [
+  { id: 'CNII2', name: 'Northerly Island, Chicago', lat: 41.8558, lon: -87.6094 },
+  { id: 'SGNW3', name: 'Sheboygan harbor', lat: 43.75, lon: -87.69 }
+];
+const nwsLakeStationsNearSpots = () => NWS_LAKE_STATIONS.filter(s => state.spots.some(p => haversineMiles(p.lat, p.lon, s.lat, s.lon) <= 30));
+async function nwsLakeStation(s) {
+  const j = await fetchJsonCached(`${NOAA_BASE}/stations/${s.id}/observations?limit=8`, STATIONS_CACHE_MS);
+  const OBSERVATIONS = {}, now = Date.now();
+  const put = (k, v, t) => { OBSERVATIONS[`${k}_value_1`] = { value: Math.round(v * 100) / 100, date_time: t }; };
+  for (const f of j.features || []) {
+    const p = f.properties, t = p.timestamp;
+    if (now - Date.parse(t) > 3 * 3600e3) break;
+    if (!OBSERVATIONS.wind_speed_value_1 && p.windSpeed.value != null) {
+      put('wind_speed', p.windSpeed.value * KMH_TO_MPH, t);
+      if (p.windDirection.value != null) put('wind_direction', p.windDirection.value, t);
+      if (p.windGust.value != null) put('wind_gust', p.windGust.value * KMH_TO_MPH, t);
+    }
+    if (!OBSERVATIONS.air_temp_value_1 && p.temperature.value != null) put('air_temp', p.temperature.value * 9 / 5 + 32, t);
+  }
+  return { STID: s.id, NAME: s.name, LATITUDE: s.lat, LONGITUDE: s.lon, NWS: true, OBSERVATIONS };
+}
+
 let stationsCache = null;
 let stationsCacheTime = 0;
 // Live readings refresh every 5 min while the app is on screen; buoys only
@@ -1507,12 +1533,14 @@ let stationsCacheTime = 0;
 const STATIONS_CACHE_MS = 5 * 60 * 1000;
 let stationsInflight = null;
 
-// Every station with a reading in the last 3 h, all five lakes
+// Every station with a reading in the last 3 h: GLOS's, all five lakes, plus
+// the weather.gov lakefront stations near the saved spots
 async function fetchAllLakeStations() {
   if (stationsCache && (Date.now() - stationsCacheTime) < STATIONS_CACHE_MS) return stationsCache;
   if (stationsInflight) return stationsInflight;
-  stationsInflight = Promise.all([glosStations(), glosLatest()]).then(([idx, rows]) => {
-    const list = [];
+  const nws = Promise.all(nwsLakeStationsNearSpots().map(s => nwsLakeStation(s).catch(() => null)));
+  stationsInflight = Promise.all([glosStations(), glosLatest(), nws]).then(([idx, rows, nwsList]) => {
+    const list = nwsList.filter(s => s && Object.keys(s.OBSERVATIONS).length);
     for (const row of rows || []) {
       const st = idx.byD.get(row.obs_dataset_id);
       if (!st) continue;
@@ -1544,10 +1572,10 @@ function haversineMiles(lat1, lon1, lat2, lon2) {
 // stronger and turned 10–30°), so they win over closer inland stations.
 // Tier-1 is NWS/FAA ASOS. Tier-2 includes RAWS, USGS, established mesonets.
 // Tier-3 is everything else (PWS, FW-prefix, MDOT road weather (162), etc.)
-// GLOS only lists buoys and lakefront stations: all tier 0. The MNET_ID tiers
-// are Synoptic's network ids, kept for a switch back (see CLAUDE.md).
+// GLOS and NWS_LAKE_STATIONS are all buoys and lakefront stations: tier 0. The
+// MNET_ID tiers are Synoptic's network ids, kept for a switch back (see CLAUDE.md).
 function stationTier(s) {
-  if (s.GLOS) return 0;
+  if (s.GLOS || s.NWS) return 0;
   const m = parseInt(s.MNET_ID, 10);
   if ([96, 122, 286].includes(m)) return 0;  // NDBC buoys + lakefront C-MAN (286 = newer NDBC listings), NOS harbor gauges
   if ([1, 153].includes(m)) return 1;        // NWS/FAA ASOS
@@ -2069,6 +2097,8 @@ function selectSubtab(name) {
 // keep the last 24 h.
 async function fetchWaveTimeseries(stid, hoursBack = 24) {
   if (!stid) return null;
+  const nws = NWS_LAKE_STATIONS.find(s => s.id === stid);
+  if (nws) return nwsWindTimeseries(nws, hoursBack);
   try {
     const st = (await glosStations()).byId.get(stid);
     if (!st) return null;
@@ -2083,6 +2113,19 @@ async function fetchWaveTimeseries(stid, hoursBack = 24) {
     return { times, waveHeight: series('wave_height'), wavePeriod: dom.some(x => x != null) ? dom : series('wave_period'),
              waveDirection: series('mean_wave_direction'), windSpeed: series('wind_speed'), windGust: series('wind_gust'),
              windDirection: series('wind_direction'), station: { STID: st.id, NAME: st.name } };
+  } catch (e) { return null; }
+}
+// A weather.gov lakefront station's wind history (newest first from the API;
+// start rounded to the hour so the cached response gets reused)
+async function nwsWindTimeseries(s, hoursBack) {
+  try {
+    const start = new Date(Math.floor((Date.now() - (hoursBack + 1) * 3600e3) / 3600e3) * 3600e3).toISOString().slice(0, 19) + 'Z';
+    const j = await fetchJsonCached(`${NOAA_BASE}/stations/${s.id}/observations?start=${start}`, STATIONS_CACHE_MS);
+    const ps = (j.features || []).map(f => f.properties).filter(p => p.windSpeed.value != null).reverse();
+    const mph = (v) => v == null ? null : Math.round(v * KMH_TO_MPH * 100) / 100;
+    return { times: ps.map(p => new Date(p.timestamp)), waveHeight: [], wavePeriod: [], waveDirection: [],
+             windSpeed: ps.map(p => mph(p.windSpeed.value)), windGust: ps.map(p => mph(p.windGust.value)),
+             windDirection: ps.map(p => p.windDirection.value), station: { STID: s.id, NAME: s.name } };
   } catch (e) { return null; }
 }
 
